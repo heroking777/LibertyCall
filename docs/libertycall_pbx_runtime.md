@@ -356,3 +356,13 @@ ls -l /var/lib/asterisk/sounds/ja/*.ulaw
 
 ---
 
+## 16. AI応答の音声化（v2.3）
+- 目的: `ai-handler` で生成した応答を Google TTS で音声化し、`Playback(ja/ai_temp)` で再生。
+- 運用（Ubuntuは短コマンド原則）:
+  1) `sudo apt-get install -y sox`
+  2) `sudo -H pip3 install google-cloud-texttospeech`
+  3) `sudo curl -fsSL https://raw.githubusercontent.com/heroking777/LibertyCall/main/deploy/asterisk/agi/ai_handler.py -o /var/lib/asterisk/agi-bin/ai_handler.py && sudo chown asterisk:asterisk /var/lib/asterisk/agi-bin/ai_handler.py && sudo chmod 755 /var/lib/asterisk/agi-bin/ai_handler.py`
+  4) `sudo asterisk -rx 'dialplan reload'`
+- 期待ログ: `ai_handler: synthesized ok ...` → `Playback(ja/ai_temp)`
+
+
