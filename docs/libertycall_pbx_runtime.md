@@ -154,6 +154,88 @@ asterisk -rx 'dialplan reload'
 ---
  (See <attachments> above for file contents. You may not need to search or read the file again.)
 
+## 15. AI分岐設計とログ統合仕様（v2.2）
+
+### 15.1 目的
+LibertyCall の PBX は「AIで完結できる問い合わせ」と「担当転送が必要な問い合わせ」を自動で判別し、  
+通話内容に応じたルートへ誘導する。  
+本章ではその分岐構成とログ一元化の仕様を定義する。
+
+### 15.2 構成概要
+```
+
+[incoming-call]
+│
+├─ AGI(pbx_bridge.py) → 音声認識＆分類
+│        │
+│        ├─ ACTION="ai"     → Goto(ai-handler,s,1)
+│        ├─ TRANSFER_TO!=空 → Goto(decide,s,1)
+│        └─ それ以外        → Goto(vm,s,1)
+
+```
+
+### 15.3 AI分岐の条件設計（pbx_bridge.py）
+
+| フラグ | 判定内容 | ルート |
+|---------|-----------|---------|
+| `strong_hit` | 高確度で「電話を希望」「折り返し依頼」などが含まれる | decide（転送） |
+| `intent_hit` | 一般的な連絡・資料請求ワード | decide（転送） |
+| `action_ai` | 「営業時間」「アクセス」「メール」「営業時間外対応」など FAQ で処理可 | ai-handler（AI応答） |
+| その他 | 無発話・不明瞭 | vm（留守電） |
+
+※ `action_ai` 判定は正規表現ルール＋AI分類（今後 `nlu/ai_router.py` で強化予定）
+
+### 15.4 ai-handler コンテキスト設計
+
+```asterisk
+[ai-handler]
+exten => s,1,NoOp(AI mode start: Heard=${LAST_TRANSCRIPT})
+ same  => n,Set(CHANNEL(language)=ja)
+ same  => n,AGI(/var/lib/asterisk/agi-bin/ai_handler.py,${LAST_TRANSCRIPT})
+ same  => n,Hangup()
+```
+
+* `ai_handler.py`
+
+   * 目的：FAQ応答生成（Google TTS経由で音声返答）
+   * 出力：`ja/ai_response.wav` を動的再生
+   * 応答内容例：「弊社の営業時間は平日10時から17時半です。」
+   * 今後の拡張：Dialogflow or Vertex AI に接続可能な構造にする。
+
+### 15.5 ログ統合仕様
+
+* **呼び出し元:** decide / ai-handler / vm すべて共通で `/usr/local/bin/lc_logwrite.sh` を呼ぶ。
+* **形式:** `/var/log/libertycall/calllog-YYYYMMDD.jsonl` に追記。
+* **拡張項目:**
+
+   * `action_route`: `"ai"`, `"transfer"`, `"voicemail"`
+   * `ai_reply`: AI応答テキスト（ai-handlerのみ）
+   * `confidence`: ASR信頼度（pbx_bridge出力）
+
+例（JSONL 1行）:
+
+```json
+{
+   "ts_human": "2025/11/06/18:10",
+   "caller": "09012345678",
+   "transcript": "営業時間を教えてください",
+   "action_route": "ai",
+   "ai_reply": "弊社の営業時間は平日10時から17時半です。",
+   "confidence": 0.95
+}
+```
+
+### 15.6 拡張ロードマップ
+
+| フェーズ                  | 目的                  | 概要                                              |
+| --------------------- | ------------------- | ----------------------------------------------- |
+| Phase A               | `ai-handler` 実装     | FAQ応答をPythonで実行（TTS音声生成含む）                      |
+| Phase B               | `lc_logwrite.sh` 拡張 | JSONLに action_route / ai_reply / confidence を追加 |
+| Phase C               | WebUI統合             | `/var/log/libertycall/` のJSONをReact管理画面で可視化     |
+| Phase D               | CRM連携               | 顧客電話番号に紐づく履歴をAPI化（FastAPI予定）                    |
+| ---8<--- END ---8<--- |                     |                                                 |
+
+
 ### 14. 運用固定ルール（LibertyCall専用）
 
 本章は LibertyCall 開発・運用時の ChatGPT／Copilot／Ubuntu 間連携ポリシーを明文化する。  
