@@ -1,0 +1,37 @@
+﻿# ---- Python / venv ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.dist-info/
+.pytest_cache/
+.env
+.venv/
+venv/
+ENV/
+env/
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---- Project specific ----
+runtime/
+logs/
+log/
+*.log
+# 生成物（音声/大容量は基本除外）
+*.wav
+*.ulaw
+*.mp3
+*.ogg
+*.raw
+*.pcm
+# その他生成物ローカルDB
+*.sqlite
+*.db
+# 秘匿情報
+keys/
