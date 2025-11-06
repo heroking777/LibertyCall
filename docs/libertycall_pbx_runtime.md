@@ -225,6 +225,8 @@ exten => s,1,NoOp(AI mode start: Heard=${LAST_TRANSCRIPT})
   * 応答内容例：「弊社の営業時間は平日10時から17時半です。」
   * 今後の拡張：Dialogflow or Vertex AI に接続可能な構造にする。
 
+注記: 現状は占位版（placeholder）で、音声の再生はダイヤルプラン側で既存プロンプトをPlaybackする方式を利用します。
+
 ### 15.5 ログ統合仕様
 
 * **呼び出し元:** decide / ai-handler / vm すべて共通で `/usr/local/bin/lc_logwrite.sh` を呼ぶ。
@@ -257,7 +259,38 @@ exten => s,1,NoOp(AI mode start: Heard=${LAST_TRANSCRIPT})
 | Phase C               | WebUI統合             | `/var/log/libertycall/` のJSONをReact管理画面で可視化     |
 | Phase D               | CRM連携               | 顧客電話番号に紐づく履歴をAPI化（FastAPI予定）                    |
 
-   - 指示ブロックは以下の情報を必ず含む：  
+
+#### 15.x v2.2.1 ランタイム差分（適用済み）
+
+- [decide] の NoOp 直後に AI 判定 1 行を追加：
+
+same => n,ExecIf($[${REGEX("(営業時間|何時|時間|アクセス|所在地|住所|メール|メールアドレス|連絡先)", ${LAST_TRANSCRIPT})}]?Set(ACTION=ai))
+
+- [decide] に ACTION=ai → ai-handler 分岐を追加：
+
+same => n,ExecIf($["${ACTION}"="ai"]?Goto(ai-handler,s,1))
+
+- [ai-handler] は占位動作（AI_REPLY を NoOp で出し、現状は callback_notice を再生）：
+
+```asterisk
+[ai-handler]
+exten => s,1,NoOp(AI mode start: Heard=${LAST_TRANSCRIPT})
+same => n,Set(CHANNEL(language)=ja)
+same => n,NoOp(AI_REPLY:${AI_REPLY})
+same => n,Playback(ja/callback_notice)
+same => n,Hangup()
+```
+
+- logger 最小設定（messages を見られるようにした）：
+
+```ini
+[general]
+dateformat=%Y-%m-%d %H:%M:%S
+[logfiles]
+messages => notice,warning,error,verbose
+console => notice,warning,error
+```
+
      - 対象ファイル名・保存パス  
      - 内容本文（新規 or 更新差分）  
      - 推奨コミットメッセージ  
