@@ -1,6 +1,8 @@
 ---8<--- START OF FILE ---8<---
 # LibertyCall PBX Runtime Memo
 最終更新: 2025-11-06 JST
+# LibertyCall PBX Runtime Memo
+最終更新: 2025-11-06 JST
 
 ## 0. このファイルの目的
 Asterisk/AGI/TTS/ASR まわりの**運用ルールと現状**を一元管理。  
@@ -10,18 +12,18 @@ Asterisk/AGI/TTS/ASR まわりの**運用ルールと現状**を一元管理。
 
 ## 1. 実体ファイルと動作の要点（稼働中）
 - `/etc/asterisk/extensions.d/zz_incoming_active.conf`  
-   - 稼働コンテキスト: `incoming-call` / `decide` / `ahentry` / `vm`
-   - 営業時間内は `[decide]`、時間外は `[ahentry]`→`[vm]`。
+  - 稼働コンテキスト: `incoming-call` / `decide` / `ahentry` / `vm`
+  - 営業時間内は `[decide]`、時間外は `[ahentry]`→`[vm]`。
 - `/var/lib/asterisk/agi-bin/pbx_bridge.py`  
-   - 録音WAVをASR（Google STT）→ ルール判定 → 変数返却。
-   - 戻り変数（Asteriskへ）：  
-      - `LAST_TRANSCRIPT`（テキスト）  
-      - `TRANSFER_TO`（転送先。空なら無転送）  
-      - `ACTION` = `transfer` / `voicemail` / `ai`
+  - 録音WAVをASR（Google STT）→ ルール判定 → 変数返却。
+  - 戻り変数（Asteriskへ）：  
+    - `LAST_TRANSCRIPT`（テキスト）  
+    - `TRANSFER_TO`（転送先。空なら無転送）  
+    - `ACTION` = `transfer` / `voicemail` / `ai`
 - `/var/lib/asterisk/sounds/ja/*.ulaw`（TTSプロンプト）  
-   - 例: `greeting, company_name, qm_notice, ask_plain, confirm_transfer, callback_notice`
+  - 例: `greeting, company_name, qm_notice, ask_plain, confirm_transfer, callback_notice`
 - 録音保存: `/var/spool/asterisk/libertycall/`  
-   - `msg-*.wav`（発話） / `voicemail-*.wav`（留守電）
+  - `msg-*.wav`（発話） / `voicemail-*.wav`（留守電）
 
 **番号正規化（`[decide]`）**  
 `CALLERID(num)`→ダメなら PAI→ダメなら From。`+81` or `81` 先頭は国内表記（090/080/070）へ→`RC_NAT` に保持。  
@@ -32,9 +34,9 @@ Asterisk/AGI/TTS/ASR まわりの**運用ルールと現状**を一元管理。
 ## 2. 電話フロー（簡略）
 1) `incoming-call,58304073` で案内再生→`Record(msg-*.wav)`→`AGI(pbx_bridge.py, REC_PATH)`  
 2) 営業時間内: `[decide]`  
-    - `ACTION="transfer"` → `confirm_transfer` → `Dial(PJSIP/${TRANSFER_TO}@rk-endpoint,45,rg)` → 不在は `[vm]`  
-    - `ACTION="voicemail"` → 直ちに `[vm]`  
-    - `ACTION="ai"` → いまはフォールバックで `[vm]`（将来 AI ハンドラへ）  
+   - `ACTION="transfer"` → `confirm_transfer` → `Dial(PJSIP/${TRANSFER_TO}@rk-endpoint,45,rg)` → 不在は `[vm]`  
+   - `ACTION="voicemail"` → 直ちに `[vm]`  
+   - `ACTION="ai"` → いまはフォールバックで `[vm]`（将来 AI ハンドラへ）  
 3) 時間外: `[ahentry]` → `[vm]`  
 4) `[vm]` : `callback_notice` 再生 → `Record(voicemail-*.wav,10,60,q)` → `Hangup`
 
@@ -50,7 +52,6 @@ Asterisk/AGI/TTS/ASR まわりの**運用ルールと現状**を一元管理。
 ## 4. ログ（messages）を使う場合
 `/etc/asterisk/logger.conf`
 ```
-
 [general]
 dateformat=%Y-%m-%d %H:%M:%S
 [logfiles]
@@ -65,7 +66,6 @@ console  => notice,warning,error
 
 ## 5. フォルダ構成（プロジェクト側・要点）
 ```
-
 LibertyCall/
 ├─ pbx/                  # PBX制御/ラッパ等
 ├─ asr/                  # ASR関連（Google STTクライアント等）
@@ -76,7 +76,6 @@ LibertyCall/
 ├─ deploy/               # デプロイスクリプト類（Asterisk/TTS 等）
 ├─ docs/                 # 本メモ等のドキュメント
 └─ ...                   # その他（frontend, tools, tests など）
-
 ```
 ※ `.gitignore` により `.venv/`, `runtime/`, `logs/`, `*.wav`, `keys/` を除外済み。
 
@@ -89,7 +88,7 @@ LibertyCall/
 - 出力先: `/var/lib/asterisk/sounds/ja/`  
 - 代表ファイル: `greeting.ulaw / company_name.ulaw / qm_notice.ulaw / ask_plain.ulaw / confirm_transfer.ulaw / callback_notice.ulaw`  
 - 生成スクリプト（例）: `/media/sf_LibertyCall/deploy/asterisk/make_prompts.sh`  
-   - 再生成後は `asterisk -rx 'module reload res_musiconhold.so'` 等ではなく、**音声は直接参照**のためそのまま有効（念のため `asterisk -rx 'core reload'` 可）
+  - 再生成後は `asterisk -rx 'module reload res_musiconhold.so'` 等ではなく、**音声は直接参照**のためそのまま有効（念のため `asterisk -rx 'core reload'` 可）
 
 ---
 
@@ -109,25 +108,19 @@ LibertyCall/
 ## 9. 再構築（Ubuntu簡易手順）
 1) ダイヤルプラン確認  
 ```
-
 asterisk -rx 'dialplan show incoming-call'
 asterisk -rx 'dialplan show decide'
 asterisk -rx 'dialplan show vm'
-
 ```
 2) AGI/音声/録音パス確認  
 ```
-
 ls -l /var/lib/asterisk/agi-bin/pbx_bridge.py
 ls -l /var/lib/asterisk/sounds/ja/{greeting,company_name,qm_notice,ask_plain,confirm_transfer,callback_notice}.ulaw
 ls -ld /var/spool/asterisk/libertycall
-
 ```
 3) リロード  
 ```
-
 asterisk -rx 'dialplan reload'
-
 ```
 
 ---
@@ -152,7 +145,39 @@ asterisk -rx 'dialplan reload'
 - 転送不在→留守電: `DIALSTATUS` をログで確認、`lc_logwrite.sh` の実行権限・引数を確認。
 
 ---
- (See <attachments> above for file contents. You may not need to search or read the file again.)
+
+(See <attachments> above for file contents. You may not need to search or read the file again.)
+
+### 14. 運用固定ルール（LibertyCall専用）
+
+本章は LibertyCall 開発・運用時の ChatGPT／Copilot／Ubuntu 間連携ポリシーを明文化する。  
+手動操作ミス防止・再現性確保を目的とする。
+
+1. **ChatGPT（GPT-5）が主導する運用方針**
+   - 新しいファイル・スクリプト・設定・ドキュメントを生成した際は、  
+     **必ず Copilot に貼り付け可能な「指示ブロック」** を同時に出力する。  
+   - 指示ブロックは以下の情報を必ず含む：  
+     - 対象ファイル名・保存パス  
+     - 内容本文（新規 or 更新差分）  
+     - 推奨コミットメッセージ  
+     - 実行用 Git コマンド  
+     - 対応する `.md` 更新指示（追記箇所）
+
+2. **ユーザー操作の最小化**
+   - ユーザー（heroking777）は Copilot に指示を貼り付けるだけでよい。  
+   - ChatGPT 側から「実行していいか？」などの確認は不要。  
+   - 作業の正確性・順序決定は ChatGPT 側が責任を持つ。
+
+3. **目的**
+   - 手動転記・設定漏れ・ヒューマンエラーを完全排除。  
+   - Copilot／Ubuntu 双方の構成を常に同期。  
+   - プロジェクト環境を誰でも再現可能な状態で維持。
+
+4. **適用範囲**
+   - 現時点では LibertyCall プロジェクト専用ルールとする。  
+   - 将来新規システムを構築する際も、明示的に承認されれば同形式を再利用可。
+
+---
 
 ## 15. AI分岐設計とログ統合仕様（v2.2）
 
@@ -163,7 +188,6 @@ LibertyCall の PBX は「AIで完結できる問い合わせ」と「担当転�
 
 ### 15.2 構成概要
 ```
-
 [incoming-call]
 │
 ├─ AGI(pbx_bridge.py) → 音声認識＆分類
@@ -171,7 +195,6 @@ LibertyCall の PBX は「AIで完結できる問い合わせ」と「担当転�
 │        ├─ ACTION="ai"     → Goto(ai-handler,s,1)
 │        ├─ TRANSFER_TO!=空 → Goto(decide,s,1)
 │        └─ それ以外        → Goto(vm,s,1)
-
 ```
 
 ### 15.3 AI分岐の条件設計（pbx_bridge.py）
@@ -197,10 +220,10 @@ exten => s,1,NoOp(AI mode start: Heard=${LAST_TRANSCRIPT})
 
 * `ai_handler.py`
 
-   * 目的：FAQ応答生成（Google TTS経由で音声返答）
-   * 出力：`ja/ai_response.wav` を動的再生
-   * 応答内容例：「弊社の営業時間は平日10時から17時半です。」
-   * 今後の拡張：Dialogflow or Vertex AI に接続可能な構造にする。
+  * 目的：FAQ応答生成（Google TTS経由で音声返答）
+  * 出力：`ja/ai_response.wav` を動的再生
+  * 応答内容例：「弊社の営業時間は平日10時から17時半です。」
+  * 今後の拡張：Dialogflow or Vertex AI に接続可能な構造にする。
 
 ### 15.5 ログ統合仕様
 
@@ -208,20 +231,20 @@ exten => s,1,NoOp(AI mode start: Heard=${LAST_TRANSCRIPT})
 * **形式:** `/var/log/libertycall/calllog-YYYYMMDD.jsonl` に追記。
 * **拡張項目:**
 
-   * `action_route`: `"ai"`, `"transfer"`, `"voicemail"`
-   * `ai_reply`: AI応答テキスト（ai-handlerのみ）
-   * `confidence`: ASR信頼度（pbx_bridge出力）
+  * `action_route`: `"ai"`, `"transfer"`, `"voicemail"`
+  * `ai_reply`: AI応答テキスト（ai-handlerのみ）
+  * `confidence`: ASR信頼度（pbx_bridge出力）
 
 例（JSONL 1行）:
 
 ```json
 {
-   "ts_human": "2025/11/06/18:10",
-   "caller": "09012345678",
-   "transcript": "営業時間を教えてください",
-   "action_route": "ai",
-   "ai_reply": "弊社の営業時間は平日10時から17時半です。",
-   "confidence": 0.95
+  "ts_human": "2025/11/06/18:10",
+  "caller": "09012345678",
+  "transcript": "営業時間を教えてください",
+  "action_route": "ai",
+  "ai_reply": "弊社の営業時間は平日10時から17時半です。",
+  "confidence": 0.95
 }
 ```
 
@@ -233,17 +256,7 @@ exten => s,1,NoOp(AI mode start: Heard=${LAST_TRANSCRIPT})
 | Phase B               | `lc_logwrite.sh` 拡張 | JSONLに action_route / ai_reply / confidence を追加 |
 | Phase C               | WebUI統合             | `/var/log/libertycall/` のJSONをReact管理画面で可視化     |
 | Phase D               | CRM連携               | 顧客電話番号に紐づく履歴をAPI化（FastAPI予定）                    |
-| ---8<--- END ---8<--- |                     |                                                 |
 
-
-### 14. 運用固定ルール（LibertyCall専用）
-
-本章は LibertyCall 開発・運用時の ChatGPT／Copilot／Ubuntu 間連携ポリシーを明文化する。  
-手動操作ミス防止・再現性確保を目的とする。
-
-1. **ChatGPT（GPT-5）が主導する運用方針**
-   - 新しいファイル・スクリプト・設定・ドキュメントを生成した際は、  
-     **必ず Copilot に貼り付け可能な「指示ブロック」** を同時に出力する。  
    - 指示ブロックは以下の情報を必ず含む：  
      - 対象ファイル名・保存パス  
      - 内容本文（新規 or 更新差分）  
