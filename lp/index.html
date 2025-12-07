@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI電話受付サービス LibertyCall｜24時間365日対応で人手不足を解消</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="AIが電話を自動対応。LibertyCallは24時間365日、御社の電話受付を代行します。初期費用0円・最短即日導入。AIが自然な会話で顧客満足度を向上させます。" />
+  
+  <!-- Resource Hints for Performance -->
+  <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin />
+  <link rel="preconnect" href="https://www.google.com" crossorigin />
+  <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+  <link rel="dns-prefetch" href="https://www.google.com" />
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="AI電話受付サービス LibertyCall｜24時間365日対応で人手不足を解消" />
+  <meta property="og:description" content="AIが電話を自動対応。LibertyCallは24時間365日、御社の電話受付を代行します。初期費用0円・最短即日導入。" />
+  <meta property="og:url" content="https://libcall.com" />
+  <meta property="og:image" content="https://libcall.com/ogp.jpg" />
+  <meta property="og:site_name" content="LibertyCall" />
+  <meta property="og:locale" content="ja_JP" />
+  
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="AI電話受付サービス LibertyCall" />
+  <meta name="twitter:description" content="AIが自然に電話対応。人手不足を解消するAI電話受付システム。" />
+  <meta name="twitter:image" content="https://libcall.com/ogp.jpg" />
+  
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-7WT89ZWCG2"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-7WT89ZWCG2');
+  </script>
+  
+  <!-- CSS: 本番環境では minify 推奨 (例: style.min.css) -->
+  <link rel="stylesheet" href="style.css" />
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/lp/manifest.json" />
+  <meta name="theme-color" content="#296bff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="LibertyCall" />
+  
+  <!-- 
+    Lighthouse最適化メモ:
+    - 画像をWebP形式に変換推奨: npx sharp-cli hero_main.png --webp --quality 85 --output hero_main.webp
+    - CSS/JS minify推奨: npm run build などで自動化
+    - HTTP/2で配信推奨（サーバー設定）
+  -->
+  
+  <!-- Google reCAPTCHA v3 -->
+  <script src="https://www.google.com/recaptcha/api.js?render=6LcXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" async defer></script>
+  <script>
+    // reCAPTCHA site key（本番環境では実際のキーに置き換えてください）
+    const RECAPTCHA_SITE_KEY = '6LcXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+  </script>
+  
+  <!-- Schema.org 構造化データ -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "LibertyCall合同会社",
+    "url": "https://libcall.com",
+    "logo": "https://libcall.com/logo.png",
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "telephone": "+81-50-5830-4073",
+      "contactType": "customer service",
+      "availableLanguage": "Japanese"
+    },
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "大阪市西区川口3-3-26",
+      "addressRegion": "大阪府",
+      "postalCode": "550-0021",
+      "addressCountry": "JP"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="logo-area">
+        <div class="logo-mark">LC</div>
+        <div class="logo-text">
+          <span class="logo-main">LibertyCall</span>
+          <span class="logo-sub">AI Telephone System</span>
+        </div>
+      </div>
+      <button class="nav-toggle" aria-label="メニューを開く" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <nav class="nav" id="main-nav">
+        <a href="#problems">課題</a>
+        <a href="#solution">特徴</a>
+        <a href="#pricing">料金</a>
+        <a href="#flow">導入フロー</a>
+        <a href="#contact" class="nav-cta">資料請求</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="hero" id="top">
+    <div class="container hero-inner">
+      <div class="hero-copy text-col">
+        <p class="hero-kicker">AI電話受付システム</p>
+        <h1>電話対応を、AIに任せる時代へ。</h1>
+        <p class="hero-lead">
+          LibertyCallは、次世代AI電話受付システムです。<br>
+          人手不足と電話対応の負担から、あなたのビジネスを解放します。
+        </p>
+        <div class="hero-cta">
+          <a href="#contact" class="btn btn-primary" onclick="if(typeof gtag!=='undefined'){gtag('event','click_cta',{'event_category':'CTA','event_label':'資料請求（無料）'});}">資料請求（無料）</a>
+          <a href="#contact" class="btn btn-outline" onclick="if(typeof gtag!=='undefined'){gtag('event','click_cta',{'event_category':'CTA','event_label':'無料デモを体験'});}">無料デモを体験</a>
+        </div>
+        <p class="hero-meta">24時間365日対応 / 初期費用0円 / 最短即日導入</p>
+      </div>
+      <div class="hero-visual visual-frame">
+        <img src="hero_main.png" alt="AI電話受付システム LibertyCall - 24時間365日自動対応" width="600" height="400" loading="eager" decoding="async" class="section-image" />
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-soft" id="problems">
+    <div class="container">
+      <header class="section-header">
+        <h2>こんな課題、抱えていませんか？</h2>
+        <p>多くの企業が、電話対応にまつわる同じ悩みを抱えています。</p>
+      </header>
+      <div class="section-image-wrapper">
+        <img src="office_modern1.png" alt="課題セクションのイメージ" width="640" height="400" loading="lazy" decoding="async" class="section-image" />
+      </div>
+      <div class="grid grid-2 problem-grid">
+        <div class="card-outline">
+          <h3>電話が鳴りやまない</h3>
+          <p>
+            一日中電話対応に追われ、本来の業務に集中できない状況が続いています。
+            社員の生産性が著しく低下し、重要なプロジェクトが後回しになっています。
+          </p>
+        </div>
+        <div class="card-outline">
+          <h3>営業電話で人件費が溶ける</h3>
+          <p>
+            不要な営業電話への対応に多くの時間を浪費し、人件費が無駄に消費されています。
+            本来のお客様対応に充てるべきリソースが削られています。
+          </p>
+        </div>
+        <div class="card-outline">
+          <h3>深刻な人手不足</h3>
+          <p>
+            受付スタッフの採用が困難で、既存スタッフへの負担が増大しています。
+            離職率の上昇により、サービス品質の維持が困難になっています。
+          </p>
+        </div>
+        <div class="card-outline">
+          <h3>受付品質のバラつき</h3>
+          <p>
+            担当者によって対応品質にばらつきがあり、顧客満足度に影響しています。
+            新人教育にも時間とコストがかかり、標準化が難しい状況です。
+          </p>
+        </div>
+      </div>
+      <p class="section-note">
+        電話対応は企業の「顔」である一方、限られたリソースの中で質を保つことは容易ではありません。<br>
+        LibertyCallは、こうした課題を根本から解決するために開発されました。
+      </p>
+    </div>
+  </section>
+
+  <section class="section" id="solution">
+    <div class="container feature-split">
+      <div class="feature-text text-col">
+        <h2>LibertyCallが実現する、新しい働き方</h2>
+        <p>
+          LibertyCallは、最先端のAI技術を活用した電話受付自動化システムです。人間のオペレーターと遜色ない自然な会話で、
+          お客様からの問い合わせに24時間365日対応します。
+        </p>
+        <p>
+          従来の自動音声応答システムとは異なり、AIが文脈を理解し柔軟に対応することで、
+          お客様にストレスを与えることなくスムーズなコミュニケーションを実現します。
+          営業電話の自動シャットアウト機能により、社員は本来の業務に集中できる環境が整います。
+        </p>
+        <p>
+          導入後、多くの企業様が電話対応コストを60%以上削減し、同時に顧客満足度の向上を実現しています。
+          クラウドベースのシステムのため、複雑な設備投資は不要。即日から1週間で導入可能です。
+        </p>
+      </div>
+      <div class="feature-visual visual-frame">
+        <img src="ai_abstract.png" alt="AIネットワークのイメージ" width="640" height="400" loading="lazy" decoding="async" class="section-image" />
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-soft" id="experience">
+    <div class="container experience">
+      <div class="experience-text text-col">
+        <h2>まず体験してください</h2>
+        <p>
+          当社の電話はすべてAIが対応します。実際にお電話いただき、LibertyCallの自然な応対をぜひご体験ください。
+        </p>
+        <p class="experience-phone">050-5830-4073</p>
+        <p class="experience-meta">受付時間：24時間365日対応</p>
+        <div class="hero-cta">
+          <a href="tel:05058304073" class="btn btn-primary" onclick="if(typeof gtag!=='undefined'){gtag('event','click_call',{'event_category':'CTA','event_label':'電話クリック（体験）'});}">今すぐ電話する</a>
+          <a href="#contact" class="btn btn-outline" onclick="if(typeof gtag!=='undefined'){gtag('event','click_cta',{'event_category':'CTA','event_label':'無料デモを体験'});}">無料デモを体験</a>
+        </div>
+      </div>
+      <div class="experience-visual visual-frame">
+        <img src="ai_call_phone.png" alt="電話体験のイメージ" width="640" height="400" loading="lazy" decoding="async" class="section-image" />
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <header class="section-header">
+        <h2>LibertyCallの8つの特徴</h2>
+      </header>
+      <div class="section-image-wrapper">
+        <img src="office_modern2.png" alt="特徴セクションのイメージ" width="640" height="400" loading="lazy" decoding="async" class="section-image" />
+      </div>
+      <div class="grid grid-2 feature-grid">
+        <article class="feature-card">
+          <div class="feature-badge">1</div>
+          <h3>発話割込対応</h3>
+          <p>
+            相手の発話中でも自然に割り込みを検知し、スムーズな会話を実現。
+            人間らしい対話フローで、お客様にストレスを与えません。リアルタイム音声認識により、
+            0.3秒以内の反応速度を実現しています。
+          </p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-badge">2</div>
+          <h3>営業電話シャットアウト</h3>
+          <p>
+            AIが営業電話を自動判定し、丁重にお断りします。過去の営業電話パターンを学習し、精度は98%以上。
+            貴重な人的リソースを本当に必要な対応に集中させることができます。
+          </p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-badge">3</div>
+          <h3>クライアント専用プロファイル</h3>
+          <p>
+            企業ごとの業務内容、よくある質問、特殊な対応ルールをシステムに登録。
+            お客様の状況に応じた最適な対応を自動で選択し、まるで専属オペレーターがいるような対応を実現します。
+          </p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-badge">4</div>
+          <h3>カスタム応答スクリプト</h3>
+          <p>
+            企業のトーン&amp;マナーに合わせて、応答内容を自由にカスタマイズ可能。
+            業界特有の専門用語や社内ルールにも柔軟に対応し、ブランドイメージを損なうことなく運用できます。
+          </p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-badge">5</div>
+          <h3>専門対応モード</h3>
+          <p>
+            医療、法律、不動産など、業界特有の専門知識をAIに学習させることが可能。
+            一般的な問い合わせから専門的な質問まで、幅広く対応できる体制を構築します。
+          </p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-badge">6</div>
+          <h3>詳細な対応履歴</h3>
+          <p>
+            すべての通話内容を自動で記録・分析。日時、内容、対応結果をダッシュボードで一元管理できます。
+            顧客データベースとの連携により、顧客管理業務の効率化も実現します。
+          </p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-badge">7</div>
+          <h3>即日〜1週間導入</h3>
+          <p>
+            クラウドベースのシステムのため、複雑な設備投資や工事は不要。
+            最短即日、平均1週間で運用開始が可能です。導入時の業務停止も最小限に抑えられます。
+          </p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-badge">8</div>
+          <h3>個人情報流出リスク無し</h3>
+          <p>
+            国内の堅牢なデータセンターで運用し、ISO27001認証取得済み。
+            通話データは暗号化して保存され、外部への流出リスクを徹底的に排除。
+            安心してご利用いただけます。
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-soft" id="handoff">
+    <div class="container feature-split">
+      <div class="feature-text text-col">
+        <h2>リアルタイム引き継ぎで、"二度聞き"ゼロへ。</h2>
+        <p>
+          LibertyCallでは、AIが対応した内容を管理画面で即時共有。<br>
+          担当者は通話履歴と会話文脈を確認したうえで引き継げるため、<br>
+          お客様に同じ説明をお願いする必要がありません。
+        </p>
+        <p>
+          「AIが一次受付、担当者がフォローアップ」という自然な分業で、<br>
+          業務効率と顧客満足度の両立を実現します。
+        </p>
+      </div>
+      <div class="feature-visual visual-frame">
+        <img src="%E7%AE%A1%E7%90%86%E7%94%BB%E9%9D%A2.png" alt="AI引き継ぎログ画面" width="640" height="400" loading="lazy" decoding="async" class="section-image" />
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-soft">
+    <div class="container experience">
+      <div class="experience-visual visual-frame">
+        <img src="ai_abstract.png" alt="電話体験のイメージ" width="640" height="400" loading="lazy" decoding="async" class="section-image" />
+      </div>
+      <div class="experience-text text-col">
+        <h2>実際に体験してみませんか？</h2>
+        <p>
+          百聞は一見に如かず。LibertyCallのAI電話対応を、まずは実際にお電話いただいてご確認ください。
+          下記の番号にお電話いただくだけで、すぐにお試しいただけます。
+        </p>
+        <p class="experience-phone">050-5830-4073</p>
+        <p class="experience-meta">24時間365日、いつでもお電話いただけます。</p>
+        <div class="hero-cta">
+          <a href="tel:05058304073" class="btn btn-primary" onclick="if(typeof gtag!=='undefined'){gtag('event','click_call',{'event_category':'CTA','event_label':'電話クリック（体験）'});}">今すぐ電話する</a>
+          <a href="#contact" class="btn btn-outline" onclick="if(typeof gtag!=='undefined'){gtag('event','click_cta',{'event_category':'CTA','event_label':'資料請求'});}">資料請求</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="pricing">
+    <div class="container">
+      <header class="section-header">
+        <h2>人件費との比較：圧倒的なコストメリット</h2>
+        <p>
+          従来の人的対応とLibertyCallを比較すると、コスト面で大きなアドバンテージがあります。
+          電話対応スタッフ1名分の人件費で、24時間365日の対応体制を構築できます。
+        </p>
+      </header>
+      <div class="table-wrapper">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>従来の人的対応</th>
+              <th>LibertyCall</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>月額コスト</td>
+              <td>30万円〜50万円（スタッフ1〜2名分）</td>
+              <td>20万円〜（通話料別・別途3円/分）</td>
+            </tr>
+            <tr>
+              <td>初期費用</td>
+              <td>採用費用：20万円〜 / 教育費用：10万円〜</td>
+              <td>0円</td>
+            </tr>
+            <tr>
+              <td>対応時間</td>
+              <td>営業時間内のみ（9:00〜18:00など）</td>
+              <td>24時間365日、休日・夜間も対応</td>
+            </tr>
+            <tr>
+              <td>品質</td>
+              <td>担当者により変動 / 教育が必要</td>
+              <td>常に一定の高品質 / 即日から最高品質</td>
+            </tr>
+            <tr>
+              <td>スケーラビリティ</td>
+              <td>増員に時間とコスト / 採用リスクあり</td>
+              <td>即座に拡張可能 / 追加コストなし</td>
+            </tr>
+            <tr>
+              <td>記録・分析</td>
+              <td>手動で記録が必要 / 分析に手間</td>
+              <td>自動記録・自動分析 / リアルタイムレポート</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="section-note">
+        年間で計算すると、人的対応に比べて300万円以上のコスト削減が可能です。
+        採用活動や教育にかかる時間的コストも削減でき、経営リソースを本業に集中させることができます。
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="cost-comparison-content" style="max-width: 900px; margin: 0 auto;">
+        <h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 1.5rem; text-align: center; color: var(--text);">
+          月額20万円は、「人3人分の働き」をこの1つで。
+        </h2>
+        <p style="margin-bottom: 1.5rem; color: var(--text-soft); text-align: center; font-size: 1.05rem;">
+          LibertyCallの月額料金には、次の3つの役割がすべて含まれています。
+        </p>
+        
+        <div class="table-wrapper" style="margin-top: 32px; margin-bottom: 32px;">
+          <table class="compare-table" style="width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #dddddd; border-radius: 8px; overflow: hidden;">
+            <thead>
+              <tr>
+                <th style="padding: 14px 16px; background: #f4f4f4; color: var(--text); font-weight: 600; text-align: left; border-bottom: 1px solid #dddddd;">役割</th>
+                <th style="padding: 14px 16px; background: #f4f4f4; color: var(--text); font-weight: 600; text-align: left; border-bottom: 1px solid #dddddd;">一般的なコストの目安</th>
+                <th style="padding: 14px 16px; background: #f4f4f4; color: var(--text); font-weight: 600; text-align: left; border-bottom: 1px solid #dddddd;">内容</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">電話受付スタッフ</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">約25万円＋社会保険料</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">24時間の電話対応、顧客応対</td>
+              </tr>
+              <tr>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">システム保守担当（外注）</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">約15〜25万円</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">システム監視・トラブル対応・運用メンテナンス</td>
+              </tr>
+              <tr>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">AIシステム運用エンジニア</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">約45万円＋社会保険料</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">会話ロジック設計・応答チューニング・改善提案</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <p style="margin-bottom: 1.5rem; color: var(--text-soft); line-height: 1.8;">
+          これらをすべて人材・外注でまかなうと、<br>
+          <strong style="color: var(--text); font-weight: 700; font-size: 1.1rem;">毎月85〜95万円</strong>程度のコストが発生します。
+        </p>
+        <p style="margin-bottom: 2rem; color: var(--text-soft); line-height: 1.8;">
+          LibertyCallなら、その<strong style="color: var(--blue); font-weight: 700; font-size: 1.1rem;">1/4のコスト（月額20万円）</strong>で、<br>
+          同等の業務体制を構築できます。
+        </p>
+        
+        <div style="background: var(--bg-soft); border-left: 4px solid var(--blue); padding: 20px 24px; border-radius: 8px; margin-bottom: 2rem;">
+          <p style="margin: 0; color: var(--text-soft); line-height: 1.8; font-style: italic;">
+            「AIを導入する」というより、<br>
+            <strong style="color: var(--text); font-weight: 700; font-style: normal;">"受付・保守・AI運用を丸ごと外注する"</strong>感覚でお考えください。<br>
+            月20万円で、休まず・ブレず・文句を言わない"電話チーム"を雇うのと同じです。
+          </p>
+        </div>
+        
+        <h2 style="font-size: 2rem; font-weight: 700; margin-top: 3rem; margin-bottom: 1.5rem; text-align: center; color: var(--text);">
+          導入も、導入後の運用も、すべて丸投げで完結。
+        </h2>
+        <p style="margin-bottom: 1.5rem; color: var(--text-soft); line-height: 1.8;">
+          LibertyCallは、お客様側での設定や作業は一切不要です。<br>
+          <strong style="color: var(--text); font-weight: 700;">転送設定を一度行うだけで、翌日からAIが稼働</strong>します。
+        </p>
+        
+        <ul style="margin: 1.5rem 0; padding-left: 1.5rem; color: var(--text-soft); line-height: 1.8;">
+          <li style="margin-bottom: 0.5rem;">シナリオ設計</li>
+          <li style="margin-bottom: 0.5rem;">音声設定</li>
+          <li style="margin-bottom: 0.5rem;">AIチューニング</li>
+          <li style="margin-bottom: 0.5rem;">保守・監視・改善</li>
+        </ul>
+        
+        <p style="margin-bottom: 2rem; color: var(--text-soft); line-height: 1.8;">
+          これらはすべて専任担当チームが代行。<br>
+          運用後の変更や調整も、<strong style="color: var(--text); font-weight: 700;">追加費用なし・お客様作業ゼロ</strong>で完結します。
+        </p>
+        
+        <div style="background: var(--bg-soft); border-left: 4px solid var(--blue); padding: 20px 24px; border-radius: 8px; margin-bottom: 2rem;">
+          <p style="margin: 0; color: var(--text-soft); line-height: 1.8; font-style: italic;">
+            まるでスタッフを1人雇うのと同じ感覚で、<br>
+            導入から運用まで完全にお任せいただけます。<br>
+            教育・採用・離職リスクも一切ありません。
+          </p>
+        </div>
+        
+        <h2 style="font-size: 2rem; font-weight: 700; margin-top: 3rem; margin-bottom: 1.5rem; text-align: center; color: var(--text);">
+          もし同じ仕組みを開発会社に依頼したら？
+        </h2>
+        <p style="margin-bottom: 1.5rem; color: var(--text-soft); line-height: 1.8;">
+          LibertyCallと同等のシステムを一般的な開発会社に依頼すると、<br>
+          初期構築費だけで<strong style="color: var(--text); font-weight: 700;">600〜900万円</strong>、さらに保守・運用費で<strong style="color: var(--text); font-weight: 700;">毎月10〜20万円</strong>が発生します。
+        </p>
+        
+        <div class="table-wrapper" style="margin-top: 32px; margin-bottom: 32px;">
+          <table class="compare-table" style="width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #dddddd; border-radius: 8px; overflow: hidden;">
+            <thead>
+              <tr>
+                <th style="padding: 14px 16px; background: #f4f4f4; color: var(--text); font-weight: 600; text-align: left; border-bottom: 1px solid #dddddd;">項目</th>
+                <th style="padding: 14px 16px; background: #f4f4f4; color: var(--text); font-weight: 600; text-align: left; border-bottom: 1px solid #dddddd;">一般的な開発会社</th>
+                <th style="padding: 14px 16px; background: #f4f4f4; color: var(--text); font-weight: 600; text-align: left; border-bottom: 1px solid #dddddd;">LibertyCall</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">開発費用</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">約600〜900万円</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">0円</td>
+              </tr>
+              <tr>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">開発期間</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">約2〜3ヶ月</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">即日〜1週間</td>
+              </tr>
+              <tr>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">保守費用</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">月10〜20万円</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">月額に含まれる</td>
+              </tr>
+              <tr>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">導入作業</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">設定・接続が必要</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);"><strong style="color: var(--blue); font-weight: 700;">転送設定のみ</strong></td>
+              </tr>
+              <tr>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">専任担当者</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">なし（都度見積）</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);"><strong style="color: var(--blue); font-weight: 700;">あり（保守・改善込み）</strong></td>
+              </tr>
+              <tr>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">サポート体制</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);">メール中心</td>
+                <td style="padding: 14px 16px; border-bottom: 1px solid #dddddd; color: var(--text-soft);"><strong style="color: var(--blue); font-weight: 700;">人が伴走・運用サポート</strong></td>
+              </tr>
+              <tr>
+                <td style="padding: 14px 16px; border-bottom: none; color: var(--text-soft);">拡張・調整</td>
+                <td style="padding: 14px 16px; border-bottom: none; color: var(--text-soft);">都度見積もり</td>
+                <td style="padding: 14px 16px; border-bottom: none; color: var(--text-soft);"><strong style="color: var(--blue); font-weight: 700;">無料で随時対応</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <div style="background: var(--bg-soft); border-left: 4px solid var(--blue); padding: 20px 24px; border-radius: 8px; margin-top: 2rem;">
+          <p style="margin: 0; color: var(--text-soft); line-height: 1.8; font-style: italic;">
+            LibertyCallを導入するということは、<br>
+            <strong style="color: var(--text); font-weight: 700; font-style: normal;">開発・保守・運用を自社に持つのと同じ機能を、月20万円で持つ</strong>ということです。<br>
+            人を雇うよりも、開発するよりも、圧倒的に早く・安く・確実です。
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-soft">
+    <div class="container">
+      <header class="section-header">
+        <h2>最先端AI技術が実現する、人間を超える対応力</h2>
+      </header>
+      <div class="section-image-wrapper">
+        <img src="ai_abstract.png" alt="最先端AI技術のイメージ" width="640" height="400" loading="lazy" decoding="async" class="section-image" />
+      </div>
+      <div class="grid grid-3 ai-grid">
+        <article class="card-outline">
+          <h3>人間並みの音声認識精度</h3>
+          <p>
+            最新の深層学習技術により、人間と同等以上の音声認識精度を実現。
+            自然言語処理エンジンが文脈を理解し、お客様の意図を正確に把握します。
+            認識精度は96%以上を維持し、聞き返しによるストレスを最小限に抑えます。
+          </p>
+        </article>
+        <article class="card-outline">
+          <h3>方言・滑舌に強い柔軟性</h3>
+          <p>
+            日本全国の方言に対応し、話し方の個人差にも柔軟に対応します。
+            高齢者の方のゆっくりとした話し方から、早口の方まで幅広く対応可能。
+            関西弁、東北弁、九州弁など地域差も学習済みです。
+          </p>
+        </article>
+        <article class="card-outline">
+          <h3>わからない時は即転送</h3>
+          <p>
+            AIが対応できない複雑な質問や緊急の要件は、即座に担当者へ転送。
+            それまでの会話内容を自動要約して引き継ぐため、お客様が同じ説明を繰り返す必要はありません。
+            誤案内のリスクを抑え、顧客満足度を高めます。
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <header class="section-header">
+        <h2>他社AI電話サービスとの比較</h2>
+        <p>
+          特に「導入の容易さ」「カスタマイズ性」「サポート体制」で大きなアドバンテージがあります。
+        </p>
+      </header>
+      <div class="table-wrapper">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>比較項目</th>
+              <th>LibertyCall</th>
+              <th>A社サービス</th>
+              <th>B社サービス</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>月額料金</td>
+              <td>20万円〜</td>
+              <td>35万円〜</td>
+              <td>28万円〜</td>
+            </tr>
+            <tr>
+              <td>初期費用</td>
+              <td>0円</td>
+              <td>50万円</td>
+              <td>30万円</td>
+            </tr>
+            <tr>
+              <td>導入期間</td>
+              <td>即日〜1週間</td>
+              <td>2〜4週間</td>
+              <td>1〜2週間</td>
+            </tr>
+            <tr>
+              <td>発話割込対応</td>
+              <td>○</td>
+              <td>△</td>
+              <td>×</td>
+            </tr>
+            <tr>
+              <td>営業電話判定</td>
+              <td>○（自動）</td>
+              <td>×</td>
+              <td>○（要設定）</td>
+            </tr>
+            <tr>
+              <td>カスタマイズ性</td>
+              <td>高（柔軟対応）</td>
+              <td>中</td>
+              <td>低</td>
+            </tr>
+            <tr>
+              <td>方言対応</td>
+              <td>全国対応</td>
+              <td>主要都市のみ</td>
+              <td>標準語のみ</td>
+            </tr>
+            <tr>
+              <td>サポート体制</td>
+              <td>専任担当者 / 24時間対応</td>
+              <td>メール対応（営業時間内）</td>
+              <td>チャット対応（営業時間内）</td>
+            </tr>
+            <tr>
+              <td>最低契約期間</td>
+              <td>なし</td>
+              <td>12ヶ月</td>
+              <td>6ヶ月</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-soft">
+    <div class="container">
+      <header class="section-header">
+        <h2>LibertyCall導入で得られる4つのメリット</h2>
+      </header>
+      <div class="grid grid-4 benefits-grid">
+        <article class="benefit-card">
+          <span class="benefit-index">01</span>
+          <h3>大幅なコスト削減</h3>
+          <p>
+            人件費を年間300万円以上削減し、採用・教育コストもゼロに。
+            浮いたコストを事業拡大や社員の待遇改善に投資できます。
+          </p>
+        </article>
+        <article class="benefit-card">
+          <span class="benefit-index">02</span>
+          <h3>対応品質の均一化</h3>
+          <p>
+            担当者による品質のばらつきがなくなり、常に一定の高品質な対応を提供。
+            新人教育の必要もなく、即日から最高品質の受付対応を実現します。
+          </p>
+        </article>
+        <article class="benefit-card">
+          <span class="benefit-index">03</span>
+          <h3>機会損失の削減</h3>
+          <p>
+            営業時間外や休日の問い合わせにも対応し、ビジネスチャンスを逃しません。
+            24時間365日対応により、新規顧客の獲得機会が大幅に増加します。
+          </p>
+        </article>
+        <article class="benefit-card">
+          <span class="benefit-index">04</span>
+          <h3>社員の業務集中</h3>
+          <p>
+            電話対応から解放された社員は、本来の専門業務に集中できます。
+            生産性が向上し、創造的な業務に時間を使えるようになります。
+          </p>
+        </article>
+      </div>
+      <p class="section-note">
+        多くの企業様が、導入から3ヶ月以内に投資回収を実現。
+        データに基づいた業務改善提案により、継続的な効率化もサポートします。
+      </p>
+    </div>
+  </section>
+
+  <section class="section" id="flow">
+    <div class="container">
+      <header class="section-header">
+        <h2>シンプルな導入フロー：最短5ステップ</h2>
+      </header>
+      <ol class="flow-list">
+        <li>
+          <h3>1. ヒアリング</h3>
+          <p>業務内容や電話対応の課題、求める機能について詳しくお伺いします。</p>
+        </li>
+        <li>
+          <h3>2. シナリオ設計</h3>
+          <p>業務フローに合わせた最適な応答シナリオを設計し、転送ルール等を設定します。</p>
+        </li>
+        <li>
+          <h3>3. 音声設定</h3>
+          <p>企業イメージに合った音声を選択。トーンや話すスピードも細かく調整します。</p>
+        </li>
+        <li>
+          <h3>4. テスト運用</h3>
+          <p>実際の電話番号を使って動作確認を実施し、必要に応じてチューニングします。</p>
+        </li>
+        <li>
+          <h3>5. 本番運用</h3>
+          <p>運用開始後も専任担当がモニタリングし、継続的な改善提案を行います。</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section section-accent">
+    <div class="container">
+      <header class="section-header">
+        <h2>明瞭な料金プラン：初期費用0円で導入可能</h2>
+        <p>LibertyCallは、シンプルで分かりやすい料金体系を採用しています。複雑な追加料金や隠れコストは一切ありません。</p>
+      </header>
+      
+      <div class="pricing">
+        <div class="pricing-content">
+          <ul class="pricing-list">
+          <li><strong>月額基本料金：</strong>20万円(税別)（すべての基本機能・サポート込み）</li>
+          <li><strong>通話料：</strong>従量課金（1分あたり約3円）</li>
+          <li><strong>お支払いタイミング：</strong>ご契約時に「当月分（日割り）＋翌月1か月分」を先払い。以後は毎月末に翌月分を請求します。</li>
+        </ul>
+        
+        <p class="pricing-note">
+          システム起因の不具合により、導入から1週間以内に安定稼働が確認できない場合は、<strong>全額返金</strong>いたします。
+        </p>
+        
+        <p class="pricing-note">
+          シナリオ調整や設定変更は、追加費用なしで随時対応します。<br>
+          「社員を一人20万円で雇う」とお考えいただき、専任担当が継続的にチューニングと改善を行います。
+        </p>
+        
+        <div class="pricing-simulation">
+          <h3>通話時間別の料金イメージ</h3>
+          <p>※通話料は 1分あたり3円で試算しています。</p>
+          <table class="simulation-table">
+            <thead>
+              <tr>
+                <th>月間通話時間</th>
+                <th>通話料の目安</th>
+                <th>月額合計（基本料＋通話料）</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>500分</td>
+                <td>約1,500円</td>
+                <td>約201,500円</td>
+              </tr>
+              <tr>
+                <td>1,000分</td>
+                <td>約3,000円</td>
+                <td>約203,000円</td>
+              </tr>
+              <tr>
+                <td>3,000分</td>
+                <td>約9,000円</td>
+                <td>約209,000円</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        </div>
+        
+        <div class="pricing-visual">
+          <img src="ai_call_phone.png" alt="料金プランのイメージ" width="640" height="400" loading="lazy" decoding="async" class="section-image" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section cta-band" id="cta-pricing">
+    <div class="container cta-flex text-col">
+      <div>
+        <p class="cta-label">LibertyCall で電話対応をアップグレード</p>
+        <h3>資料請求・無料デモはすべてオンラインで完結</h3>
+        <p>導入ステップやシナリオ例、想定費用などをまとめた資料を即日お送りします。</p>
+      </div>
+      <div class="cta-actions">
+        <a href="#contact" class="btn btn-primary" onclick="if(typeof gtag!=='undefined'){gtag('event','click_cta',{'event_category':'CTA','event_label':'資料請求をする'});}">資料請求をする</a>
+        <a href="#contact" class="btn btn-outline">導入相談を予約</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="contact">
+    <div class="container contact">
+      <div class="contact-image-wrapper">
+        <img src="contact_reception.png" alt="会社イメージ" width="640" height="400" loading="lazy" decoding="async" class="section-image" />
+      </div>
+      <div class="contact-copy">
+        <h2>まずは資料請求・ご相談から</h2>
+        <p>
+          「自社にフィットするか知りたい」「既存の電話環境で導入できるか確認したい」など、
+          どんなことでもお気軽にご相談ください。
+        </p>
+        <ul class="contact-points">
+          <li>サービスの詳細資料（PDF）</li>
+          <li>費用対効果のシミュレーション</li>
+          <li>AI電話体験のご案内</li>
+        </ul>
+      </div>
+      <form class="contact-form">
+        <div class="form-row">
+          <label for="company">会社名</label>
+          <input id="company" name="company" type="text" placeholder="例：LibertyCall合同会社" required>
+        </div>
+        <div class="form-row">
+          <label for="name">ご担当者名</label>
+          <input id="name" name="name" type="text" placeholder="例：山田 太郎" required>
+        </div>
+        <div class="form-row">
+          <label for="email">メールアドレス</label>
+          <input id="email" name="email" type="email" placeholder="info@libcall.com" required>
+        </div>
+        <div class="form-row">
+          <label for="tel">電話番号</label>
+          <input id="tel" name="tel" type="tel" placeholder="050-5830-4073">
+        </div>
+        <div class="form-row">
+          <label for="type">お問い合わせ種別</label>
+          <select id="type" name="type">
+            <option value="資料請求">資料請求</option>
+            <option value="導入相談">導入相談</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="message">ご相談内容</label>
+          <textarea id="message" name="message" rows="4" placeholder="現状の課題やご要望をご記入ください。"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">送信する</button>
+        <div id="form-message" aria-live="polite" aria-atomic="true" style="margin-top: 1rem; display: none;"></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="section cta-band cta-secondary" id="cta-bottom">
+    <div class="container cta-flex text-col">
+      <div>
+        <p class="cta-label">最短即日のAI電話デプロイ</p>
+        <h3>専任チームが要件整理から本番運用まで伴走します</h3>
+        <p>ヒアリング / シナリオ設計 / 音声チューニング / 初月検証まで、追加コストなくコミットメント。</p>
+      </div>
+      <div class="cta-actions">
+        <a href="#contact" class="btn btn-primary" onclick="if(typeof gtag!=='undefined'){gtag('event','click_cta',{'event_category':'CTA','event_label':'無料デモを申し込む'});}">無料デモを申し込む</a>
+        <a href="tel:05058304073" class="btn btn-outline" onclick="if(typeof gtag!=='undefined'){gtag('event','click_call',{'event_category':'CTA','event_label':'電話クリック（問い合わせ）'});}">電話で問い合わせる</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 会社概要 -->
+  <section class="company-info">
+    <div class="container">
+      <h2>会社概要</h2>
+      <div class="company-item"><span>代表者</span>：岩本 美佳</div>
+      <div class="company-item"><span>設立</span>：2025年9月9日</div>
+      <div class="company-item"><span>事業内容</span>：
+        <ul>
+          <li>AI電話システムの販売・運営</li>
+          <li>AI電話を活用したコールセンター業務</li>
+          <li>システム開発・販売</li>
+          <li>前各号に附帯関連する一切の事業</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <span class="logo-main">LibertyCall合同会社</span>
+        <span class="footer-copy">© 2025 LibertyCall LLC</span>
+      </div>
+      <div class="footer-info">
+        <p>住所：大阪府大阪市西区川口3-3-26</p>
+        <p>電話：050-5830-4073 / メール：info@libcall.com</p>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module">
+    // Service Worker登録（PWA対応）
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/lp/serviceWorker.js')
+          .then((registration) => {
+            console.log('ServiceWorker registered:', registration.scope);
+          })
+          .catch((error) => {
+            console.log('ServiceWorker registration failed:', error);
+          });
+      });
+    }
+
+    // ハンバーガーメニュー
+    document.addEventListener('DOMContentLoaded', function() {
+      const navToggle = document.querySelector('.nav-toggle');
+      const nav = document.getElementById('main-nav');
+      
+      if (navToggle && nav) {
+        navToggle.addEventListener('click', function() {
+          const isExpanded = navToggle.getAttribute('aria-expanded') === 'true';
+          navToggle.setAttribute('aria-expanded', !isExpanded);
+          nav.classList.toggle('active');
+        });
+        
+        // メニューリンククリック時に閉じる
+        nav.querySelectorAll('a').forEach(link => {
+          link.addEventListener('click', function() {
+            navToggle.setAttribute('aria-expanded', 'false');
+            nav.classList.remove('active');
+          });
+        });
+      }
+    });
+
+    // フォーム送信処理
+    document.addEventListener('DOMContentLoaded', function() {
+      const form = document.querySelector('.contact-form');
+      const messageDiv = document.getElementById('form-message');
+      
+      if (form) {
+        form.addEventListener('submit', async function(e) {
+          e.preventDefault();
+          
+          // フォームデータを取得
+          const formData = {
+            company: document.getElementById('company').value,
+            name: document.getElementById('name').value,
+            email: document.getElementById('email').value,
+            tel: document.getElementById('tel').value || '',
+            type: document.getElementById('type').value,
+            message: document.getElementById('message').value || ''
+          };
+          
+          // 送信ボタンを無効化
+          const submitButton = form.querySelector('button[type="submit"]');
+          const originalText = submitButton.innerHTML;
+          submitButton.disabled = true;
+          submitButton.innerHTML = '<span class="spinner"></span>送信中...';
+          messageDiv.style.display = 'none';
+          messageDiv.className = '';
+          
+          try {
+            // reCAPTCHA v3 トークン取得
+            let recaptchaToken = '';
+            if (typeof grecaptcha !== 'undefined' && RECAPTCHA_SITE_KEY) {
+              try {
+                recaptchaToken = await grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'submit' });
+                formData.recaptcha_token = recaptchaToken;
+              } catch (recaptchaError) {
+                console.warn('reCAPTCHA error:', recaptchaError);
+                // reCAPTCHAが失敗してもフォーム送信は続行（バックエンドで検証）
+              }
+            }
+            
+            // APIエンドポイントを呼び出し
+            // 本番環境では適切なURLに変更してください
+            const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+              ? 'http://localhost:5001/api/contact'
+              : '/api/contact';
+            
+            const response = await fetch(apiUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(formData)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+              // GA4 コンバージョンイベント送信
+              if (typeof gtag !== 'undefined') {
+                gtag('event', 'conversion', {
+                  'send_to': 'G-7WT89ZWCG2',
+                  'event_category': 'CTA',
+                  'event_label': '資料請求フォーム送信',
+                  'value': 1
+                });
+                
+                gtag('event', 'form_submit', {
+                  'event_category': 'Contact',
+                  'event_label': formData.type || '資料請求',
+                  'value': 1
+                });
+              }
+              
+              // 成功メッセージを表示
+              messageDiv.innerHTML = '✅ ' + (result.message || '送信完了しました。お問い合わせありがとうございます。');
+              messageDiv.className = 'form-message-success';
+              messageDiv.style.display = 'block';
+              
+              // フォームをリセット
+              form.reset();
+              
+              // 成功時にスクロール
+              messageDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } else {
+              // エラーメッセージを表示
+              messageDiv.textContent = result.error || '送信に失敗しました。もう一度お試しください。';
+              messageDiv.className = 'form-message-error';
+              messageDiv.style.display = 'block';
+            }
+          } catch (error) {
+            // エラーメッセージを表示
+            messageDiv.textContent = '送信に失敗しました。ネットワーク接続を確認してください。';
+            messageDiv.className = 'form-message-error';
+            messageDiv.style.display = 'block';
+            console.error('Error:', error);
+          } finally {
+            // 送信ボタンを再有効化
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalText;
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>
