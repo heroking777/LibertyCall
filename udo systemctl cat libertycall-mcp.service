@@ -1,0 +1,17 @@
+[0;1;34m# ]8;;file://vm-10a3a4dd-25/etc/systemd/system/gateway.service/etc/systemd/system/gateway.service]8;;[0m
+[0;1;36m[Unit][0m
+Description=LibertyCall Gateway Service
+After=network.target
+[0;1;38;5;245m[0m
+[0;1;36m[Service][0m
+Type=simple
+WorkingDirectory=/opt/libertycall
+Environment=LC_ASR_PROVIDER=google
+Environment=LC_ASR_STREAMING_ENABLED=1
+Environment=LC_RTP_PORT=7100
+ExecStart=/opt/libertycall/venv/bin/python /opt/libertycall/gateway/realtime_gateway.py
+Restart=always
+RestartSec=3
+[0;1;38;5;245m[0m
+[0;1;36m[Install][0m
+WantedBy=multi-user.target

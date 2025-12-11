@@ -1,0 +1,20 @@
+[Unit]
+Description=LibertyCall Realtime Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=libertycall
+WorkingDirectory=/opt/libertycall
+Environment="LC_ASR_PROVIDER=google"
+Environment="LC_ASR_STREAMING_ENABLED=1"
+Environment="LC_GOOGLE_PROJECT_ID=libertycall-main"
+Environment="LC_GOOGLE_CREDENTIALS_PATH=/opt/libertycall/key/google_tts.json"
+Environment="GOOGLE_APPLICATION_CREDENTIALS=/opt/libertycall/key/google_tts.json"
+ExecStart=/opt/libertycall/venv/bin/python gateway/realtime_gateway.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+

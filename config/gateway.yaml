@@ -1,0 +1,11 @@
+rtp:
+  listen_host: "127.0.0.1"
+  listen_port: 7002
+  payload_type: 0
+  sample_rate: 8000
+  channels: 1
+ws:
+  url: "ws://127.0.0.1:9001" 
+  reconnect_delay_sec: 3
+logging:
+  level: "DEBUG"

@@ -1,0 +1,23 @@
+/* 管理画面用レイアウト */
+.console-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #040818 0%, #0a1440 65%, #0b1f4f 100%);
+}
+
+.console-main {
+  flex: 1;
+  padding: 24px;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* レスポンシブ */
+@media (max-width: 768px) {
+  .console-main {
+    padding: 18px;
+  }
+}
+

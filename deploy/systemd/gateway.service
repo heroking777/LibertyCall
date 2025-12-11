@@ -1,0 +1,20 @@
+[Unit]
+Description=LibertyCall Gateway Service
+After=network.target
+
+[Service]
+Type=simple
+User=liberty
+WorkingDirectory=/opt/libertycall
+ExecStart=/opt/libertycall/venv/bin/python3 /opt/libertycall/gateway/realtime_gateway.py
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+WatchdogSec=30
+Environment="PYTHONUNBUFFERED=1"
+StandardOutput=append:/opt/libertycall/logs/gateway_stdout.log
+StandardError=append:/opt/libertycall/logs/gateway_stderr.log
+
+[Install]
+WantedBy=multi-user.target

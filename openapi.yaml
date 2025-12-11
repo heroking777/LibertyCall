@@ -1,0 +1,387 @@
+openapi: 3.1.0
+info:
+  title: Project Memory Server API
+  version: "1.0.0"
+  description: 案件ごとに長期記憶を持てる開発アシスタント用バックエンドAPI
+servers:
+  - url: https://libcall.com
+    description: Project memory server
+  # ローカル開発環境の場合は以下のコメントを外してください
+  # - url: http://localhost:3000
+  #   description: Local development server
+
+paths:
+  /projects:
+    get:
+      operationId: listProjects
+      summary: List all projects
+      description: 利用可能な案件一覧を取得します。各案件の projectId, name, type を返します。
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    projectId:
+                      type: string
+                      example: "ai-phone-main"
+                    name:
+                      type: string
+                      example: "AI電話システム本体"
+                    type:
+                      type: string
+                      example: "ai_phone"
+                  required:
+                    - projectId
+                    - name
+                    - type
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /projects/{projectId}/state:
+    get:
+      operationId: getProjectState
+      summary: Get project state by projectId
+      description: 特定の案件の状態(ProjectState)を取得します。プロジェクトの概要、技術スタック、タスク、決定事項、問題点、重要ファイルなどの情報が含まれます。
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: プロジェクトの一意なID
+          schema:
+            type: string
+            example: "ai-phone-main"
+      responses:
+        "200":
+          description: Project state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectState'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: saveProjectState
+      summary: Create or update project state
+      description: 案件の状態を保存または更新します。既存データがある場合はマージされます。projectId と updatedAt はサーバー側で自動的に設定されます。
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: プロジェクトの一意なID
+          schema:
+            type: string
+            example: "ai-phone-main"
+      requestBody:
+        required: true
+        description: 保存するプロジェクト状態。既存データがある場合はマージされます。
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectStateInput'
+      responses:
+        "200":
+          description: Saved project state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectState'
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /projects/{projectId}/logs:
+    post:
+      operationId: appendProjectLog
+      summary: Append a log entry for a project
+      description: プロジェクトの簡易ログを追記します。セッションの終了時などに、そのセッションで行ったことを記録するために使用します。
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: プロジェクトの一意なID
+          schema:
+            type: string
+            example: "ai-phone-main"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                summary:
+                  type: string
+                  description: ログの要約（1〜3行程度）
+                  example: "通話ログ要約バッチのベース実装完了。TODO: エラー処理追加。"
+              required:
+                - summary
+      responses:
+        "200":
+          description: Log appended successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  log:
+                    type: object
+                    properties:
+                      summary:
+                        type: string
+                      createdAt:
+                        type: string
+                        format: date-time
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "not_found"
+        message:
+          type: string
+          example: "Project with id \"xxx\" not found"
+      required:
+        - error
+
+    ProjectTask:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "task-1"
+        title:
+          type: string
+          example: "通話ログ要約バッチの実装"
+        status:
+          type: string
+          enum: [todo, doing, done, blocked]
+          example: "doing"
+        note:
+          type: string
+          nullable: true
+          example: "エラー処理を追加する必要がある"
+      required:
+        - id
+        - title
+        - status
+
+    ProjectDecision:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "decision-1"
+        title:
+          type: string
+          example: "リアルタイム処理はWebRTC + Asteriskで実装"
+        detail:
+          type: string
+          nullable: true
+          example: "既存のAsteriskインフラを活用し、WebRTCでリアルタイム通話を実現する方針を決定。"
+        decidedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-01-15T10:00:00.000Z"
+      required:
+        - id
+        - title
+
+    ProjectIssue:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "issue-1"
+        title:
+          type: string
+          example: "ASRで音声の先頭部分がカットされる"
+        detail:
+          type: string
+          nullable: true
+          example: "通話開始直後の音声が認識されない問題が発生。バッファリングのタイミングが原因の可能性。"
+        status:
+          type: string
+          enum: [open, investigating, fixed, wontfix]
+          example: "investigating"
+      required:
+        - id
+        - title
+        - status
+
+    ProjectImportantFile:
+      type: object
+      properties:
+        path:
+          type: string
+          example: "gateway/realtime_gateway.py"
+        purpose:
+          type: string
+          example: "リアルタイム通話処理のメインロジック"
+      required:
+        - path
+        - purpose
+
+    ProjectState:
+      type: object
+      properties:
+        projectId:
+          type: string
+          example: "ai-phone-main"
+        name:
+          type: string
+          example: "AI電話システム本体"
+        type:
+          type: string
+          enum: [ai_phone, upwork, system, other]
+          example: "ai_phone"
+        summary:
+          type: string
+          example: "AIを活用した自動電話応答システムの開発。音声認識(ASR)、自然言語処理、音声合成(TTS)を組み合わせて、顧客からの問い合わせに自動で対応する。"
+        techStack:
+          type: array
+          items:
+            type: string
+          example: ["Python", "FastAPI", "Asterisk", "WebRTC"]
+        status:
+          type: string
+          enum: [planning, in_progress, paused, done]
+          example: "in_progress"
+        currentFocus:
+          type: string
+          example: "通話ログの要約機能とエラーハンドリングの改善"
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectTask'
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectDecision'
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectIssue'
+        importantFiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectImportantFile'
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-01-25T09:15:00.000Z"
+      required:
+        - projectId
+        - name
+        - type
+        - summary
+        - techStack
+        - status
+        - currentFocus
+        - tasks
+        - decisions
+        - issues
+        - importantFiles
+        - updatedAt
+
+    ProjectStateInput:
+      type: object
+      description: プロジェクト状態の入力用スキーマ。projectId と updatedAt はサーバー側で自動設定されるため、省略可能です。
+      properties:
+        name:
+          type: string
+          example: "AI電話システム本体"
+        type:
+          type: string
+          enum: [ai_phone, upwork, system, other]
+          example: "ai_phone"
+        summary:
+          type: string
+          example: "AIを活用した自動電話応答システムの開発。"
+        techStack:
+          type: array
+          items:
+            type: string
+          example: ["Python", "FastAPI"]
+        status:
+          type: string
+          enum: [planning, in_progress, paused, done]
+          example: "in_progress"
+        currentFocus:
+          type: string
+          example: "通話ログの要約機能とエラーハンドリングの改善"
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectTask'
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectDecision'
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectIssue'
+        importantFiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectImportantFile'
+      required:
+        - name
+        - type
+        - summary
+        - techStack
+        - status
+        - currentFocus
+        - tasks
+        - decisions
+        - issues
+        - importantFiles
+

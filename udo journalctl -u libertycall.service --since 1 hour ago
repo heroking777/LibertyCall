@@ -1,0 +1,11 @@
+[0;1;31m×[0m libertycall.service - LibertyCall main service
+     Loaded: loaded (]8;;file://vm-10a3a4dd-25/etc/systemd/system/libertycall.service/etc/systemd/system/libertycall.service]8;;; [0;1;32menabled[0m; preset: [0;1;32menabled[0m)
+     Active: [0;1;31mfailed[0m (Result: exit-code) since Thu 2025-11-13 10:13:23 JST; 2 weeks 5 days ago
+   Duration: 466ms
+   Main PID: 170640 (code=exited, status=1/FAILURE)
+        CPU: 464ms
+
+Nov 13 10:13:23 vm-10a3a4dd-25 systemd[1]: libertycall.service: Scheduled restart job, restart counter is at 5.
+Nov 13 10:13:23 vm-10a3a4dd-25 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mlibertycall.service: Start request repeated too quickly.[0m
+Nov 13 10:13:23 vm-10a3a4dd-25 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mlibertycall.service: Failed with result 'exit-code'.[0m
+Nov 13 10:13:23 vm-10a3a4dd-25 systemd[1]: [0;1;31m[0;1;39m[0;1;31mFailed to start libertycall.service - LibertyCall main service.[0m

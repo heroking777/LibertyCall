@@ -1,0 +1,11 @@
+[0;1;32m●[0m libertycall.service - LibertyCall main service
+     Loaded: loaded (]8;;file://vm-10a3a4dd-25/etc/systemd/system/libertycall.service/etc/systemd/system/libertycall.service]8;;; [0;1;32menabled[0m; preset: [0;1;32menabled[0m)
+     Active: [0;1;32mactive (running)[0m since Mon 2025-12-08 21:44:28 JST; 13min ago
+   Main PID: 1679556 (python)
+      Tasks: 20 (limit: 14255)
+     Memory: 85.8M (peak: 86.1M)
+        CPU: 19.703s
+     CGroup: /system.slice/libertycall.service
+             └─[0;38;5;245m1679556 /opt/libertycall/.venv/bin/python /opt/libertycall/gateway/realtime_gateway.py[0m
+
+Dec 08 21:44:28 vm-10a3a4dd-25 systemd[1]: Started libertycall.service - LibertyCall main service.

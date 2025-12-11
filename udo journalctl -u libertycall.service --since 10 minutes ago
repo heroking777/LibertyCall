@@ -1,0 +1,12 @@
+[0;1;31m×[0m libertycall.service - LibertyCall main service
+     Loaded: loaded (]8;;file://vm-10a3a4dd-25/etc/systemd/system/libertycall.service/etc/systemd/system/libertycall.service]8;;; [0;1;32menabled[0m; preset: [0;1;32menabled[0m)
+     Active: [0;1;31mfailed[0m (Result: exit-code) since Tue 2025-12-02 17:25:11 JST; 24s ago
+   Duration: 22ms
+    Process: 680986 ExecStart=/opt/libertycall/.venv/bin/python /opt/libertycall/main_call_flow.py [0;1;31m(code=exited, status=2)[0m
+   Main PID: 680986 (code=exited, status=2)
+        CPU: 22ms
+
+Dec 02 17:25:11 vm-10a3a4dd-25 systemd[1]: libertycall.service: Scheduled restart job, restart counter is at 5.
+Dec 02 17:25:11 vm-10a3a4dd-25 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mlibertycall.service: Start request repeated too quickly.[0m
+Dec 02 17:25:11 vm-10a3a4dd-25 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mlibertycall.service: Failed with result 'exit-code'.[0m
+Dec 02 17:25:11 vm-10a3a4dd-25 systemd[1]: [0;1;31m[0;1;39m[0;1;31mFailed to start libertycall.service - LibertyCall main service.[0m

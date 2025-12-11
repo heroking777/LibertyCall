@@ -7,6 +7,7 @@ __pycache__/
 .dist-info/
 .pytest_cache/
 .env
+.env.backup*
 .venv/
 venv/
 ENV/
@@ -23,6 +24,8 @@ runtime/
 logs/
 log/
 *.log
+# ローカルバックアップ保管
+backups_offgit/
 # 生成物（音声/大容量は基本除外）
 *.wav
 *.ulaw
@@ -35,3 +38,8 @@ log/
 *.db
 # 秘匿情報
 keys/
+key/
+node_modules/
+node_modules/
+clients/*/audio/
+clients/*/config/*.bak

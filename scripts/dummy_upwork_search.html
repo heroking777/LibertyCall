@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dummy Upwork Search</title>
+</head>
+<body>
+  <div id="layout">
+    <!-- Job A: should be A -->
+    <section data-test="JobTile">
+      <a data-test="job-title" href="/jobs/python-automation-bot-scraping_ai_~01/">
+        Python automation bot for web scraping and AI data pipeline
+      </a>
+      <div>
+        <span data-test="job-type">Fixed-price</span>
+        <span>$120</span>
+      </div>
+      <div>
+        <span data-test="experience-level">Intermediate</span>
+        <span data-test="job-duration">Less than 1 month</span>
+      </div>
+      <div>
+        <span data-test="proposals">5 to 10</span>
+      </div>
+      <div>
+        <span data-test="payment-verification-status">Payment verified</span>
+      </div>
+      <p data-test="job-description-text">
+        Need a Python developer to build a FastAPI-based scraping bot using Selenium / Chrome.
+      </p>
+    </section>
+    <!-- Job B: should be B -->
+    <section data-test="JobTile">
+      <a data-test="job-title" href="/jobs/api-integration-with-webhook_~02/">
+        Simple API integration with webhook callback
+      </a>
+      <div>
+        <span data-test="job-type">Fixed-price</span>
+        <span>$80</span>
+      </div>
+      <div>
+        <span data-test="experience-level">Entry</span>
+        <span data-test="job-duration">Less than 1 month</span>
+      </div>
+      <div>
+        <span data-test="proposals">10 to 15</span>
+      </div>
+      <div>
+        <span data-test="payment-verification-status">Payment verified</span>
+      </div>
+      <p data-test="job-description-text">
+        Need automation around an external API and webhook notifications.
+      </p>
+    </section>
+    <!-- Job C: filtered out by budget > 150 -->
+    <section data-test="JobTile">
+      <a data-test="job-title" href="/jobs/high-budget-python-scraping_~03/">
+        High-budget Python scraping project
+      </a>
+      <div>
+        <span data-test="job-type">Fixed-price</span>
+        <span>$300</span>
+      </div>
+      <div>
+        <span data-test="experience-level">Expert</span>
+        <span data-test="job-duration">Less than 1 month</span>
+      </div>
+      <div>
+        <span data-test="proposals">5 to 10</span>
+      </div>
+      <div>
+        <span data-test="payment-verification-status">Payment verified</span>
+      </div>
+    </section>
+    <!-- Job D: filtered out by proposals > 20 -->
+    <section data-test="JobTile">
+      <a data-test="job-title" href="/jobs/python-data-cleaning_~04/">
+        Python data cleaning script
+      </a>
+      <div>
+        <span data-test="job-type">Fixed-price</span>
+        <span>$50</span>
+      </div>
+      <div>
+        <span data-test="experience-level">Entry</span>
+        <span data-test="job-duration">Less than 1 month</span>
+      </div>
+      <div>
+        <span data-test="proposals">20 to 50</span>
+      </div>
+      <div>
+        <span data-test="payment-verification-status">Payment verified</span>
+      </div>
+    </section>
+    <!-- Job E: filtered out by payment not verified -->
+    <section data-test="JobTile">
+      <a data-test="job-title" href="/jobs/flask-dashboard_~05/">
+        Flask dashboard for internal data
+      </a>
+      <div>
+        <span data-test="job-type">Fixed-price</span>
+        <span>$100</span>
+      </div>
+      <div>
+        <span data-test="experience-level">Intermediate</span>
+        <span data-test="job-duration">Less than 1 month</span>
+      </div>
+      <div>
+        <span data-test="proposals">5 to 10</span>
+      </div>
+      <div>
+        <span data-test="payment-verification-status">Payment method not verified</span>
+      </div>
+    </section>
+    <!-- Job F: filtered out by long-term -->
+    <section data-test="JobTile">
+      <a data-test="job-title" href="/jobs/long-term-python-developer_~06/">
+        Long-term Python developer for AI product
+      </a>
+      <div>
+        <span data-test="job-type">Hourly</span>
+        <span>$30</span>
+      </div>
+      <div>
+        <span data-test="experience-level">Expert</span>
+        <span data-test="job-duration">1 to 3 months</span>
+      </div>
+      <div>
+        <span data-test="proposals">5 to 10</span>
+      </div>
+      <div>
+        <span data-test="payment-verification-status">Payment verified</span>
+      </div>
+    </section>
+    <!-- Job G: filtered out by keyword 0 -->
+    <section data-test="JobTile">
+      <a data-test="job-title" href="/jobs/logo-design_~07/">
+        Logo design for new startup
+      </a>
+      <div>
+        <span data-test="job-type">Fixed-price</span>
+        <span>$50</span>
+      </div>
+      <div>
+        <span data-test="experience-level">Entry</span>
+        <span data-test="job-duration">Less than 1 month</span>
+      </div>
+      <div>
+        <span data-test="proposals">5 to 10</span>
+      </div>
+      <div>
+        <span data-test="payment-verification-status">Payment verified</span>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
+

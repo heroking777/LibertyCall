@@ -1,0 +1,74 @@
+[0;4m [0m[0;4m [0m[0;4mUNIT                                    [0m[0;4m [0m[0;4mLOAD       [0m[0;4m [0m[0;4mACTIVE    [0m[0;4m [0m[0;4mSUB         [0m[0;4m [0m[0;4mDESCRIPTION                                                                  [0m
+  acpid.service                            loaded      active     running      ACPI event daemon
+  apache-htcacheclean.service              loaded      active     running      Disk Cache Cleaning Daemon for Apache HTTP Server
+  apache2.service                          loaded      active     running      The Apache HTTP Server
+  apparmor.service                         loaded      active     exited       Load AppArmor profiles
+  apport.service                           loaded      active     exited       automatic crash report generation
+  blk-availability.service                 loaded      active     exited       Availability of block devices
+  cloud-config.service                     loaded      active     exited       Cloud-init: Config Stage
+  cloud-final.service                      loaded      active     exited       Cloud-init: Final Stage
+  cloud-init-local.service                 loaded      active     exited       Cloud-init: Local Stage (pre-network)
+  cloud-init.service                       loaded      active     exited       Cloud-init: Network Stage
+  console-setup.service                    loaded      active     exited       Set console font and keymap
+  cron.service                             loaded      active     running      Regular background program processing daemon
+  dbus.service                             loaded      active     running      D-Bus System Message Bus
+  fail2ban.service                         loaded      active     running      Fail2Ban Service
+  finalrd.service                          loaded      active     exited       Create final runtime dir for shutdown pivot root
+  fwupd.service                            loaded      active     running      Firmware update daemon
+  gateway.service                          loaded      active     running      LibertyCall Gateway Service
+  getty@tty1.service                       loaded      active     running      Getty on tty1
+  keyboard-setup.service                   loaded      active     exited       Set the console keyboard layout
+  kmod-static-nodes.service                loaded      active     exited       Create List of Static Device Nodes
+  libertycall-mcp.service                  loaded      active     running      LibertyCall MCP HTTP Service
+[0;1;38;5;185m●[0m[0;1;38;5;185m [0mlibertycall-ngrok.service                [0;1;31mbad-setting[0m[0;1;31m [0mactive     running      libertycall-ngrok.service
+[0;1;31m●[0m[0;1;31m [0m[0;1;31mlibertycall.service                     [0m[0;1;31m [0mloaded      [0;1;31mfailed    [0m[0;1;31m [0m[0;1;31mfailed      [0m[0;1;31m [0mLibertyCall main service
+  lvm2-monitor.service                     loaded      active     exited       Monitoring of LVM2 mirrors, snapshots etc. using dmeventd or progress polling
+  ModemManager.service                     loaded      active     running      Modem Manager
+  multipathd.service                       loaded      active     running      Device-Mapper Multipath Device Controller
+  ntpsec.service                           loaded      active     running      Network Time Service
+  ollama.service                           loaded      active     running      Ollama Service
+  openvpn.service                          loaded      active     exited       OpenVPN service
+  openvpn@client.service                   loaded      activating auto-restart OpenVPN connection to client
+  plymouth-quit-wait.service               loaded      active     exited       Hold until boot process finishes up
+  plymouth-quit.service                    loaded      active     exited       Terminate Plymouth Boot Screen
+  plymouth-read-write.service              loaded      active     exited       Tell Plymouth To Write Out Runtime Data
+  polkit.service                           loaded      active     running      Authorization Manager
+  qemu-guest-agent.service                 loaded      active     running      QEMU Guest Agent
+  rsyslog.service                          loaded      active     running      System Logging Service
+  serial-getty@ttyS0.service               loaded      active     running      Serial Getty on ttyS0
+  setvtrgb.service                         loaded      active     exited       Set console scheme
+  snapd.apparmor.service                   loaded      active     exited       Load AppArmor profiles managed internally by snapd
+  snapd.seeded.service                     loaded      active     exited       Wait until snapd is fully seeded
+  snapd.service                            loaded      active     running      Snap Daemon
+  ssh.service                              loaded      active     running      OpenBSD Secure Shell server
+  sysstat.service                          loaded      active     exited       Resets System Activity Logs
+  systemd-binfmt.service                   loaded      active     exited       Set Up Additional Binary Formats
+  systemd-journal-flush.service            loaded      active     exited       Flush Journal to Persistent Storage
+  systemd-journald.service                 loaded      active     running      Journal Service
+  systemd-logind.service                   loaded      active     running      User Login Management
+  systemd-modules-load.service             loaded      active     exited       Load Kernel Modules
+  systemd-networkd.service                 loaded      active     running      Network Configuration
+  systemd-random-seed.service              loaded      active     exited       Load/Save OS Random Seed
+  systemd-remount-fs.service               loaded      active     exited       Remount Root and Kernel File Systems
+  systemd-resolved.service                 loaded      active     running      Network Name Resolution
+  systemd-sysctl.service                   loaded      active     exited       Apply Kernel Variables
+  systemd-tmpfiles-setup-dev-early.service loaded      active     exited       Create Static Device Nodes in /dev gracefully
+  systemd-tmpfiles-setup-dev.service       loaded      active     exited       Create Static Device Nodes in /dev
+  systemd-tmpfiles-setup.service           loaded      active     exited       Create Volatile Files and Directories
+  systemd-udev-trigger.service             loaded      active     exited       Coldplug All udev Devices
+  systemd-udevd.service                    loaded      active     running      Rule-based Manager for Device Events and Files
+  systemd-update-utmp.service              loaded      active     exited       Record System Boot/Shutdown in UTMP
+  systemd-user-sessions.service            loaded      active     exited       Permit User Sessions
+  udisks2.service                          loaded      active     running      Disk Manager
+  ufw.service                              loaded      active     exited       Uncomplicated firewall
+  unattended-upgrades.service              loaded      active     running      Unattended Upgrades Shutdown
+  upower.service                           loaded      active     running      Daemon for power management
+  user-runtime-dir@0.service               loaded      active     exited       User Runtime Directory /run/user/0
+  user@0.service                           loaded      active     running      User Manager for UID 0
+
+[0;38;5;245mLegend: LOAD   → Reflects whether the unit definition was properly loaded.[0m
+[0;38;5;245m        ACTIVE → The high-level unit activation state, i.e. generalization of SUB.[0m
+[0;38;5;245m        SUB    → The low-level unit activation state, values depend on unit type.[0m
+
+[0;1;39m66 loaded units listed.[0m [0;38;5;245mPass --all to see loaded but inactive units, too.[0m
+[0;38;5;245mTo show all installed unit files use 'systemctl list-unit-files'.[0m

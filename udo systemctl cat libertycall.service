@@ -1,0 +1,16 @@
+[0;1;34m# ]8;;file://vm-10a3a4dd-25/etc/systemd/system/libertycall.service/etc/systemd/system/libertycall.service]8;;[0m
+[0;1;36m[Unit][0m
+Description=LibertyCall main service
+After=network.target
+[0;1;38;5;245m[0m
+[0;1;36m[Service][0m
+WorkingDirectory=/opt/libertycall
+ExecStart=/opt/libertycall/.venv/bin/python /opt/libertycall/main_call_flow.py
+Restart=always
+StandardOutput=append:/var/log/libertycall.log
+StandardError=append:/var/log/libertycall.log
+Environment=LC_ASR_PROVIDER=local
+Environment=LC_WHISPER_MODEL=tiny
+[0;1;38;5;245m[0m
+[0;1;36m[Install][0m
+WantedBy=multi-user.target

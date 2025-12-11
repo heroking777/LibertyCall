@@ -1,0 +1,17 @@
+boto3
+python-dotenv
+flask
+flask-cors
+apscheduler
+sendgrid
+playwright
+google-cloud-speech==2.34.0
+google-cloud-texttospeech==2.33.0
+tabulate>=0.9.0
+# FastAPI関連
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+sqlalchemy>=2.0.0
+
