@@ -274,63 +274,64 @@ class RealtimeGateway:
         try:
             loop = asyncio.get_running_loop()
             
-            # ソケットを明示的に生成してbind（127.0.0.1固定、IPv4ループバック優先）
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            sock.bind(("127.0.0.1", self.rtp_port))
-            
-            bound_addr = sock.getsockname()
+            # ソケットをメンバに保持してbind（IPv4ループバック固定、GC防止）
+            self.rtp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.rtp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.rtp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            self.rtp_sock.bind(("127.0.0.1", self.rtp_port))
+            bound_addr = self.rtp_sock.getsockname()
             self.logger.info(f"[RTP_BIND_FINAL] Bound UDP socket to {bound_addr}")
             
             # asyncioにソケットを渡す
             self.rtp_transport, _ = await loop.create_datagram_endpoint(
                 lambda: RTPProtocol(self),
-                sock=sock
+                sock=self.rtp_sock
             )
             self.logger.info(f"[RTP_READY_FINAL] RTP listener active and awaiting packets on {bound_addr}")
-        except Exception as e:
-            self.logger.error(f"[RTP_BIND_ERROR] Failed to bind RTP listener: {e}", exc_info=True)
-            self.shutdown_event.set()  # サービス停止
-            raise
 
-        asyncio.create_task(self._ws_client_loop())
-        asyncio.create_task(self._ws_server_loop())  # WebSocketサーバーを起動
-        asyncio.create_task(self._tts_sender_loop())
-        
-        # ストリーミングモード: 定期的にASR結果をポーリング
-        if self.streaming_enabled:
-            asyncio.create_task(self._streaming_poll_loop())
-        
-        # 無音検出ループ開始（TTS送信後の無音を監視）
-        asyncio.create_task(self._no_input_monitor_loop())
-        
-        # ログファイル監視ループ開始（転送失敗時のTTSアナウンス用）
-        asyncio.create_task(self._log_monitor_loop())
-        
-        # イベントループ起動後にキューに追加された転送タスクを処理
-        # 注意: イベントループが起動した後でないと asyncio.create_task が呼べない
-        async def process_queued_transfers():
-            while self._transfer_task_queue:
-                call_id = self._transfer_task_queue.popleft()
-                self.logger.info(f"TRANSFER_TASK_PROCESSING: call_id={call_id} (from queue)")
-                asyncio.create_task(self._wait_for_tts_and_transfer(call_id))
-            # 定期的にキューをチェック（新しいタスクが追加される可能性があるため）
-            while self.running:
-                await asyncio.sleep(0.5)  # 0.5秒間隔でチェック
+            asyncio.create_task(self._ws_client_loop())
+            asyncio.create_task(self._ws_server_loop())  # WebSocketサーバーを起動
+            asyncio.create_task(self._tts_sender_loop())
+            
+            # ストリーミングモード: 定期的にASR結果をポーリング
+            if self.streaming_enabled:
+                asyncio.create_task(self._streaming_poll_loop())
+            
+            # 無音検出ループ開始（TTS送信後の無音を監視）
+            asyncio.create_task(self._no_input_monitor_loop())
+            
+            # ログファイル監視ループ開始（転送失敗時のTTSアナウンス用）
+            asyncio.create_task(self._log_monitor_loop())
+            
+            # イベントループ起動後にキューに追加された転送タスクを処理
+            # 注意: イベントループが起動した後でないと asyncio.create_task が呼べない
+            async def process_queued_transfers():
                 while self._transfer_task_queue:
                     call_id = self._transfer_task_queue.popleft()
-                    self.logger.info(f"TRANSFER_TASK_PROCESSING: call_id={call_id} (from queue, delayed)")
+                    self.logger.info(f"TRANSFER_TASK_PROCESSING: call_id={call_id} (from queue)")
                     asyncio.create_task(self._wait_for_tts_and_transfer(call_id))
-        
-        asyncio.create_task(process_queued_transfers())
+                # 定期的にキューをチェック（新しいタスクが追加される可能性があるため）
+                while self.running:
+                    await asyncio.sleep(0.5)  # 0.5秒間隔でチェック
+                    while self._transfer_task_queue:
+                        call_id = self._transfer_task_queue.popleft()
+                        self.logger.info(f"TRANSFER_TASK_PROCESSING: call_id={call_id} (from queue, delayed)")
+                        asyncio.create_task(self._wait_for_tts_and_transfer(call_id))
+            
+            asyncio.create_task(process_queued_transfers())
 
-        # サービスを維持（停止イベントを待つ）
-        self.logger.info("[RTP_READY] RTP listener active, entering main loop")
-        await self.shutdown_event.wait()
-        self.logger.info("[RTP_EXIT] Shutdown event received, closing RTP transport")
-        if hasattr(self, "rtp_transport") and self.rtp_transport:
-            self.rtp_transport.close()
+            # サービスを維持（停止イベントを待つ）
+            await self.shutdown_event.wait()
+
+        except Exception as e:
+            self.logger.error(f"[RTP_BIND_ERROR_FINAL] {e}", exc_info=True)
+        finally:
+            if hasattr(self, "rtp_transport") and self.rtp_transport:
+                self.logger.info("[RTP_EXIT_FINAL] Closing RTP transport")
+                self.rtp_transport.close()
+            if hasattr(self, "rtp_sock") and self.rtp_sock:
+                self.rtp_sock.close()
+                self.logger.info("[RTP_EXIT_FINAL] Socket closed")
 
     def _send_tts(self, call_id: str, reply_text: str, template_ids: list[str] | None = None, transfer_requested: bool = False) -> None:
         """
@@ -2597,19 +2598,13 @@ async def main():
 
         gateway = RealtimeGateway(config)
 
-        # UDP受信ループを非同期タスクで起動（メインでawaitせずイベントループに登録）
-        start_task = asyncio.create_task(gateway.start())
-
         loop = asyncio.get_running_loop()
         def handler(sig): asyncio.create_task(gateway.shutdown())
         loop.add_signal_handler(signal.SIGINT, lambda: handler(signal.SIGINT))
         loop.add_signal_handler(signal.SIGTERM, lambda: handler(signal.SIGTERM))
 
-        # ゲートウェイの終了イベントを待機（start_taskが走り続ける間ループを維持）
-        await gateway.shutdown_event.wait()
-        # 念のためタスクが残っていればキャンセル
-        if not start_task.done():
-            start_task.cancel()
+        # start() 側で shutdown_event を待つため、ここでそのままawaitする
+        await gateway.start()
     except Exception as e:
         # ログ設定が完了していない場合でも、最低限のエラー出力
         print(f"[FATAL] Failed to start gateway: {e}", file=sys.stderr)
