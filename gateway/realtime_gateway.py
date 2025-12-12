@@ -279,6 +279,7 @@ class RealtimeGateway:
             self.rtp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.rtp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             self.rtp_sock.bind(("127.0.0.1", self.rtp_port))
+            self.rtp_sock.setblocking(False)  # asyncio用にノンブロッキングへ
             bound_addr = self.rtp_sock.getsockname()
             self.logger.info(f"[RTP_BIND_FINAL] Bound UDP socket to {bound_addr}")
             
