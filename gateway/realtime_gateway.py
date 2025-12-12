@@ -2584,40 +2584,26 @@ def setup_logging(level: str = "DEBUG"):
     logging.debug("[LOG_SETUP] Configured to output logs to stdout (journalctl integration enabled)")
 
 async def main():
-    # 最初に必ずログ設定を初期化（stdout/journalctl に出力するため）
+    # ログ設定初期化
     setup_logging("DEBUG")
-    
-    try:
-        config_path = Path(__file__).parent.parent / "config" / "gateway.yaml"
-        config = load_config(str(config_path))
-        
-        # 設定ファイルからログレベルを取得して再設定（オプション）
-        log_level = config.get("logging", {}).get("level", "DEBUG")
-        if log_level != "DEBUG":
-            setup_logging(log_level)
 
-        gateway = RealtimeGateway(config)
+    # 設定読み込み
+    config_path = Path(__file__).parent.parent / "config" / "gateway.yaml"
+    config = load_config(str(config_path))
 
-        loop = asyncio.get_running_loop()
-        def handler(sig): asyncio.create_task(gateway.shutdown())
-        loop.add_signal_handler(signal.SIGINT, lambda: handler(signal.SIGINT))
-        loop.add_signal_handler(signal.SIGTERM, lambda: handler(signal.SIGTERM))
+    # ログレベル再設定（オプション）
+    log_level = config.get("logging", {}).get("level", "DEBUG")
+    if log_level != "DEBUG":
+        setup_logging(log_level)
 
-        # start() 側で shutdown_event を待つため、ここでそのままawaitする
-        await gateway.start()
-    except Exception as e:
-        # ログ設定が完了していない場合でも、最低限のエラー出力
-        print(f"[FATAL] Failed to start gateway: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
-        raise
+    gateway = RealtimeGateway(config)
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(gateway.shutdown()))
+
+    # メイン処理（start() 内で shutdown_event を待つため、ここで常駐）
+    await gateway.start()
 
 if __name__ == "__main__":
-    import traceback
-    
-    try:
-        asyncio.run(main())
-    except Exception as e:
-        print(f"[FATAL] Gateway crashed: {e}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
-        sys.exit(1)
+    asyncio.run(main())
