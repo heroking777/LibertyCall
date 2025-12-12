@@ -271,20 +271,27 @@ class RealtimeGateway:
         self.running = True
         self.rtp_builder = RTPPacketBuilder(self.payload_type, self.sample_rate)
 
-        loop = asyncio.get_running_loop()
-        
-        # ソケットを明示的に作成・バインド（SO_REUSEADDR付きで0.0.0.0に固定）
         try:
+            loop = asyncio.get_running_loop()
+            
+            # ソケットを明示的に生成してbind
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(("0.0.0.0", self.rtp_port))
+            
+            # bind確認ログ
+            bound_addr = sock.getsockname()
+            self.logger.info(f"[RTP_BIND_PRECHECK] Socket bound manually to {bound_addr}")
+            
+            # asyncioにソケットを渡す
             self.rtp_transport, _ = await loop.create_datagram_endpoint(
                 lambda: RTPProtocol(self),
                 sock=sock,
             )
-            self.logger.info(f"[RTP_BIND] Bound RTP listener to 0.0.0.0:{self.rtp_port}")
+            self.logger.info(f"[RTP_BIND] Bound RTP listener to {bound_addr}")
         except Exception as e:
             self.logger.error(f"[RTP_BIND_ERROR] Failed to bind RTP listener: {e}", exc_info=True)
+            self.shutdown_event.set()  # サービス停止
             raise
 
         asyncio.create_task(self._ws_client_loop())
