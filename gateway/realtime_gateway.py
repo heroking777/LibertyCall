@@ -325,7 +325,12 @@ class RealtimeGateway:
         
         asyncio.create_task(process_queued_transfers())
 
+        # サービスを維持（停止イベントを待つ）
+        self.logger.info("[RTP_READY] RTP listener active, entering main loop")
         await self.shutdown_event.wait()
+        self.logger.info("[RTP_EXIT] Shutdown event received, closing RTP transport")
+        if hasattr(self, "rtp_transport") and self.rtp_transport:
+            self.rtp_transport.close()
 
     def _send_tts(self, call_id: str, reply_text: str, template_ids: list[str] | None = None, transfer_requested: bool = False) -> None:
         """
