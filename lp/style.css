@@ -1394,3 +1394,92 @@ textarea:focus {
     border-radius: 12px !important;
   }
 }
+
+/* ========================================
+   LibertyCall Demo Section
+   ======================================== */
+.section-demo {
+  background: var(--bg-soft, #f9fafb);
+  padding: 80px 0;
+}
+
+.demo-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.demo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 2rem;
+}
+
+.demo-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+  padding: 32px;
+}
+
+.demo-card h3 {
+  font-size: 1.3rem;
+  margin-bottom: 1rem;
+  color: var(--text);
+}
+
+.demo-phone {
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.btn-phone {
+  font-size: 1.5rem;
+  padding: 0.75rem 2rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.demo-meta {
+  font-size: 0.9rem;
+  color: var(--text-soft);
+  margin-top: 0.5rem;
+}
+
+.audio-sample {
+  margin-bottom: 1.5rem;
+}
+
+.audio-sample p {
+  margin-bottom: 0.25rem;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+audio {
+  width: 100%;
+  border-radius: 6px;
+}
+
+/* Demo Section - Responsive */
+@media (max-width: 768px) {
+  .section-demo {
+    padding: 48px 0;
+  }
+
+  .demo-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .demo-card {
+    padding: 24px;
+  }
+
+  .btn-phone {
+    font-size: 1.3rem;
+    padding: 0.65rem 1.5rem;
+  }
+}
