@@ -73,15 +73,20 @@ function FileLogsList() {
   const formatTime = (datetime) => {
     if (!datetime) return '-'
     // UTC時刻をJST（日本時間）に変換して表示
-    const d = new Date(datetime)
-    return d.toLocaleString('ja-JP', {
-      timeZone: 'Asia/Tokyo',
-      month: 'numeric',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).replace(/\//g, '/').replace(',', '')
+    // ISO文字列がUTCとして解釈されるようにする（Zがない場合は追加）
+    const isoString = datetime.endsWith('Z') ? datetime : datetime + 'Z'
+    const d = new Date(isoString)
+    
+    // UTC時刻をJSTに変換（+9時間）
+    const jstOffset = 9 * 60 * 60 * 1000 // 9時間をミリ秒に変換
+    const jstTime = new Date(d.getTime() + jstOffset)
+    
+    const month = jstTime.getUTCMonth() + 1
+    const day = jstTime.getUTCDate()
+    const hour = String(jstTime.getUTCHours()).padStart(2, '0')
+    const minute = String(jstTime.getUTCMinutes()).padStart(2, '0')
+    
+    return `${month}/${day} ${hour}:${minute}`
   }
 
   const displayNumber = (num) => {
