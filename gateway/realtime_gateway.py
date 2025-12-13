@@ -589,27 +589,19 @@ class RealtimeGateway:
         consecutive_skips = 0
         while self.running:
             if self.tts_queue and self.rtp_transport:
-                if self.rtp_peer is not None:
-                    try:
-                        payload = self.tts_queue.popleft()
-                        packet = self.rtp_builder.build_packet(payload)
-                        # 送信先をローカル固定 (Asteriskは127.0.0.1で受信)
-                        safe_peer = ("127.0.0.1", self.rtp_peer[1] if self.rtp_peer else 0)
-                        self.rtp_transport.sendto(packet, safe_peer)
-                        # 実際に送信したタイミングでログ出力（運用ログ整備）
-                        payload_type = packet[1] & 0x7F
-                        self.logger.debug(f"[TTS_QUEUE_SEND] sent RTP packet to {safe_peer}, queue_len={len(self.tts_queue)}, payload_type={payload_type}")
-                        consecutive_skips = 0  # リセット
-                    except Exception as e:
-                        self.logger.error(f"TTS sender failed: {e}", exc_info=True)
-                else:
-                    # 🔹 rtp_peer が未設定の間はキュー保持（破棄しない）
-                    consecutive_skips += 1
-                    if consecutive_skips == 1 or consecutive_skips % 200 == 0:
-                        self.logger.warning(
-                            f"[TTS_WAITING_FOR_RTP] queue_len={len(self.tts_queue)} "
-                            f"rtp_peer=None rtp_transport={self.rtp_transport is not None}"
-                        )
+                # Asteriskへの送信先は常にlisten_portに固定（rtp_peerの状態に関係なく）
+                # rtp_peerは受信元アドレスの追跡用で、送信先とは別
+                asterisk_rtp_dest = (self.rtp_host, self.rtp_port)
+                try:
+                    payload = self.tts_queue.popleft()
+                    packet = self.rtp_builder.build_packet(payload)
+                    self.rtp_transport.sendto(packet, asterisk_rtp_dest)
+                    # 実際に送信したタイミングでログ出力（運用ログ整備）
+                    payload_type = packet[1] & 0x7F
+                    self.logger.debug(f"[TTS_QUEUE_SEND] sent RTP packet to {asterisk_rtp_dest}, queue_len={len(self.tts_queue)}, payload_type={payload_type}")
+                    consecutive_skips = 0  # リセット
+                except Exception as e:
+                    self.logger.error(f"TTS sender failed: {e}", exc_info=True)
             else:
                 # キューが空 or 停止状態
                 if not self.tts_queue:
