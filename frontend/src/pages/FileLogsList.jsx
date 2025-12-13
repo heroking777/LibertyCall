@@ -31,7 +31,7 @@ function FileLogsList() {
       ])
 
       // 既存のログ（AI応答付き通話）
-      const logs1 = respLogs.data.calls || []
+      const logs1 = respLogs.data.calls || respLogs.data.logs || []
 
       // イベントログ（無音切断など）
       const logs2 = (respCalls.data.calls || []).map(c => ({
@@ -45,11 +45,16 @@ function FileLogsList() {
           : "（イベント）",
       }))
 
-      // call_id 重複排除（同じ通話が両方にある場合、既存ログを優先）
-      const merged = [...logs1]
-      for (const e of logs2) {
-        if (!merged.find(l => l.call_id === e.call_id)) {
-          merged.push(e)
+      // logs1 が空の場合は logs2 を表示
+      let merged = []
+      if (logs1.length === 0) {
+        merged = logs2
+      } else {
+        merged = [...logs1]
+        for (const e of logs2) {
+          if (!merged.find(l => l.call_id === e.call_id)) {
+            merged.push(e)
+          }
         }
       }
 
