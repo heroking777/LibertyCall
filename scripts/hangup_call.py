@@ -39,28 +39,30 @@ def _run_cmd(cmd: list[str]) -> str:
 
 
 def _find_channel(call_id: str | None = None) -> str | None:
-    cmd = ["sudo", "-u", "asterisk", "/usr/sbin/asterisk", "-rx", "core show channels concise"]
+    cmd = ["/usr/sbin/asterisk", "-rx", "core show channels concise"]
     out = _run_cmd(cmd)
-    if not out:
+    if not out or not out.strip():
         logger.warning("NO_OUTPUT_FROM_ASTERISK")
         return None
     if call_id:
         for line in out.splitlines():
             if call_id in line:
-                chan = line.split("!")[0]
-                logger.info("MATCH_BY_CALLID: %s", chan)
-                return chan
+                chan = line.split("!")[0].strip()
+                if chan:
+                    logger.info("MATCH_BY_CALLID: %s", chan)
+                    return chan
     for line in out.splitlines():
         if "PJSIP/trunk" in line:
-            chan = line.split("!")[0]
-            logger.info("MATCH_BY_TRUNK: %s", chan)
-            return chan
+            chan = line.split("!")[0].strip()
+            if chan:
+                logger.info("MATCH_BY_TRUNK: %s", chan)
+                return chan
     logger.warning("NO_CHANNEL_FOUND")
     return None
 
 
 def _hangup_channel(chan: str):
-    cmd = ["sudo", "-u", "asterisk", "/usr/sbin/asterisk", "-rx", f"channel request hangup {chan}"]
+    cmd = ["/usr/sbin/asterisk", "-rx", f"channel request hangup {chan}"]
     out = _run_cmd(cmd)
     logger.info("HANGUP_RESULT: %s", out.strip())
 
@@ -72,7 +74,7 @@ def main():
     if not chan:
         logger.warning("NO_CHANNEL_FOUND_FOR_CALLID=%s", call_id)
         logger.warning("FALLBACK: hangup all active channels")
-        _run_cmd(["sudo", "-u", "asterisk", "/usr/sbin/asterisk", "-rx", "channel request hangup all"])
+        _run_cmd(["/usr/sbin/asterisk", "-rx", "channel request hangup all"])
         return
     _hangup_channel(chan)
 
