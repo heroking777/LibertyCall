@@ -689,53 +689,68 @@ class RealtimeGateway:
                 self.websocket = None
 
     def _free_port(self, port: int):
-        """指定ポートを解放する（既存プロセスを強制終了、ただし自分自身は除外）"""
+        """安全にポートを解放する（自分自身は殺さない）"""
         try:
+            # まずポートが使用中かチェック
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(("0.0.0.0", port))
                 s.close()
                 self.logger.debug(f"[BOOT] Port {port} is available")
+                return  # ポートが空いているので何もしない
         except OSError as e:
             if e.errno == 98:  # Address already in use
                 self.logger.warning(f"[BOOT] Port {port} is in use, attempting to free it...")
                 try:
-                    # 自分自身のPIDを取得
-                    my_pid = os.getpid()
-                    # ポートを使用しているプロセスのPIDを取得
-                    result = subprocess.run(
-                        ["fuser", "-n", "tcp", str(port)],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                    # fuserでポートを使用しているプロセスのPIDを取得
+                    res = subprocess.run(
+                        ["fuser", f"{port}/tcp"],
+                        capture_output=True,
                         text=True,
                         timeout=5
                     )
-                    if result.returncode == 0 and result.stdout:
-                        # PIDを抽出（fuserの出力例: "9001/tcp: 12345 67890"）
-                        pids = []
-                        for line in result.stdout.strip().split():
-                            if line.replace(":", "").isdigit():
-                                pid = int(line.replace(":", ""))
-                                if pid != my_pid:  # 自分自身は除外
-                                    pids.append(str(pid))
-                        if pids:
-                            # 自分以外のプロセスのみKILL
-                            subprocess.run(
-                                ["kill", "-9"] + pids,
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL,
-                                timeout=5
-                            )
-                            self.logger.info(f"[BOOT] Port {port} freed by killing PIDs: {', '.join(pids)}")
-                        else:
-                            self.logger.info(f"[BOOT] Port {port} is in use by this process (PID {my_pid}), skipping kill")
-                    else:
-                        self.logger.warning(f"[BOOT] Could not determine which process is using port {port}")
+                    
+                    if not res.stdout.strip():
+                        self.logger.debug(f"[BOOT] Port {port} appears to be free now")
+                        return
+                    
+                    # PIDを抽出（fuserの出力例: "9001/tcp: 12345 67890"）
+                    pids = []
+                    for part in res.stdout.strip().split():
+                        # "9001/tcp:" や "12345" のような形式からPIDを抽出
+                        if part.replace(":", "").replace("/", "").isdigit():
+                            pid_str = part.replace(":", "").replace("/", "")
+                            if pid_str.isdigit():
+                                pids.append(int(pid_str))
+                        elif part.isdigit():
+                            pids.append(int(part))
+                    
+                    # 自分自身のPIDを取得
+                    current_pid = os.getpid()
+                    
+                    # 自分自身を除外
+                    target_pids = [pid for pid in pids if pid != current_pid]
+                    
+                    if not target_pids:
+                        self.logger.info(f"[BOOT] Port {port} in use by current process only (PID {current_pid}) — skipping kill")
+                        return
+                    
+                    # 自分以外のプロセスのみKILL
+                    pid_strs = [str(pid) for pid in target_pids]
+                    subprocess.run(
+                        ["kill", "-9"] + pid_strs,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=5,
+                        check=False
+                    )
+                    self.logger.info(f"[BOOT] Port {port} freed by killing PIDs: {', '.join(pid_strs)}")
+                    
                     # 少し待機してから再確認
                     import time
                     time.sleep(0.5)
                 except Exception as free_error:
-                    self.logger.warning(f"[BOOT] Failed to free port {port}: {free_error}")
+                    self.logger.warning(f"[BOOT] Port free check failed: {free_error}")
             else:
                 self.logger.warning(f"[BOOT] Error checking port {port}: {e}")
 
