@@ -76,10 +76,31 @@ section_durations = [
     customer_duration * 0.26,  # 最後（長め - 削った1秒分を追加）
 ]
 
-cursor = 0
+# 最初のセクションは3秒後から開始（無音をスキップ）
+initial_silence_skip = 3000  # 3秒
+cursor = initial_silence_skip if initial_silence_skip < len(customer) else 0
+
 for i, duration in enumerate(section_durations):
     end_pos = min(cursor + int(duration * 1000), len(customer))
     section = customer[cursor:end_pos]
+    
+    # 最初のセクションの先頭の無音をさらに削除
+    if i == 0:
+        # 先頭の無音を検出して削除
+        silence_threshold = -50  # dB
+        chunk_length = 50  # ms
+        start_pos = 0
+        # 最初の1秒をチェック
+        for chunk_start in range(0, min(len(section), 1000), chunk_length):
+            chunk = section[chunk_start:chunk_start + chunk_length]
+            if chunk.dBFS > silence_threshold:
+                start_pos = chunk_start
+                break
+        if start_pos > 0:
+            section = section[start_pos:]
+            print(f"  人間セクション1の先頭{start_pos/1000:.2f}秒の無音を削除")
+        print(f"  人間セクション1: 最初の3秒をスキップして開始")
+    
     customer_sections.append(section)
     cursor = end_pos
     print(f"  人間セクション{i+1}: {len(section)/1000:.2f}秒")
@@ -91,7 +112,10 @@ for i in range(len(ai_segments)):
     # AI音声を追加
     print(f"  AI音声{i+1}を追加...")
     final_audio += ai_segments[i]
-    final_audio += AudioSegment.silent(duration=100)  # 間を短く（300ms → 100ms）
+    
+    # 最初のAI音声の後は無音を完全に削除、それ以外は100ms
+    if i > 0:
+        final_audio += AudioSegment.silent(duration=100)
     
     # 人間の応答を追加
     if i < len(customer_sections):
