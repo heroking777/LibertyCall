@@ -59,10 +59,10 @@ customer_sections = []
 
 # 人間の音声をAI音声の間に入れるように分割
 section_durations = [
-    customer_duration * 0.24,  # 最初の応答（営業時間を教えて）
-    customer_duration * 0.40,  # 2番目（さらに長め - AI音声3の前に人間が話し終わるように）
-    customer_duration * 0.16,  # 3番目
-    customer_duration * 0.20,  # 最後（余り）
+    customer_duration * 0.23,  # 最初の応答（営業時間を教えて）
+    customer_duration * 0.38,  # 2番目（さらに長め - AI音声3の前に人間が話し終わるように）
+    customer_duration * 0.28,  # 3番目（さらに長め - AI音声4の前に人間が話し終わるように）
+    customer_duration * 0.11,  # 最後（余り）
 ]
 
 # 最初のセクションは無音をスキップ
@@ -78,13 +78,17 @@ for i, duration in enumerate(section_durations):
     chunk_length = 50  # ms
     start_pos = 0
     
-    # 最初のセクションは1秒後から、セクション2は3秒以上チェック、それ以外は3秒までチェック
+    # 最初のセクションは1秒後から、セクション2は3秒以上チェック、セクション3は控えめに、セクション4は積極的に削除
     if i == 0:
         check_range = 1000
     elif i == 1:
         # セクション2は無音が長いので、より積極的に削除（4秒までチェック）
         check_range = 4000
+    elif i == 2:
+        # セクション3は無音削除を控えめに（1.5秒まで）
+        check_range = 1500
     else:
+        # セクション4は無音が長いので、積極的に削除（3秒までチェック）
         check_range = 3000
     
     for chunk_start in range(0, min(len(section), check_range), chunk_length):
