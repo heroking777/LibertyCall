@@ -336,6 +336,11 @@ ul {
   align-items: center;
 }
 
+.cta-secondary .cta-actions {
+  justify-content: center;
+  width: 100%;
+}
+
 /* ========================================
    Hero Section
    ======================================== */
