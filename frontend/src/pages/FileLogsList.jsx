@@ -20,13 +20,43 @@ function FileLogsList() {
     setLoading(true)
     setError(null)
     try {
-      const response = await axios.get(`${API_BASE}/logs`, {
-        params: {
-          client_id: clientId,
-          date: date,
-        },
-      })
-      setCalls(response.data.calls || [])
+      // 両方のAPIを並列で取得
+      const [respLogs, respCalls] = await Promise.all([
+        axios.get(`${API_BASE}/logs`, {
+          params: { client_id: clientId, date },
+        }),
+        axios.get(`${API_BASE}/calls/history`, {
+          params: { client_id: clientId },
+        }),
+      ])
+
+      // 既存のログ（AI応答付き通話）
+      const logs1 = respLogs.data.calls || []
+
+      // イベントログ（無音切断など）
+      const logs2 = (respCalls.data.calls || []).map(c => ({
+        call_id: c.call_id,
+        started_at: c.started_at,
+        caller_number: c.caller,
+        summary: c.event_type === "auto_hangup_silence"
+          ? "無音切断（自動）"
+          : c.event_type
+          ? `イベント: ${c.event_type}`
+          : "（イベント）",
+      }))
+
+      // call_id 重複排除（同じ通話が両方にある場合、既存ログを優先）
+      const merged = [...logs1]
+      for (const e of logs2) {
+        if (!merged.find(l => l.call_id === e.call_id)) {
+          merged.push(e)
+        }
+      }
+
+      // 開始時間降順ソート
+      merged.sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
+      
+      setCalls(merged)
     } catch (err) {
       console.error('Failed to fetch calls:', err)
       setError(err.response?.data?.detail || '通話一覧の取得に失敗しました')
