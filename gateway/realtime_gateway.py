@@ -964,12 +964,13 @@ class RealtimeGateway:
             if self.rtp_peer is None:
                 self.logger.warning(f"[RTP_INIT] First RTP packet from {addr}, setting as peer")
                 self.rtp_peer = addr
-                # RTP確立時に古すぎるTTSを安全に間引く
-                if len(self.tts_queue) > 30:
-                    drop = len(self.tts_queue) - 30
-                    for _ in range(drop):
-                        self.tts_queue.popleft()
-                    self.logger.warning(f"[TTS_QUEUE_TRIM] dropped {drop} old items after RTP established (queue_len was {len(self.tts_queue) + drop})")
+                # RTP確立時に古いTTSをすべて破棄し、最新のみ保持
+                if len(self.tts_queue) > 1:
+                    last_item = self.tts_queue[-1]
+                    dropped = len(self.tts_queue) - 1
+                    self.tts_queue.clear()
+                    self.tts_queue.append(last_item)
+                    self.logger.warning(f"[TTS_QUEUE_RESET] Dropped {dropped} items after RTP established (kept last only)")
                 self.logger.info(f"[TTS_SENDER] RTP peer established: {self.rtp_peer}, queue_len={len(self.tts_queue)}")
             elif addr != self.rtp_peer:
                 self.logger.warning(f"[RTP_SWITCH] RTP source changed from {self.rtp_peer} to {addr}")
