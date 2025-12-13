@@ -548,18 +548,17 @@ class RealtimeGateway:
                     packet = self.rtp_builder.build_packet(payload)
                     self.rtp_transport.sendto(packet, self.rtp_peer)
                     consecutive_skips = 0  # リセット
-                    await asyncio.sleep(0.02)
                 except Exception as e:
-                    self.logger.error(f"TTS Send Error: {e}", exc_info=True)
-                    await asyncio.sleep(0.01)
+                    self.logger.error(f"TTS sender failed: {e}", exc_info=True)
             else:
-                # キューにデータがあるのに送信できない場合、原因をログに記録
+                # 音声送信できない or 待機中
                 if self.tts_queue:
                     consecutive_skips += 1
-                    if consecutive_skips == 1 or consecutive_skips % 100 == 0:  # 最初と100回ごとにログ（スパム防止）
+                    if consecutive_skips == 1 or consecutive_skips % 300 == 0:  # 最初と300回ごとにログ（スパム防止）
                         self.logger.warning(
                             f"TTS_SENDER_BLOCKED: queue_len={len(self.tts_queue)} "
-                            f"rtp_peer={self.rtp_peer} rtp_transport={self.rtp_transport is not None} "
+                            f"rtp_peer={self.rtp_peer} "
+                            f"rtp_transport={self.rtp_transport is not None} "
                             f"consecutive_skips={consecutive_skips}"
                         )
                 if not self.tts_queue:
@@ -568,43 +567,11 @@ class RealtimeGateway:
                     # 初回シーケンス再生が完了したらフラグをリセット
                     if self.initial_sequence_playing:
                         # スレッドスイッチを確保してからフラグを変更（非同期ループの確実な実行のため）
-                        await asyncio.sleep(0)
-                        
-                        # フラグを明示的に False に設定（TTSキューが空 = 音声再生完了）
-                        was_playing = self.initial_sequence_playing
+                        await asyncio.sleep(0.01)
                         self.initial_sequence_playing = False
-                        self.logger.info(
-                            "[INITIAL_SEQUENCE] OFF: client=%s initial_sequence_playing=%s -> False (ASR will be enabled now)",
-                            self.client_id or self.default_client_id,
-                            was_playing
-                        )
-                        self.logger.info(
-                            "[client=%s] initial greeting sequence completed (tts_queue empty, is_speaking_tts=%s)",
-                            self.client_id or self.default_client_id,
-                            self.is_speaking_tts
-                        )
-                        
-                        # 初期アナウンス再生完了後に、STTと無音検知を開始（async安全に起動）
-                        effective_call_id = self._get_effective_call_id()
-                        if effective_call_id:
-                            self.logger.info(
-                                f"[DEBUG_INIT] LibertyCall greeting finished — starting STT and no_input_timer (async) for call_id={effective_call_id}"
-                            )
-                            try:
-                                # 直接 create_task を使用（loop.get_running_loop() は不要、async def 内なので）
-                                task = asyncio.create_task(self._start_no_input_timer(effective_call_id))
-                                self.logger.debug(
-                                    f"[DEBUG_INIT] Scheduled no_input_timer task for call_id={effective_call_id}, task={task}"
-                                )
-                            except Exception as e:
-                                self.logger.exception(
-                                    f"[NO_INPUT] Failed to schedule no_input_timer after greeting for call_id={effective_call_id}: {e}"
-                                )
-                        else:
-                            self.logger.warning(
-                                f"[DEBUG_INIT] Cannot start no_input_timer: effective_call_id is None (client_id={self.client_id or self.default_client_id})"
-                            )
-                await asyncio.sleep(0.005)
+                        self.logger.debug("[INITIAL_SEQUENCE] OFF: initial_sequence_playing=False (ASR will be enabled)")
+            
+            await asyncio.sleep(0.02)  # CPU負荷を軽減（送信間隔を20ms空ける）
 
     async def _streaming_poll_loop(self):
         """ストリーミングモード: 定期的にASR結果をポーリングし、確定した発話を処理する。"""
