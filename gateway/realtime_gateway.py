@@ -458,6 +458,20 @@ class RealtimeGateway:
             self.logger.info(f"TTS_SEND: call_id={call_id} text={reply_text!r} queued={len(ulaw_response)//chunk_size} chunks")
             self.is_speaking_tts = True
             
+            # 🔹 リアルタイム更新: AI発話をConsoleに送信
+            try:
+                effective_call_id = call_id or self._get_effective_call_id()
+                if effective_call_id:
+                    event = {
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "role": "AI",
+                        "text": reply_text or (",".join(template_ids) if template_ids else ""),
+                    }
+                    # 非同期タスクとして実行（ブロックしない）
+                    asyncio.create_task(self._push_console_update(effective_call_id, event=event))
+            except Exception as e:
+                self.logger.warning(f"[REALTIME_PUSH] Failed to send AI speech event: {e}")
+            
             # TTS送信完了時刻を記録（無音検出用）
             # 実際の送信完了は_tts_sender_loopでキューが空になった時だが、
             # ここでは送信開始時刻を記録（無音検出の基準時刻として使用）
@@ -2144,6 +2158,19 @@ class RealtimeGateway:
         
         # 以降は正規化されたテキストを使用
         text = normalized_text
+        
+        # 🔹 リアルタイム更新: ユーザー発話をConsoleに送信
+        if effective_call_id and text.strip():
+            try:
+                event = {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "role": "USER",
+                    "text": text,
+                }
+                # 非同期タスクとして実行（ブロックしない）
+                asyncio.create_task(self._push_console_update(effective_call_id, event=event))
+            except Exception as e:
+                self.logger.warning(f"[REALTIME_PUSH] Failed to send user speech event: {e}")
         
         # ユーザー発話時刻を記録（無音検出用、time.monotonic()で統一）
         now = time.monotonic()
