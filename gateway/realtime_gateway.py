@@ -2221,103 +2221,83 @@ class RealtimeGateway:
         while self.running:
             try:
                 now = time.monotonic()
-                effective_call_id = self._get_effective_call_id()
                 
-                if not effective_call_id or effective_call_id == "TEMP_CALL":
-                    await asyncio.sleep(1.0)
-                    continue
-                
-                # 通話が既に終了している場合はループを抜ける
+                # _active_calls が存在しない場合は初期化
                 if not hasattr(self, '_active_calls'):
                     self._active_calls = set()
-                # 有効な通話が存在しない場合（完全に終了済み）はループを抜ける
-                if effective_call_id not in self._active_calls:
-                    self.logger.debug(f"[SILENCE_LOOP_EXIT] call_id={effective_call_id} no longer active — exiting loop")
-                    return
                 
-                # --- 修正箇所 ---
-                # RTPがまだ到着してないだけなら、数秒は待つ（新規通話直後）
-                if effective_call_id not in self._last_voice_time:
-                    call_start = self._last_tts_end_time.get(effective_call_id)
-                    if call_start is None or call_start == 0:
-                        # 通話開始時刻が未設定の場合は待機（初期化待ち）
-                        self.logger.debug(f"[SILENCE_LOOP_WAIT] waiting for call initialization for call_id={effective_call_id}")
-                        await asyncio.sleep(1.0)
-                        continue
-                    elif now - call_start > 10:  # 通話開始10秒以上経過してもRTPなしならスキップ
-                        self.logger.debug(f"[SILENCE_LOOP_SKIP] no RTP activity for call_id={effective_call_id} (started {now - call_start:.1f}s ago)")
-                        await asyncio.sleep(1.0)
-                        continue
-                    else:
-                        self.logger.debug(f"[SILENCE_LOOP_WAIT] waiting for RTP start for call_id={effective_call_id} (started {now - call_start:.1f}s ago)")
-                        await asyncio.sleep(1.0)
-                        continue
+                # すべてのアクティブな通話をチェック
+                active_call_ids = list(self._active_calls) if self._active_calls else []
                 
-                # TTS送信中は無音検出をスキップ
-                if self.is_speaking_tts:
+                # アクティブな通話がない場合は待機
+                if not active_call_ids:
                     await asyncio.sleep(1.0)
                     continue
                 
-                # 初回シーケンス再生中は無音検出をスキップ
-                if self.initial_sequence_playing:
-                    await asyncio.sleep(1.0)
-                    continue
-                
-                # 各タイムスタンプ取得
-                last_tts_end = self._last_tts_end_time.get(effective_call_id, now)
-                last_user_input = self._last_user_input_time.get(effective_call_id, last_tts_end)
-                last_voice = self._last_voice_time.get(effective_call_id, last_tts_end)
-                last_silence = self._last_silence_time.get(effective_call_id, last_tts_end)
-                
-                # 無音継続時間を算出（最後に有音を検出した時刻からの経過）
-                reference_time = max(last_tts_end, last_user_input, last_voice)
-                silence_duration = now - reference_time
-                
-                # 無音フレームが続いている場合は、silence_durationを再評価
-                if last_silence > last_voice:
-                    silence_duration = now - last_silence
-                
-                # 詳細デバッグログ: 無音検知ループの参照値を出力（強制出力）
-                self.logger.debug(
-                    f"[SILENCE_LOOP] call_id={effective_call_id} "
-                    f"tts_end={last_tts_end:.1f} user_input={last_user_input:.1f} "
-                    f"voice={last_voice:.1f} silence={last_silence:.1f} "
-                    f"duration={silence_duration:.2f}"
-                )
-                
-                # 警告送信済みセットを初期化（存在しない場合）
-                if effective_call_id not in self._silence_warning_sent:
-                    self._silence_warning_sent[effective_call_id] = set()
-                
-                # 段階的な無音警告（5秒、10秒、15秒）
-                warnings = self._silence_warning_sent[effective_call_id]
-                if silence_duration >= 5.0 and 5.0 not in warnings:
-                    warnings.add(5.0)
-                    self.logger.warning(f"[SILENCE DETECTED] 5.0s of silence for call_id={effective_call_id}")
-                    await self._play_silence_warning(effective_call_id, 5.0)
-                elif silence_duration >= 10.0 and 10.0 not in warnings:
-                    warnings.add(10.0)
-                    self.logger.warning(f"[SILENCE DETECTED] 10.0s of silence for call_id={effective_call_id}")
-                    await self._play_silence_warning(effective_call_id, 10.0)
-                elif silence_duration >= 15.0 and 15.0 not in warnings:
-                    warnings.add(15.0)
-                    self.logger.warning(f"[SILENCE DETECTED] 15.0s of silence for call_id={effective_call_id}")
-                    await self._play_silence_warning(effective_call_id, 15.0)
-                
-                # 20秒無音で自動切断
-                if silence_duration >= self.SILENCE_HANGUP_TIME:
-                    self.logger.warning(f"[AUTO-HANGUP] Silence limit exceeded ({silence_duration:.1f}s) for call_id={effective_call_id}")
-                    # 非同期タスクとして実行（既存の同期関数を呼び出す）
-                    loop = asyncio.get_running_loop()
-                    loop.run_in_executor(None, self._handle_hangup, effective_call_id)
-                    # 警告セットをクリア（次の通話のために）
-                    self._silence_warning_sent.pop(effective_call_id, None)
-                    continue
-                
-                # 音声が検出された場合は警告セットをリセット
-                if silence_duration < 1.0:  # 1秒以内に音声が検出された場合
-                    if effective_call_id in self._silence_warning_sent:
-                        self._silence_warning_sent[effective_call_id].clear()
+                # 各アクティブな通話について無音検出を実行
+                for call_id in active_call_ids:
+                    try:
+                        # 最後に有音を検出した時刻を取得
+                        last_voice = self._last_voice_time.get(call_id, 0)
+                        
+                        # 最後に有音を検出した時刻が0の場合は、TTS送信完了時刻を使用
+                        if last_voice == 0:
+                            last_voice = self._last_tts_end_time.get(call_id, now)
+                        
+                        # 無音継続時間を計算
+                        elapsed = now - last_voice
+                        
+                        # デバッグログ（5秒ごと）
+                        if elapsed > 5 and int(elapsed) % 5 == 0:
+                            self.logger.debug(
+                                f"[SILENCE_LOOP] call_id={call_id} "
+                                f"last_voice={last_voice:.1f} elapsed={elapsed:.1f}s"
+                            )
+                        
+                        # TTS送信中は無音検出をスキップ
+                        if self.is_speaking_tts:
+                            continue
+                        
+                        # 初回シーケンス再生中は無音検出をスキップ
+                        if self.initial_sequence_playing:
+                            continue
+                        
+                        # 警告送信済みセットを初期化（存在しない場合）
+                        if call_id not in self._silence_warning_sent:
+                            self._silence_warning_sent[call_id] = set()
+                        
+                        warnings = self._silence_warning_sent[call_id]
+                        
+                        # 段階的な無音警告（5秒、10秒、15秒）
+                        if elapsed >= 5.0 and 5.0 not in warnings:
+                            warnings.add(5.0)
+                            self.logger.warning(f"[SILENCE DETECTED] {elapsed:.1f}s of silence for call_id={call_id}")
+                            await self._play_silence_warning(call_id, 5.0)
+                        elif elapsed >= 10.0 and 10.0 not in warnings:
+                            warnings.add(10.0)
+                            self.logger.warning(f"[SILENCE DETECTED] {elapsed:.1f}s of silence for call_id={call_id}")
+                            await self._play_silence_warning(call_id, 10.0)
+                        elif elapsed >= 15.0 and 15.0 not in warnings:
+                            warnings.add(15.0)
+                            self.logger.warning(f"[SILENCE DETECTED] {elapsed:.1f}s of silence for call_id={call_id}")
+                            await self._play_silence_warning(call_id, 15.0)
+                        
+                        # 20秒無音で自動切断
+                        if elapsed >= self.SILENCE_HANGUP_TIME:
+                            self.logger.warning(f"[AUTO-HANGUP] Silence limit exceeded ({elapsed:.1f}s) for call_id={call_id}")
+                            # 非同期タスクとして実行（既存の同期関数を呼び出す）
+                            loop = asyncio.get_running_loop()
+                            loop.run_in_executor(None, self._handle_hangup, call_id)
+                            # 警告セットをクリア（次の通話のために）
+                            self._silence_warning_sent.pop(call_id, None)
+                            continue
+                        
+                        # 音声が検出された場合は警告セットをリセット
+                        if elapsed < 1.0:  # 1秒以内に音声が検出された場合
+                            if call_id in self._silence_warning_sent:
+                                self._silence_warning_sent[call_id].clear()
+                    except Exception as e:
+                        self.logger.exception(f"NO_INPUT_MONITOR_LOOP error for call_id={call_id}: {e}")
                 
             except Exception as e:
                 self.logger.exception(f"NO_INPUT_MONITOR_LOOP error: {e}")
