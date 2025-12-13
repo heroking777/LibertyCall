@@ -72,9 +72,9 @@ section_durations = [
     customer_duration * 0.11,  # 2番目
     customer_duration * 0.18,  # 3番目（長め - AI音声4の前に人間が話し終わるように）
     customer_duration * 0.15,  # 4番目（長め - AI音声5の前に人間が話し終わるように）
-    customer_duration * 0.12,  # 5番目（短め）
-    customer_duration * 0.10,  # 6番目
-    customer_duration * 0.23,  # 最後（長め）
+    customer_duration * 0.16,  # 5番目（長め - AI音声6の前に人間が話し終わるように）
+    customer_duration * 0.09,  # 6番目（短め）
+    customer_duration * 0.20,  # 最後（長め）
 ]
 
 # 最初のセクションは3秒後から開始（無音をスキップ）
