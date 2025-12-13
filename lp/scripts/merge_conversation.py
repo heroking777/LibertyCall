@@ -65,14 +65,15 @@ remaining_customer = customer
 # 人間の音声をAI音声の間に入れるように分割
 # 各AI音声の後に人間の応答が来る想定
 # AI音声4（12月15日ですね）の前の人間セクション3を長めに調整
+# 人間セクション1は雑音を避けるため1秒短く
 section_durations = [
-    customer_duration * 0.14,  # 最初の応答（短め）
+    max(customer_duration * 0.11, 3.0),  # 最初の応答（1秒短縮: 0.14 → 0.11、最低3秒）
     customer_duration * 0.11,  # 2番目
     customer_duration * 0.18,  # 3番目（長め - AI音声4の前に人間が話し終わるように）
     customer_duration * 0.10,  # 4番目（短め）
     customer_duration * 0.14,  # 5番目
     customer_duration * 0.10,  # 6番目
-    customer_duration * 0.23,  # 最後（長め）
+    customer_duration * 0.26,  # 最後（長め - 削った1秒分を追加）
 ]
 
 cursor = 0

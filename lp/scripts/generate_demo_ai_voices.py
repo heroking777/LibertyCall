@@ -19,7 +19,7 @@ AUDIO_DIR = PROJECT_ROOT / "lp" / "audio"
 AI_VOICES = [
     {
         "file": "ai_voice_01.mp3",
-        "text": "お電話ありがとうございます。こちらはAI受付のリバティコールでございます。本日はどのようなご用件でしょうか？",
+        "text": "お電話ありがとうございます。リバティーコールでございます。本日はどのようなご用件でしょうか？",
         "voice": "ja-JP-Neural2-B",
         "rate": 1.0,
         "pitch": -2.0
