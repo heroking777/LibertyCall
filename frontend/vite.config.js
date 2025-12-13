@@ -18,6 +18,16 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    host: '0.0.0.0',
+    port: 4173,
+    proxy: {
+      '/api': {
+        target: API_TARGET,
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     outDir: 'build',
   },
