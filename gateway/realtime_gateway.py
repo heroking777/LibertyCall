@@ -291,8 +291,14 @@ class RealtimeGateway:
             )
             self.logger.info(f"[RTP_READY_FINAL] RTP listener active and awaiting packets on {bound_addr}")
 
+            # WebSocketサーバー起動処理
+            try:
+                ws_task = asyncio.create_task(self._ws_server_loop())
+                self.logger.info("[BOOT] WebSocket server startup scheduled on port 9001 (task=%r)", ws_task)
+            except Exception as e:
+                self.logger.error(f"[BOOT] Failed to start WebSocket server: {e}", exc_info=True)
+            
             asyncio.create_task(self._ws_client_loop())
-            asyncio.create_task(self._ws_server_loop())  # WebSocketサーバーを起動
             asyncio.create_task(self._tts_sender_loop())
             
             # ストリーミングモード: 定期的にASR結果をポーリング
@@ -791,8 +797,11 @@ class RealtimeGateway:
         
         while self.running:
             try:
-                async with websockets.serve(handle_asterisk_connection, ws_server_host, ws_server_port):
+                async with websockets.serve(handle_asterisk_connection, ws_server_host, ws_server_port) as server:
                     self.logger.info(f"[WS Server] Listening on ws://{ws_server_host}:{ws_server_port}")
+                    # サーバーが実際に起動したことを確認
+                    if server:
+                        self.logger.info(f"[WS Server] Server started successfully, waiting for connections...")
                     # サーバーを起動し続ける
                     await asyncio.Future()  # 永久に待機
             except OSError as e:
