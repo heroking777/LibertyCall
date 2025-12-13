@@ -160,7 +160,7 @@ class RealtimeGateway:
             self.logger.warning("WebRTC Noise Suppressor not available, skipping NS processing")
         
         self.audio_buffer = bytearray()          
-        self.tts_queue = collections.deque()     
+        self.tts_queue = collections.deque(maxlen=100)  # バッファ拡張（音途切れ防止）
         self.is_speaking_tts = False             
         self.last_voice_time = time.time()
         self.is_user_speaking = False
@@ -556,7 +556,7 @@ class RealtimeGateway:
                 # キューにデータがあるのに送信できない場合、原因をログに記録
                 if self.tts_queue:
                     consecutive_skips += 1
-                    if consecutive_skips == 1 or consecutive_skips % 50 == 0:  # 最初と50回ごとにログ
+                    if consecutive_skips == 1 or consecutive_skips % 100 == 0:  # 最初と100回ごとにログ（スパム防止）
                         self.logger.warning(
                             f"TTS_SENDER_BLOCKED: queue_len={len(self.tts_queue)} "
                             f"rtp_peer={self.rtp_peer} rtp_transport={self.rtp_transport is not None} "
@@ -2350,15 +2350,10 @@ class RealtimeGateway:
             await asyncio.sleep(1.0)  # 1秒間隔でチェック
     
     async def _play_tts(self, call_id: str, text: str):
-        """
-        TTS音声を再生する
-        """
-        self.logger.debug(f"[PLAY_TTS] called text='{text}' stream={getattr(self, 'audio_out_stream', None)}")
+        """TTS音声を再生する"""
+        self.logger.info(f"[PLAY_TTS] dispatching text='{text}' to TTS queue for {call_id}")
         try:
-            # audio_out_stream の存在チェックは廃止
-            # TTS送信は self._send_tts() に任せる
             self._send_tts(call_id, text, None, False)
-            self.logger.debug(f"[PLAY_TTS] dispatched text='{text}' to TTS queue for {call_id}")
         except Exception as e:
             self.logger.error(f"TTS playback failed for call_id={call_id}: {e}", exc_info=True)
     
