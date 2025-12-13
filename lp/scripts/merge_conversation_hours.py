@@ -59,10 +59,10 @@ customer_sections = []
 
 # 人間の音声をAI音声の間に入れるように分割
 section_durations = [
-    customer_duration * 0.21,  # 最初の応答（営業時間を教えて）
-    customer_duration * 0.35,  # 2番目（さらに長め - AI音声3の前に人間が話し終わるように）
-    customer_duration * 0.25,  # 3番目（さらに長め - AI音声4の前に人間が話し終わるように）
-    customer_duration * 0.19,  # 最後（余り - セクション4を長めに、無音を含む）
+    customer_duration * 0.25,  # 最初の応答（長め - AI音声2の前に人間が話し終わるように）
+    customer_duration * 0.33,  # 2番目（さらに長め - AI音声3の前に人間が話し終わるように）
+    customer_duration * 0.24,  # 3番目（さらに長め - AI音声4の前に人間が話し終わるように）
+    customer_duration * 0.18,  # 最後（余り - セクション1を延長した分を調整）
 ]
 
 # 最初のセクションは無音をスキップ
@@ -97,16 +97,19 @@ for i, duration in enumerate(section_durations):
             start_pos = chunk_start
             break
     
-    # セクション4の場合は、より積極的に無音を検出（2秒以上を想定）
+    # セクション4の場合は、無音削除を控えめに（2秒程度まで）
     if i == 3:
-        # セクション4は2秒以上の無音がある可能性があるので、より低い閾値で再試行
-        if start_pos == 0 or start_pos < 2000:
-            for chunk_start in range(0, min(len(section), check_range), chunk_length):
+        # セクション4は2秒程度の無音を削除するが、実際の声は残す
+        if start_pos == 0:
+            # 2秒までチェックして、音声が見つかったら採用
+            for chunk_start in range(0, min(len(section), 2500), chunk_length):
                 chunk = section[chunk_start:chunk_start + chunk_length]
-                if chunk.dBFS > -60:  # より低い閾値
-                    if chunk_start >= 2000:  # 2秒以上経過したら採用
-                        start_pos = chunk_start
-                        break
+                if chunk.dBFS > silence_threshold:
+                    start_pos = chunk_start
+                    break
+        # もし2秒以上削除されそうな場合は、2秒で止める
+        if start_pos > 2000:
+            start_pos = 2000
     
     if start_pos > 0:
         section = section[start_pos:]
