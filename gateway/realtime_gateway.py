@@ -299,7 +299,12 @@ class RealtimeGateway:
                 asyncio.create_task(self._streaming_poll_loop())
             
             # 無音検出ループ開始（TTS送信後の無音を監視）
-            asyncio.create_task(self._no_input_monitor_loop())
+            if not getattr(self, "_silence_loop_started", False):
+                self.logger.info("RealtimeGateway started — launching silence monitor loop")
+                asyncio.create_task(self._no_input_monitor_loop())
+                self._silence_loop_started = True
+            else:
+                self.logger.warning("Silence monitor loop already started, skipping duplicate launch")
             
             # ログファイル監視ループ開始（転送失敗時のTTSアナウンス用）
             asyncio.create_task(self._log_monitor_loop())
@@ -2154,7 +2159,7 @@ class RealtimeGateway:
         """
         無音検出ループ: 全通話中に常時実行される。無音5秒で再促し→10秒、15秒で再アナウンス→20秒で切断。
         """
-        self.logger.debug("NO_INPUT_MONITOR_LOOP: started")
+        self.logger.info("NO_INPUT_MONITOR_LOOP: started")
         while self.running:
             try:
                 now = time.monotonic()
