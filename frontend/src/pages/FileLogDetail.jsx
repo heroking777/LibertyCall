@@ -12,9 +12,59 @@ function FileLogDetail() {
   const [error, setError] = useState(null)
   const [callerNumber, setCallerNumber] = useState(null)
   const [startedAt, setStartedAt] = useState(null)
+  const [summary, setSummary] = useState(null) // 要約表示用
 
   useEffect(() => {
     fetchLogDetail()
+    
+    // 🔹 リアルタイム更新 (SSE)
+    const es = new EventSource(`${API_BASE}/calls/stream?id=${callId}`)
+    
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data)
+        
+        // 接続確認メッセージは無視
+        if (data.type === 'connected') {
+          return
+        }
+        
+        // call_idが一致する場合のみ処理
+        if (data.call_id === callId) {
+          // 要約更新
+          if (data.summary) {
+            setSummary(data.summary)
+          }
+          
+          // イベント（会話ログなど）追加
+          if (data.event) {
+            setLogs(prev => {
+              // 重複チェック（同じtimestamp + role + textの組み合わせを避ける）
+              const exists = prev.some(
+                log => log.timestamp === data.event.timestamp &&
+                       log.role === data.event.role &&
+                       log.text === data.event.text
+              )
+              if (exists) {
+                return prev
+              }
+              return [...prev, data.event]
+            })
+          }
+        }
+      } catch (err) {
+        console.error('Failed to parse SSE message:', err)
+      }
+    }
+    
+    es.onerror = (err) => {
+      console.warn('[SSE] Connection error:', err)
+      // エラー時は接続を閉じて再試行しない（通話終了時などは正常）
+    }
+    
+    return () => {
+      es.close()
+    }
   }, [clientId, callId])
 
   const fetchLogDetail = async () => {
@@ -74,6 +124,13 @@ function FileLogDetail() {
               <span className="meta-value">{displayNumber(callerNumber)}</span>
             </div>
           </div>
+          {/* ✅ 要約表示（リアルタイム更新対応） */}
+          {summary && (
+            <div className="meta-item" style={{ marginTop: '10px', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+              <span className="meta-label" style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>要約:</span>
+              <span className="meta-value" style={{ display: 'block', color: '#666' }}>{summary}</span>
+            </div>
+          )}
         </div>
       </div>
 

@@ -201,6 +201,43 @@ async def record_event(request: Request):
         return {"status": "error", "error": str(e)}
 
 
+@router.post("/push_event")
+async def push_event(request: Request):
+    """
+    Gatewayからのリアルタイムイベントを受信し、SSE購読者に配信する.
+    
+    リクエストボディ:
+    {
+        "call_id": "通話ID",
+        "summary": "要約テキスト（オプション）",
+        "event": {
+            "timestamp": "ISO形式のタイムスタンプ",
+            "role": "AI" or "USER",
+            "text": "発話テキスト"
+        }
+    }
+    """
+    try:
+        body = await request.json()
+        call_id = body.get("call_id")
+        
+        if not call_id:
+            return {"status": "error", "error": "call_id is required"}
+        
+        # push_call_event()を呼び出してSSE購読者に配信
+        summary = body.get("summary")
+        event = body.get("event")
+        
+        await push_call_event(call_id, summary=summary, event=event)
+        
+        return {"status": "ok", "call_id": call_id}
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"[push_event] Failed: {e}", exc_info=True)
+        return {"status": "error", "error": str(e)}
+
+
 async def push_call_event(call_id: str, summary: Optional[str] = None, event: Optional[Dict[str, Any]] = None):
     """
     通話イベントをSSE購読者にプッシュする（リアルタイム更新用）.

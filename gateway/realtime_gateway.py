@@ -25,6 +25,11 @@ import audioop
 import collections
 import time
 try:
+    import aiohttp
+    AIOHTTP_AVAILABLE = True
+except ImportError:
+    AIOHTTP_AVAILABLE = False
+try:
     from webrtc_audio_processing import AudioProcessing, NsLevel
     WEBRTC_NS_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
@@ -226,6 +231,11 @@ class RealtimeGateway:
         self.console_bridge = console_bridge
         self.audio_manager = AudioManager(_PROJECT_ROOT)
         self.default_client_id = os.getenv("LC_DEFAULT_CLIENT_ID", "000")
+        # リアルタイム更新用のAPI URL（環境変数から取得、デフォルトはlocalhost:8001）
+        self.console_api_url = os.getenv(
+            "LIBERTYCALL_CONSOLE_API_BASE_URL",
+            "http://localhost:8001"
+        )
         self.initial_sequence_played = False
         self.initial_sequence_playing = False  # 初回シーケンス再生中フラグ
         self.initial_silence_sec = 0.5
