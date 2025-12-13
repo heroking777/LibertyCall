@@ -405,9 +405,24 @@ class RealtimeGateway:
         
         # 重複TTS防止: 直前のTTSテキストと同じ場合はキューに追加しない
         tts_text_for_check = reply_text or (",".join(template_ids) if template_ids else "")
-        if tts_text_for_check and self._last_tts_text == tts_text_for_check:
+        
+        # 初回TTS（初期アナウンス）の場合は常に送信（スキップしない）
+        if not self._last_tts_text:
+            # 初回TTSとして記録して送信
+            if tts_text_for_check:
+                self._last_tts_text = tts_text_for_check
+                self.logger.info(f"[PLAY_TTS] dispatching (initial) text='{tts_text_for_check[:50]}...' to TTS queue for {call_id}")
+            # 初回でもテキストがない場合はここで終了
+            if not tts_text_for_check:
+                return
+        elif tts_text_for_check and self._last_tts_text == tts_text_for_check:
+            # 2回目以降の重複チェック
             self.logger.debug(f"[TTS_QUEUE_SKIP] duplicate text ignored: '{tts_text_for_check[:30]}...'")
             return
+        else:
+            # 新しいTTSテキストの場合
+            if tts_text_for_check:
+                self._last_tts_text = tts_text_for_check
         
         # TTS生成
         tts_audio_24k = None
@@ -426,8 +441,6 @@ class RealtimeGateway:
         
         # TTSキューに追加
         if tts_audio_24k:
-            # 直前のTTSテキストを記録（重複防止用）
-            self._last_tts_text = tts_text_for_check
             ulaw_response = pcm24k_to_ulaw8k(tts_audio_24k)
             chunk_size = 160
             for i in range(0, len(ulaw_response), chunk_size):
