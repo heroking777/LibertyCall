@@ -1,6 +1,7 @@
 """FastAPIメインアプリケーション."""
 
 from pathlib import Path
+from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -52,6 +53,15 @@ def root():
 def health_check():
     """ヘルスチェックエンドポイント."""
     return {"status": "ok"}
+
+
+@app.get("/healthz")
+async def healthz_check():
+    """軽量ヘルスチェックエンドポイント（監視統合用）."""
+    return {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat(),
+    }
 
 
 # フロントエンドの配信（設定で有効な場合）
