@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
@@ -114,6 +116,35 @@ class ConsoleBridge:
 
     def complete_call(self, call_id: str, *, ended_at: Optional[datetime] = None) -> None:
         self._safe_call("complete_call", call_id, ended_at=ended_at)
+
+    def record_event(self, call_id: str, event_type: str, payload: dict) -> None:
+        """
+        個別イベントを履歴DBに記録する（例: 無音検出による自動切断）
+        """
+        try:
+            record = {
+                "call_id": call_id,
+                "event_type": event_type,
+                "payload": payload,
+                "created_at": datetime.utcnow(),
+            }
+
+            # DBまたはファイルに記録
+            if hasattr(self, "db") and self.db:
+                self.db["call_events"].insert_one(record)
+            else:
+                event_log = Path("/opt/libertycall/logs/call_events.log")
+                event_log.parent.mkdir(parents=True, exist_ok=True)
+                with event_log.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+
+            self.logger.info(f"[CALL_EVENT] {event_type} recorded for {call_id}")
+
+        except Exception as e:
+            self.logger.error(
+                f"[CALL_EVENT_ERROR] failed to record {event_type} for {call_id}: {e}",
+                exc_info=True,
+            )
 
     def send_audio_level(
         self,
