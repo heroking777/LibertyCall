@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Request, Request
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -152,4 +152,45 @@ def get_calls_history(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.post("/record_event")
+async def record_event(request: Request):
+    """
+    Gatewayからの通話イベント（例: auto_hangup_silence）を受信し、DBまたはログに記録
+    """
+    try:
+        body = await request.json()
+        record = {
+            "call_id": body.get("call_id"),
+            "event_type": body.get("event_type"),
+            "payload": body.get("payload"),
+            "received_at": datetime.utcnow().isoformat(),
+        }
+        
+        # MongoDBまたはファイルに保存
+        try:
+            mongo_client = get_mongo_client()
+            if mongo_client:
+                db_mongo = mongo_client.get_database("libertycall")
+                events_collection = db_mongo.get_collection("call_events")
+                events_collection.insert_one(record)
+                mongo_client.close()
+            else:
+                # MongoDBが利用できない場合はファイルに保存
+                log_path = Path("/opt/libertycall/logs/call_events.log")
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with log_path.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+        except Exception as db_err:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"[record_event] DB write failed: {db_err}", exc_info=True)
+        
+        return {"status": "ok", "record": record}
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"[record_event] Failed: {e}", exc_info=True)
+        return {"status": "error", "error": str(e)}
 

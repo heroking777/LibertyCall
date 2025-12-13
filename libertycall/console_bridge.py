@@ -10,6 +10,14 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
+# requestsはオプショナル（インストールされていない場合もある）
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
+    requests = None
+
 try:
     from console_backend import service_client as _service_client
 except Exception as exc:  # pragma: no cover - 例外時のみ
@@ -119,29 +127,51 @@ class ConsoleBridge:
 
     def record_event(self, call_id: str, event_type: str, payload: dict) -> None:
         """
-        個別イベントを履歴DBに記録する（例: 無音検出による自動切断）
+        Gatewayで発生したイベントを本番サーバーへ送信
         
-        注意: enabled チェックは行わない（enabled=False でもファイルに記録する）
+        注意: enabled チェックは行わない（常に送信を試みる）
         """
+        record = {
+            "call_id": call_id,
+            "event_type": event_type,
+            "payload": payload,
+            "sent_at": datetime.utcnow().isoformat(),
+        }
+        
+        # 本番APIに送信を試みる
+        if REQUESTS_AVAILABLE:
+            try:
+                # 本番API URL（環境変数から取得、デフォルトは本番URL）
+                api_url = os.getenv(
+                    "LIBERTYCALL_CONSOLE_API_BASE_URL",
+                    "https://console.libertycall.com"
+                )
+                url = f"{api_url}/api/calls/record_event"
+                
+                response = requests.post(url, json=record, timeout=5)
+                if response.status_code == 200:
+                    self.logger.info(
+                        f"[CALL_EVENT_REMOTE] {event_type} sent successfully to {url} for {call_id}"
+                    )
+                    return  # 成功したら終了
+                else:
+                    self.logger.warning(
+                        f"[CALL_EVENT_REMOTE] Failed to send event: {response.status_code} - {response.text[:100]}"
+                    )
+            except Exception as e:
+                self.logger.warning(
+                    f"[CALL_EVENT_REMOTE] Failed to send event to remote API: {e}"
+                )
+        
+        # フォールバック: ローカルファイルに記録
         try:
-            record = {
-                "call_id": call_id,
-                "event_type": event_type,
-                "payload": payload,
-                "created_at": datetime.utcnow(),
-            }
-
-            # DBまたはファイルに記録
-            if hasattr(self, "db") and self.db:
-                self.db["call_events"].insert_one(record)
-            else:
-                event_log = Path("/opt/libertycall/logs/call_events.log")
-                event_log.parent.mkdir(parents=True, exist_ok=True)
-                with event_log.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
-
-            self.logger.info(f"[CALL_EVENT] {event_type} recorded for {call_id}")
-
+            fallback = Path("/opt/libertycall/logs/call_events_fallback.log")
+            fallback.parent.mkdir(parents=True, exist_ok=True)
+            with fallback.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+            self.logger.info(
+                f"[CALL_EVENT_FALLBACK] {event_type} recorded to fallback log for {call_id}"
+            )
         except Exception as e:
             self.logger.error(
                 f"[CALL_EVENT_ERROR] failed to record {event_type} for {call_id}: {e}",
