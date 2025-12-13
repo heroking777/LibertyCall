@@ -2214,10 +2214,9 @@ class RealtimeGateway:
             self.logger.exception(f"[NO_INPUT] Failed to start no_input_timer for call_id={call_id}: {e}")
 
     async def _no_input_monitor_loop(self):
-        """
-        無音検出ループ: 全通話中に常時実行される。無音5秒で再促し→10秒、15秒で再アナウンス→20秒で切断。
-        """
+        """無音状態を監視し、自動ハングアップを行う"""
         self.logger.info("NO_INPUT_MONITOR_LOOP: started")
+        
         while self.running:
             try:
                 now = time.monotonic()
@@ -2226,7 +2225,7 @@ class RealtimeGateway:
                 if not hasattr(self, '_active_calls'):
                     self._active_calls = set()
                 
-                # すべてのアクティブな通話をチェック
+                # 現在アクティブな通話を走査
                 active_call_ids = list(self._active_calls) if self._active_calls else []
                 
                 # アクティブな通話がない場合は待機
@@ -2247,13 +2246,6 @@ class RealtimeGateway:
                         # 無音継続時間を計算
                         elapsed = now - last_voice
                         
-                        # デバッグログ（5秒ごと）
-                        if elapsed > 5 and int(elapsed) % 5 == 0:
-                            self.logger.debug(
-                                f"[SILENCE_LOOP] call_id={call_id} "
-                                f"last_voice={last_voice:.1f} elapsed={elapsed:.1f}s"
-                            )
-                        
                         # TTS送信中は無音検出をスキップ
                         if self.is_speaking_tts:
                             continue
@@ -2262,13 +2254,19 @@ class RealtimeGateway:
                         if self.initial_sequence_playing:
                             continue
                         
+                        # 無音5秒ごとに警告ログ出力
+                        if elapsed > 5 and abs(elapsed % 5) < 1:
+                            self.logger.warning(
+                                f"[SILENCE DETECTED] {elapsed:.1f}s of silence call_id={call_id}"
+                            )
+                        
                         # 警告送信済みセットを初期化（存在しない場合）
                         if call_id not in self._silence_warning_sent:
                             self._silence_warning_sent[call_id] = set()
                         
                         warnings = self._silence_warning_sent[call_id]
                         
-                        # 段階的な無音警告（5秒、10秒、15秒）
+                        # 段階的な無音警告（5秒、10秒、15秒）とアナウンス再生
                         if elapsed >= 5.0 and 5.0 not in warnings:
                             warnings.add(5.0)
                             self.logger.warning(f"[SILENCE DETECTED] {elapsed:.1f}s of silence for call_id={call_id}")
@@ -2282,12 +2280,18 @@ class RealtimeGateway:
                             self.logger.warning(f"[SILENCE DETECTED] {elapsed:.1f}s of silence for call_id={call_id}")
                             await self._play_silence_warning(call_id, 15.0)
                         
-                        # 20秒無音で自動切断
-                        if elapsed >= self.SILENCE_HANGUP_TIME:
-                            self.logger.warning(f"[AUTO-HANGUP] Silence limit exceeded ({elapsed:.1f}s) for call_id={call_id}")
-                            # 非同期タスクとして実行（既存の同期関数を呼び出す）
-                            loop = asyncio.get_running_loop()
-                            loop.run_in_executor(None, self._handle_hangup, call_id)
+                        # 無音が規定時間を超えたら強制切断
+                        max_silence_time = getattr(self, "SILENCE_HANGUP_TIME", 20.0)
+                        if elapsed > max_silence_time:
+                            self.logger.warning(
+                                f"[AUTO-HANGUP] Silence limit exceeded ({elapsed:.1f}s) call_id={call_id}"
+                            )
+                            try:
+                                # 非同期タスクとして実行（既存の同期関数を呼び出す）
+                                loop = asyncio.get_running_loop()
+                                loop.run_in_executor(None, self._handle_hangup, call_id)
+                            except Exception as e:
+                                self.logger.exception(f"[AUTO-HANGUP] Hangup failed call_id={call_id} error={e}")
                             # 警告セットをクリア（次の通話のために）
                             self._silence_warning_sent.pop(call_id, None)
                             continue
