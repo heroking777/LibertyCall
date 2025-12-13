@@ -593,8 +593,8 @@ class RealtimeGateway:
                     try:
                         payload = self.tts_queue.popleft()
                         packet = self.rtp_builder.build_packet(payload)
-                        # RTP送信先を常にローカルIP (0.0.0.0) → 相手ポートに送る（ループバック分離対策）
-                        safe_peer = ("0.0.0.0", self.rtp_peer[1] if self.rtp_peer else 0)
+                        # 送信先をローカル固定 (Asteriskは127.0.0.1で受信)
+                        safe_peer = ("127.0.0.1", self.rtp_peer[1] if self.rtp_peer else 0)
                         self.rtp_transport.sendto(packet, safe_peer)
                         # 実際に送信したタイミングでログ出力（運用ログ整備）
                         payload_type = packet[1] & 0x7F
