@@ -73,19 +73,24 @@ for i, duration in enumerate(section_durations):
     end_pos = min(cursor + int(duration * 1000), len(customer))
     section = customer[cursor:end_pos]
     
-    # 最初のセクションの先頭の無音を削除
+    # 各セクションの先頭の無音を削除
+    silence_threshold = -50  # dB
+    chunk_length = 50  # ms
+    start_pos = 0
+    
+    # 最初のセクションは1秒後から、それ以外は3秒までチェック
+    check_range = 1000 if i == 0 else 3000
+    for chunk_start in range(0, min(len(section), check_range), chunk_length):
+        chunk = section[chunk_start:chunk_start + chunk_length]
+        if chunk.dBFS > silence_threshold:
+            start_pos = chunk_start
+            break
+    
+    if start_pos > 0:
+        section = section[start_pos:]
+        print(f"  人間セクション{i+1}の先頭{start_pos/1000:.2f}秒の無音を削除")
+    
     if i == 0:
-        silence_threshold = -50  # dB
-        chunk_length = 50  # ms
-        start_pos = 0
-        for chunk_start in range(0, min(len(section), 1000), chunk_length):
-            chunk = section[chunk_start:chunk_start + chunk_length]
-            if chunk.dBFS > silence_threshold:
-                start_pos = chunk_start
-                break
-        if start_pos > 0:
-            section = section[start_pos:]
-            print(f"  人間セクション1の先頭{start_pos/1000:.2f}秒の無音を削除")
         print(f"  人間セクション1: 最初の1秒をスキップして開始")
     
     customer_sections.append(section)
