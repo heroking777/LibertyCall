@@ -1056,10 +1056,12 @@ class RealtimeGateway:
         # ログ出力（RTP受信時のcall_id確認用）
         self.logger.debug(f"[HANDLE_RTP_ENTRY] len={len(data)} addr={addr} call_id={effective_call_id}")
         
-        if effective_call_id and effective_call_id not in self._initial_tts_sent:
-            self._initial_tts_sent.add(effective_call_id)
-            self.logger.debug(f"[INIT_TTS_FORCE] First RTP detected -> Playing initial TTS for call_id={effective_call_id}")
-            asyncio.create_task(self._play_tts(effective_call_id, "リバティーコールです。"))
+        # 注意: 初回アナウンスは _queue_initial_audio_sequence() で再生されるため、
+        # ここでの直接TTS呼び出しは削除（重複防止）
+        # if effective_call_id and effective_call_id not in self._initial_tts_sent:
+        #     self._initial_tts_sent.add(effective_call_id)
+        #     self.logger.debug(f"[INIT_TTS_FORCE] First RTP detected -> Playing initial TTS for call_id={effective_call_id}")
+        #     asyncio.create_task(self._play_tts(effective_call_id, "リバティーコールです。"))
         
         # 無音判定（RTPペイロードのエネルギー判定）
         if effective_call_id:
