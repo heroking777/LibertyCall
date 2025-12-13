@@ -31,11 +31,8 @@ if not CUSTOMER_PATH.exists():
 
 print("▶ お客様音声を読み込み中...")
 customer = AudioSegment.from_file(str(CUSTOMER_PATH))
-
-# --- タイミング設定 ---
-# あなたの音声に対して、AIのセリフを順に挿入
-# 必要に応じて時間調整してください
-insert_points = [0, 4.5, 8.5, 13.0, 18.0, 22.5, 27.0]  # 秒単位
+customer_duration = len(customer) / 1000.0
+print(f"  お客様音声の長さ: {customer_duration:.2f}秒")
 
 print("▶ AI音声を読み込み中...")
 ai_segments = []
@@ -44,32 +41,61 @@ for f in AI_VOICE_FILES:
     if not ai_path.exists():
         print(f"警告: AI音声ファイルが見つかりません: {ai_path}")
         continue
-    ai_segments.append(AudioSegment.from_file(str(ai_path)))
+    seg = AudioSegment.from_file(str(ai_path))
+    ai_segments.append(seg)
+    print(f"  {f}: {len(seg)/1000:.2f}秒")
 
 if len(ai_segments) != len(AI_VOICE_FILES):
     print(f"エラー: AI音声ファイルが不足しています ({len(ai_segments)}/{len(AI_VOICE_FILES)})")
     exit(1)
 
-# --- ミックス開始 ---
-final_audio = AudioSegment.silent(duration=0)
+# --- 会話形式で合成 ---
+# AIと人間が交互に会話する形式
+# パターン: AI → 人間 → AI → 人間 → ...
+# 人間の音声を適切な長さに分割して配置
+
+print("\n▶ 会話形式で合成中...")
+
+# 人間の音声を7つのセクションに分割（AI音声の数に合わせる）
+# 各セクションの長さを計算（均等分割ではなく、AI音声の長さに合わせて調整）
+customer_sections = []
+total_ai_duration = sum(len(seg) for seg in ai_segments) / 1000.0
+remaining_customer = customer
+
+# 人間の音声をAI音声の間に入れるように分割
+# 各AI音声の後に人間の応答が来る想定
+section_durations = [
+    customer_duration * 0.15,  # 最初の応答（短め）
+    customer_duration * 0.12,  # 2番目
+    customer_duration * 0.13,  # 3番目
+    customer_duration * 0.12,  # 4番目
+    customer_duration * 0.15,  # 5番目
+    customer_duration * 0.10,  # 6番目
+    customer_duration * 0.23,  # 最後（長め）
+]
 
 cursor = 0
-for i, ai_seg in enumerate(ai_segments):
-    start_time = insert_points[i] * 1000
-    end_time = (insert_points[i] + len(ai_seg) / 1000) * 1000
-    
-    # customerの該当区間までを追加
-    if start_time > cursor:
-        final_audio += customer[cursor:int(start_time)]
-    
-    # 少し無音を挿入してAI音声を追加
-    final_audio += AudioSegment.silent(duration=400)
-    final_audio += ai_seg
-    cursor = int(end_time)
+for i, duration in enumerate(section_durations):
+    end_pos = min(cursor + int(duration * 1000), len(customer))
+    section = customer[cursor:end_pos]
+    customer_sections.append(section)
+    cursor = end_pos
+    print(f"  人間セクション{i+1}: {len(section)/1000:.2f}秒")
 
-# 残りのcustomer音声を追加
-if cursor < len(customer):
-    final_audio += customer[cursor:]
+# 会話形式で合成: AI → 人間 → AI → 人間 → ...
+final_audio = AudioSegment.silent(duration=0)
+
+for i in range(len(ai_segments)):
+    # AI音声を追加
+    print(f"  AI音声{i+1}を追加...")
+    final_audio += ai_segments[i]
+    final_audio += AudioSegment.silent(duration=300)  # 少し間を空ける
+    
+    # 人間の応答を追加
+    if i < len(customer_sections):
+        print(f"  人間応答{i+1}を追加...")
+        final_audio += customer_sections[i]
+        final_audio += AudioSegment.silent(duration=300)  # 少し間を空ける
 
 # --- 音量正規化＆軽いEQ風処理 ---
 final_audio = final_audio.apply_gain(-2.5)  # 全体音量調整
