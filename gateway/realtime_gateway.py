@@ -553,14 +553,26 @@ class RealtimeGateway:
             else:
                 # 音声送信できない or 待機中
                 if self.tts_queue:
-                    consecutive_skips += 1
-                    if consecutive_skips == 1 or consecutive_skips % 300 == 0:  # 最初と300回ごとにログ（スパム防止）
-                        self.logger.warning(
-                            f"TTS_SENDER_BLOCKED: queue_len={len(self.tts_queue)} "
-                            f"rtp_peer={self.rtp_peer} "
-                            f"rtp_transport={self.rtp_transport is not None} "
-                            f"consecutive_skips={consecutive_skips}"
-                        )
+                    # rtp_peer が None の場合は、RTPパケットが来るまで待機（キューは保持）
+                    if self.rtp_peer is None:
+                        consecutive_skips += 1
+                        if consecutive_skips == 1 or consecutive_skips % 300 == 0:  # 最初と300回ごとにログ（スパム防止）
+                            self.logger.warning(
+                                f"TTS_SENDER_BLOCKED: queue_len={len(self.tts_queue)} "
+                                f"rtp_peer=None (waiting for RTP connection) "
+                                f"rtp_transport={self.rtp_transport is not None} "
+                                f"consecutive_skips={consecutive_skips}"
+                            )
+                    else:
+                        # rtp_peer は設定されているが、rtp_transport が None の場合
+                        consecutive_skips += 1
+                        if consecutive_skips == 1 or consecutive_skips % 300 == 0:
+                            self.logger.warning(
+                                f"TTS_SENDER_BLOCKED: queue_len={len(self.tts_queue)} "
+                                f"rtp_peer={self.rtp_peer} "
+                                f"rtp_transport=None "
+                                f"consecutive_skips={consecutive_skips}"
+                            )
                 if not self.tts_queue:
                     self.is_speaking_tts = False
                     consecutive_skips = 0
