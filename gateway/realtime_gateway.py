@@ -593,9 +593,11 @@ class RealtimeGateway:
                     try:
                         payload = self.tts_queue.popleft()
                         packet = self.rtp_builder.build_packet(payload)
-                        self.rtp_transport.sendto(packet, self.rtp_peer)
+                        # RTP送信先を常にローカルIP (0.0.0.0) → 相手ポートに送る（ループバック分離対策）
+                        safe_peer = ("0.0.0.0", self.rtp_peer[1] if self.rtp_peer else 0)
+                        self.rtp_transport.sendto(packet, safe_peer)
                         # 実際に送信したタイミングでログ出力（運用ログ整備）
-                        self.logger.debug(f"[TTS_QUEUE_SEND] queue_len={len(self.tts_queue)} peer={self.rtp_peer}")
+                        self.logger.debug(f"[TTS_QUEUE_SEND] sent RTP packet to {safe_peer}, queue_len={len(self.tts_queue)}")
                         consecutive_skips = 0  # リセット
                     except Exception as e:
                         self.logger.error(f"TTS sender failed: {e}", exc_info=True)
