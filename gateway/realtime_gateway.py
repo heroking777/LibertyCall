@@ -588,37 +588,25 @@ class RealtimeGateway:
         self.logger.debug("TTS Sender loop started.")
         consecutive_skips = 0
         while self.running:
-            if self.tts_queue and self.rtp_peer and self.rtp_transport:
-                try:
-                    payload = self.tts_queue.popleft()
-                    packet = self.rtp_builder.build_packet(payload)
-                    self.rtp_transport.sendto(packet, self.rtp_peer)
-                    consecutive_skips = 0  # リセット
-                except Exception as e:
-                    self.logger.error(f"TTS sender failed: {e}", exc_info=True)
+            if self.tts_queue and self.rtp_transport:
+                if self.rtp_peer is not None:
+                    try:
+                        payload = self.tts_queue.popleft()
+                        packet = self.rtp_builder.build_packet(payload)
+                        self.rtp_transport.sendto(packet, self.rtp_peer)
+                        consecutive_skips = 0  # リセット
+                    except Exception as e:
+                        self.logger.error(f"TTS sender failed: {e}", exc_info=True)
+                else:
+                    # 🔹 rtp_peer が未設定の間はキュー保持（破棄しない）
+                    consecutive_skips += 1
+                    if consecutive_skips == 1 or consecutive_skips % 200 == 0:
+                        self.logger.warning(
+                            f"[TTS_WAITING_FOR_RTP] queue_len={len(self.tts_queue)} "
+                            f"rtp_peer=None rtp_transport={self.rtp_transport is not None}"
+                        )
             else:
-                # 音声送信できない or 待機中
-                if self.tts_queue:
-                    # rtp_peer が None の場合は、RTPパケットが来るまで待機（キューは保持）
-                    if self.rtp_peer is None:
-                        consecutive_skips += 1
-                        if consecutive_skips == 1 or consecutive_skips % 300 == 0:  # 最初と300回ごとにログ（スパム防止）
-                            self.logger.warning(
-                                f"TTS_SENDER_BLOCKED: queue_len={len(self.tts_queue)} "
-                                f"rtp_peer=None (waiting for RTP connection) "
-                                f"rtp_transport={self.rtp_transport is not None} "
-                                f"consecutive_skips={consecutive_skips}"
-                            )
-                    else:
-                        # rtp_peer は設定されているが、rtp_transport が None の場合
-                        consecutive_skips += 1
-                        if consecutive_skips == 1 or consecutive_skips % 300 == 0:
-                            self.logger.warning(
-                                f"TTS_SENDER_BLOCKED: queue_len={len(self.tts_queue)} "
-                                f"rtp_peer={self.rtp_peer} "
-                                f"rtp_transport=None "
-                                f"consecutive_skips={consecutive_skips}"
-                            )
+                # キューが空 or 停止状態
                 if not self.tts_queue:
                     self.is_speaking_tts = False
                     consecutive_skips = 0
@@ -988,14 +976,12 @@ class RealtimeGateway:
             if self.rtp_peer is None:
                 self.logger.warning(f"[RTP_INIT] First RTP packet from {addr}, setting as peer")
                 self.rtp_peer = addr
-                # RTP確立時に古いTTSをすべて破棄し、最新のみ保持
-                if len(self.tts_queue) > 1:
-                    last_item = self.tts_queue[-1]
-                    dropped = len(self.tts_queue) - 1
-                    self.tts_queue.clear()
-                    self.tts_queue.append(last_item)
-                    self.logger.warning(f"[TTS_QUEUE_RESET] Dropped {dropped} items after RTP established (kept last only)")
-                self.logger.info(f"[TTS_SENDER] RTP peer established: {self.rtp_peer}, queue_len={len(self.tts_queue)}")
+                queue_len = len(self.tts_queue)
+                self.logger.info(f"[RTP_RECONNECTED] rtp_peer={addr}, queue_len={queue_len}")
+                if queue_len > 0:
+                    self.logger.info(f"[TTS_SENDER] RTP peer established: {self.rtp_peer}, {queue_len} queued packets will be sent")
+                else:
+                    self.logger.info(f"[TTS_SENDER] RTP peer established: {self.rtp_peer}, queue_len={queue_len}")
             elif addr != self.rtp_peer:
                 self.logger.warning(f"[RTP_SWITCH] RTP source changed from {self.rtp_peer} to {addr}")
                 self.rtp_peer = addr
