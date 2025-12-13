@@ -976,20 +976,23 @@ class RealtimeGateway:
                 self._rtp_recv_count = 0
             self._rtp_recv_count += 1
             
-            # RTPピアの設定・変更をログに記録
+            # RTPピアの設定（Asteriskへの送信先は常にlisten_portに固定）
+            # addr はAsteriskの送信元ポート（例: 12548）だが、送信先は受信ポート（例: 7002）にすべき
+            asterisk_rtp_dest = (self.rtp_host, self.rtp_port)
             last_peer_state = self.rtp_peer  # RTP確立前の状態を記録
             if self.rtp_peer is None:
-                self.logger.warning(f"[RTP_INIT] First RTP packet from {addr}, setting as peer")
-                self.rtp_peer = addr
+                self.logger.warning(f"[RTP_INIT] First RTP packet from {addr}, setting peer to Asterisk RTP destination {asterisk_rtp_dest}")
+                self.rtp_peer = asterisk_rtp_dest
                 queue_len = len(self.tts_queue)
-                self.logger.info(f"[RTP_RECONNECTED] rtp_peer={addr}, queue_len={queue_len}")
+                self.logger.info(f"[RTP_RECONNECTED] rtp_peer={self.rtp_peer} (Asterisk RTP destination), received from {addr}, queue_len={queue_len}")
                 if queue_len > 0:
                     self.logger.info(f"[TTS_SENDER] RTP peer established: {self.rtp_peer}, {queue_len} queued packets will be sent")
                 else:
                     self.logger.info(f"[TTS_SENDER] RTP peer established: {self.rtp_peer}, queue_len={queue_len}")
-            elif addr != self.rtp_peer:
-                self.logger.warning(f"[RTP_SWITCH] RTP source changed from {self.rtp_peer} to {addr}")
-                self.rtp_peer = addr
+            elif self.rtp_peer != asterisk_rtp_dest:
+                # rtp_peerが正しく設定されていない場合は修正
+                self.logger.warning(f"[RTP_PEER_FIXED] RTP peer was {self.rtp_peer}, fixing to {asterisk_rtp_dest}")
+                self.rtp_peer = asterisk_rtp_dest
             elif self._rtp_recv_count % 100 == 0:
                 self.logger.debug(f"[RTP_RECV] received {self._rtp_recv_count} packets from {addr}")
         except Exception as e:
@@ -1003,15 +1006,27 @@ class RealtimeGateway:
             getattr(self, 'call_id', None),
         )
         now = time.time()
+        # Asteriskへの送信先は常にlisten_portに固定
+        asterisk_rtp_dest = (self.rtp_host, self.rtp_port)
         if self.rtp_peer is None:
-            self.rtp_peer = addr
-            self.logger.debug(f"RTP peer detected: {addr}")
-        elif addr != self.rtp_peer:
+            self.rtp_peer = asterisk_rtp_dest
+            self.logger.debug(f"RTP peer detected: {self.rtp_peer} (Asterisk RTP destination), received from {addr}")
+        elif self.rtp_peer != asterisk_rtp_dest:
+            # rtp_peerが正しく設定されていない場合は修正
+            self.logger.warning(f"[RTP_PEER_FIXED] RTP peer was {self.rtp_peer}, fixing to {asterisk_rtp_dest}")
+            self.rtp_peer = asterisk_rtp_dest
+        # 受信元アドレスの変更を検出（通話の切り替えなど）
+        if not hasattr(self, "_rtp_src_addr"):
+            self._rtp_src_addr = None
+        if self._rtp_src_addr is None:
+            self._rtp_src_addr = addr
+            self.logger.debug(f"RTP source address set: {addr}")
+        elif addr != self._rtp_src_addr:
             idle = now - self.last_rtp_packet_time if self.last_rtp_packet_time else None
             if idle is None or idle >= self.RTP_PEER_IDLE_TIMEOUT:
                 self.logger.info(
-                    "RTP peer changed from %s to %s (idle=%.2fs) -> resetting call state",
-                    self.rtp_peer,
+                    "RTP source changed from %s to %s (idle=%.2fs) -> resetting call state",
+                    self._rtp_src_addr,
                     addr,
                     idle if idle is not None else -1.0,
                 )
@@ -1019,8 +1034,8 @@ class RealtimeGateway:
                     self._complete_console_call()
                 # ★ 常に完全なリセットを実行
                 self._reset_call_state()
-                self.rtp_peer = addr
-                self.logger.debug(f"RTP peer re-bound: {addr}")
+                self._rtp_src_addr = addr
+                self.logger.debug(f"RTP source re-bound: {addr}")
             else:
                 self.logger.debug(
                     "Ignoring unexpected RTP packet from %s (active peer=%s idle=%.2fs)",
@@ -2060,6 +2075,7 @@ class RealtimeGateway:
         self.is_user_speaking = False
         self.last_voice_time = time.time()
         self.rtp_peer = None
+        self._rtp_src_addr = None  # 受信元アドレスもリセット
         self.rtp_packet_count = 0
         self.last_rtp_packet_time = 0.0
         self._last_tts_text = None  # 直前のTTSテキストもリセット
