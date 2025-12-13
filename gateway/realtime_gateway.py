@@ -2296,26 +2296,26 @@ class RealtimeGateway:
                             )
                             
                             # console_bridge に無音切断イベントを記録
-                            if self.console_bridge.enabled:
-                                try:
-                                    caller_number = getattr(self.ai_core, "caller_number", None) or "unknown"
-                                    self.console_bridge.record_event(
-                                        call_id,
-                                        "auto_hangup_silence",
-                                        {
-                                            "elapsed": elapsed,
-                                            "caller": caller_number,
-                                            "max_silence_time": max_silence_time,
-                                        }
-                                    )
-                                    self.logger.info(
-                                        f"[AUTO-HANGUP] Event recorded: call_id={call_id} elapsed={elapsed:.1f}s"
-                                    )
-                                except Exception as e:
-                                    self.logger.error(
-                                        f"[AUTO-HANGUP] Failed to record event for call_id={call_id}: {e}",
-                                        exc_info=True
-                                    )
+                            # 注意: enabled チェックは record_event() 内で行わない（ファイル記録のため常に実行）
+                            try:
+                                caller_number = getattr(self.ai_core, "caller_number", None) or "unknown"
+                                self.console_bridge.record_event(
+                                    call_id,
+                                    "auto_hangup_silence",
+                                    {
+                                        "elapsed": elapsed,
+                                        "caller": caller_number,
+                                        "max_silence_time": max_silence_time,
+                                    }
+                                )
+                                self.logger.info(
+                                    f"[AUTO-HANGUP] Event recorded: call_id={call_id} elapsed={elapsed:.1f}s"
+                                )
+                            except Exception as e:
+                                self.logger.error(
+                                    f"[AUTO-HANGUP] Failed to record event for call_id={call_id}: {e}",
+                                    exc_info=True
+                                )
                             
                             try:
                                 # 非同期タスクとして実行（既存の同期関数を呼び出す）

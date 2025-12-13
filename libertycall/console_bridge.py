@@ -120,6 +120,8 @@ class ConsoleBridge:
     def record_event(self, call_id: str, event_type: str, payload: dict) -> None:
         """
         個別イベントを履歴DBに記録する（例: 無音検出による自動切断）
+        
+        注意: enabled チェックは行わない（enabled=False でもファイルに記録する）
         """
         try:
             record = {
