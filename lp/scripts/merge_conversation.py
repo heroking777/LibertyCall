@@ -64,12 +64,13 @@ remaining_customer = customer
 
 # 人間の音声をAI音声の間に入れるように分割
 # 各AI音声の後に人間の応答が来る想定
+# AI音声4（12月15日ですね）の前の人間セクション3を長めに調整
 section_durations = [
-    customer_duration * 0.15,  # 最初の応答（短め）
-    customer_duration * 0.12,  # 2番目
-    customer_duration * 0.13,  # 3番目
-    customer_duration * 0.12,  # 4番目
-    customer_duration * 0.15,  # 5番目
+    customer_duration * 0.14,  # 最初の応答（短め）
+    customer_duration * 0.11,  # 2番目
+    customer_duration * 0.18,  # 3番目（長め - AI音声4の前に人間が話し終わるように）
+    customer_duration * 0.10,  # 4番目（短め）
+    customer_duration * 0.14,  # 5番目
     customer_duration * 0.10,  # 6番目
     customer_duration * 0.23,  # 最後（長め）
 ]
@@ -89,13 +90,13 @@ for i in range(len(ai_segments)):
     # AI音声を追加
     print(f"  AI音声{i+1}を追加...")
     final_audio += ai_segments[i]
-    final_audio += AudioSegment.silent(duration=300)  # 少し間を空ける
+    final_audio += AudioSegment.silent(duration=100)  # 間を短く（300ms → 100ms）
     
     # 人間の応答を追加
     if i < len(customer_sections):
         print(f"  人間応答{i+1}を追加...")
         final_audio += customer_sections[i]
-        final_audio += AudioSegment.silent(duration=300)  # 少し間を空ける
+        final_audio += AudioSegment.silent(duration=100)  # 間を短く（300ms → 100ms）
 
 # --- 音量正規化＆軽いEQ風処理 ---
 final_audio = final_audio.apply_gain(-2.5)  # 全体音量調整
