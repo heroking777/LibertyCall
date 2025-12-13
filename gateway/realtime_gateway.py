@@ -597,7 +597,8 @@ class RealtimeGateway:
                         safe_peer = ("0.0.0.0", self.rtp_peer[1] if self.rtp_peer else 0)
                         self.rtp_transport.sendto(packet, safe_peer)
                         # 実際に送信したタイミングでログ出力（運用ログ整備）
-                        self.logger.debug(f"[TTS_QUEUE_SEND] sent RTP packet to {safe_peer}, queue_len={len(self.tts_queue)}")
+                        payload_type = packet[1] & 0x7F
+                        self.logger.debug(f"[TTS_QUEUE_SEND] sent RTP packet to {safe_peer}, queue_len={len(self.tts_queue)}, payload_type={payload_type}")
                         consecutive_skips = 0  # リセット
                     except Exception as e:
                         self.logger.error(f"TTS sender failed: {e}", exc_info=True)
