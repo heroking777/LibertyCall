@@ -256,6 +256,7 @@ class RealtimeGateway:
         self._last_voice_time: Dict[str, float] = {}  # call_id -> 最後の有音フレーム検出時刻
         self._active_calls: set = set()  # アクティブな通話IDのセット
         self._initial_tts_sent: set = set()  # 初期TTS送信済みの通話IDセット
+        self._call_addr_map: Dict[Tuple[str, int], str] = {}  # (host, port) -> call_id のマッピング
         
         # 録音機能の初期化
         self.recording_enabled = os.getenv("LC_ENABLE_RECORDING", "0") == "1"
@@ -1004,7 +1005,14 @@ class RealtimeGateway:
         pcm_data = data[12:]
         
         # 最初のRTP到着時に初期音声を強制再生
-        effective_call_id = self._get_effective_call_id()
+        effective_call_id = self._get_effective_call_id(addr)
+        if not effective_call_id:
+            self.logger.warning(f"[RTP_WARN] Unknown RTP source {addr}, skipping frame")
+            return  # TEMP_CALLを使わずスキップ
+        
+        # ログ出力（RTP受信時のcall_id確認用）
+        self.logger.debug(f"[HANDLE_RTP_ENTRY] len={len(data)} addr={addr} call_id={effective_call_id}")
+        
         if effective_call_id and effective_call_id not in self._initial_tts_sent:
             self._initial_tts_sent.add(effective_call_id)
             self.logger.debug(f"[INIT_TTS_FORCE] First RTP detected -> Playing initial TTS for call_id={effective_call_id}")
@@ -1062,10 +1070,13 @@ class RealtimeGateway:
         
         # 最初のRTPパケット受信時に _active_calls に登録（確実なタイミング）
         # effective_call_id は上記の無音判定ブロックで取得済み
-        effective_call_id_for_registration = self._get_effective_call_id()
-        if effective_call_id_for_registration and effective_call_id_for_registration not in self._active_calls:
-            self._active_calls.add(effective_call_id_for_registration)
-            self.logger.debug(f"[RTP_ACTIVE] Registered call_id={effective_call_id_for_registration} to _active_calls")
+        if effective_call_id and effective_call_id not in self._active_calls:
+            self._active_calls.add(effective_call_id)
+            self.logger.debug(f"[RTP_ACTIVE] Registered call_id={effective_call_id} to _active_calls")
+            # アドレスとcall_idのマッピングを保存
+            if addr:
+                self._call_addr_map[addr] = effective_call_id
+                self.logger.debug(f"[RTP_ADDR_MAP] Mapped {addr} -> {effective_call_id}")
             
         # RTPパケット受信ログ（Google使用時は毎回INFO、それ以外は50パケットに1回）
         self.rtp_packet_count += 1
@@ -1722,8 +1733,28 @@ class RealtimeGateway:
                 lines.append(f"- {role}: {text}")
         return "\n".join(lines)
 
-    def _get_effective_call_id(self) -> str:
-        """call_idが未設定の場合は正式なcall_idを生成して返す"""
+    def _get_effective_call_id(self, addr: Optional[Tuple[str, int]] = None) -> Optional[str]:
+        """
+        RTP受信時に有効なcall_idを決定する。
+        
+        :param addr: RTP送信元のアドレス (host, port)。Noneの場合は既存のロジックを使用
+        :return: 有効なcall_id、見つからない場合はNone
+        """
+        # アドレスが指定されている場合は、アドレス紐づけを優先
+        if addr and hasattr(self, '_call_addr_map') and addr in self._call_addr_map:
+            return self._call_addr_map[addr]
+        
+        # すでにアクティブ通話が1件のみの場合はそれを使う
+        if hasattr(self, '_active_calls') and len(self._active_calls) == 1:
+            return next(iter(self._active_calls))
+        
+        # アクティブな通話がある場合は最後に開始された通話を使用
+        if hasattr(self, '_active_calls') and self._active_calls:
+            active = list(self._active_calls)
+            if active:
+                return active[-1]  # 最後に開始された通話を使用
+        
+        # 既存のロジック（call_idが未設定の場合は正式なcall_idを生成）
         if not self.call_id:
             # call_idが未設定の場合は正式なcall_idを生成
             if self.client_id:
@@ -1743,6 +1774,7 @@ class RealtimeGateway:
                     # client_idも設定
                     self.client_id = effective_client_id
                     self.logger.debug(f"Set client_id to default: {effective_client_id}")
+        
         return self.call_id
     
     def _maybe_send_audio_level(self, rms: int) -> None:
