@@ -59,10 +59,10 @@ customer_sections = []
 
 # 人間の音声をAI音声の間に入れるように分割
 section_durations = [
-    customer_duration * 0.30,  # 最初の応答（山本商事の山本ですけど、田中さんいますか？）
+    customer_duration * 0.35,  # 最初の応答（長め - AI音声2の前に人間が話し終わるように）
     customer_duration * 0.20,  # 2番目（見積りの件で）
     customer_duration * 0.30,  # 3番目（転送待ち中）
-    customer_duration * 0.20,  # 最後（余り）
+    customer_duration * 0.15,  # 最後（余り - セクション1を延長した分を調整）
 ]
 
 # 最初のセクションは無音をスキップ
