@@ -256,6 +256,7 @@ class RealtimeGateway:
         self._last_voice_time: Dict[str, float] = {}  # call_id -> 最後の有音フレーム検出時刻
         self._active_calls: set = set()  # アクティブな通話IDのセット
         self._initial_tts_sent: set = set()  # 初期TTS送信済みの通話IDセット
+        self._last_tts_text: Optional[str] = None  # 直前のTTSテキスト（重複防止用）
         self._call_addr_map: Dict[Tuple[str, int], str] = {}  # (host, port) -> call_id のマッピング
         
         # 録音機能の初期化
@@ -402,6 +403,12 @@ class RealtimeGateway:
         except Exception as e:
             self.logger.warning(f"Failed to write conversation trace log: {e}")
         
+        # 重複TTS防止: 直前のTTSテキストと同じ場合はキューに追加しない
+        tts_text_for_check = reply_text or (",".join(template_ids) if template_ids else "")
+        if tts_text_for_check and self._last_tts_text == tts_text_for_check:
+            self.logger.debug(f"[TTS_QUEUE_SKIP] duplicate text ignored: '{tts_text_for_check[:30]}...'")
+            return
+        
         # TTS生成
         tts_audio_24k = None
         if template_ids and self.ai_core.tts_client:
@@ -419,6 +426,8 @@ class RealtimeGateway:
         
         # TTSキューに追加
         if tts_audio_24k:
+            # 直前のTTSテキストを記録（重複防止用）
+            self._last_tts_text = tts_text_for_check
             ulaw_response = pcm24k_to_ulaw8k(tts_audio_24k)
             chunk_size = 160
             for i in range(0, len(ulaw_response), chunk_size):
@@ -938,9 +947,17 @@ class RealtimeGateway:
             self._rtp_recv_count += 1
             
             # RTPピアの設定・変更をログに記録
+            last_peer_state = self.rtp_peer  # RTP確立前の状態を記録
             if self.rtp_peer is None:
                 self.logger.warning(f"[RTP_INIT] First RTP packet from {addr}, setting as peer")
                 self.rtp_peer = addr
+                # RTP確立時に古すぎるTTSを安全に間引く
+                if len(self.tts_queue) > 30:
+                    drop = len(self.tts_queue) - 30
+                    for _ in range(drop):
+                        self.tts_queue.popleft()
+                    self.logger.warning(f"[TTS_QUEUE_TRIM] dropped {drop} old items after RTP established (queue_len was {len(self.tts_queue) + drop})")
+                self.logger.info(f"[TTS_SENDER] RTP peer established: {self.rtp_peer}, queue_len={len(self.tts_queue)}")
             elif addr != self.rtp_peer:
                 self.logger.warning(f"[RTP_SWITCH] RTP source changed from {self.rtp_peer} to {addr}")
                 self.rtp_peer = addr
@@ -2014,6 +2031,7 @@ class RealtimeGateway:
         self.rtp_peer = None
         self.rtp_packet_count = 0
         self.last_rtp_packet_time = 0.0
+        self._last_tts_text = None  # 直前のTTSテキストもリセット
         
         # ストリーミングモード用変数もリセット
         self._stream_chunk_counter = 0
