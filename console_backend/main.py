@@ -10,6 +10,7 @@ from .config import get_settings
 from .routers import logs_router
 from .routers.sendgrid_webhook import router as sendgrid_webhook_router
 from .routers import audio_tests
+from .routers import calls
 
 settings = get_settings()
 
@@ -34,6 +35,7 @@ app.add_middleware(
 app.include_router(logs_router, prefix=settings.api_prefix)
 app.include_router(sendgrid_webhook_router, prefix=settings.api_prefix, tags=["sendgrid"])
 app.include_router(audio_tests.router, prefix=settings.api_prefix)
+app.include_router(calls.router, prefix=settings.api_prefix)
 
 
 @app.get("/")
