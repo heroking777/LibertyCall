@@ -300,9 +300,28 @@ class RealtimeGateway:
             
             # 無音検出ループ開始（TTS送信後の無音を監視）
             if not getattr(self, "_silence_loop_started", False):
-                self.logger.info("RealtimeGateway started — launching silence monitor loop")
-                asyncio.create_task(self._no_input_monitor_loop())
-                self._silence_loop_started = True
+                self.logger.info("RealtimeGateway started — scheduling silence monitor loop")
+                try:
+                    # イベントループが確実に起動していることを確認
+                    loop = asyncio.get_running_loop()
+                    task = loop.create_task(self._no_input_monitor_loop())
+                    self._silence_loop_started = True
+                    self.logger.info("NO_INPUT_MONITOR_LOOP: scheduled successfully (task=%r)", task)
+                except RuntimeError as e:
+                    # イベントループがまだ起動していない場合（通常は発生しない）
+                    self.logger.error("Event loop not running yet — cannot start silence monitor loop: %s", e)
+                    # 少し遅延してから再試行（非同期で実行）
+                    async def delayed_start():
+                        await asyncio.sleep(1.0)
+                        try:
+                            loop = asyncio.get_running_loop()
+                            task = loop.create_task(self._no_input_monitor_loop())
+                            self._silence_loop_started = True
+                            self.logger.info("NO_INPUT_MONITOR_LOOP: scheduled successfully after delay (task=%r)", task)
+                        except Exception as ex:
+                            self.logger.exception("Delayed silence monitor launch failed: %s", ex)
+                    asyncio.create_task(delayed_start())
+                    self.logger.warning("Event loop not running yet — scheduled delayed silence monitor launch")
             else:
                 self.logger.warning("Silence monitor loop already started, skipping duplicate launch")
             
