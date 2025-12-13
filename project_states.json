@@ -11,62 +11,7 @@
     ],
     "status": "in_progress",
     "currentFocus": "Asterisk調整",
-    "tasks": [
-      {
-        "id": "task1",
-        "title": "SIP・RTPの流れをLibertyCall用に最適化する",
-        "status": "todo",
-        "note": "無駄なNAT変換や直接メディア接続を防ぎ、RTPがAsterisk経由でGatewayに流れるように最適化する"
-      },
-      {
-        "id": "task2",
-        "title": "extensions.confをLibertyCall仕様にする",
-        "status": "todo",
-        "note": "LibertyCallが主導権を握るように、無駄な動作（Answer/TTS/VAD）を排除"
-      },
-      {
-        "id": "task3",
-        "title": "RTP安定性を調整する（無言タイマーとKeepalive）",
-        "status": "todo",
-        "note": "無音でも通話が途切れないよう、RTPの安定性を向上させる"
-      },
-      {
-        "id": "task4",
-        "title": "ログ監視を実施する",
-        "status": "todo",
-        "note": "AsteriskのRTP学習や誤ったFINAL送信を監視する"
-      },
-      {
-        "id": "task5",
-        "title": "動作テストを行う",
-        "status": "todo",
-        "note": "保留からの復帰、転送、RTP安定性、DTMF検証、長時間通話の安定性をテスト"
-      },
-      {
-        "id": "task6",
-        "title": "ファイルログAPIの作成",
-        "status": "todo",
-        "note": "既存のFastAPIにファイルログを読む専用サービス + ルータを追加し、API経由でファイルログを取得・管理できるようにする"
-      },
-      {
-        "id": "task7",
-        "title": "ログファイルAPIに権限管理を追加",
-        "status": "todo",
-        "note": "adminとclientユーザーごとのログアクセス権限をAPIに組み込む"
-      },
-      {
-        "id": "task8",
-        "title": "管理画面にファイルログ一覧画面を追加",
-        "status": "todo",
-        "note": "/console/file-logs画面でファイルログ一覧を表示し、client_id、日付、call_idでフィルタリングできるようにする"
-      },
-      {
-        "id": "task9",
-        "title": "管理画面にファイルログ詳細画面を追加",
-        "status": "todo",
-        "note": "/console/file-logs/:clientId/:callId画面で通話の詳細をタイムライン形式で表示"
-      }
-    ],
+    "tasks": [],
     "decisions": [
       {
         "id": "decision1",
@@ -391,6 +336,6 @@
       "_archive_20251113": "2025年11月13日アーカイブ",
       "LibertyCall": "旧バージョンコード"
     },
-    "updatedAt": "2025-12-11T08:01:48.692805Z"
+    "updatedAt": "2025-12-13T03:59:24.050Z"
   }
 }
