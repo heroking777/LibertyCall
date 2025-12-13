@@ -1,10 +1,13 @@
 """通話履歴APIルーター."""
 
 import json
+import asyncio
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Set
 from fastapi import APIRouter, HTTPException, Query, Depends, Request, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -25,6 +28,9 @@ router = APIRouter(prefix="/calls", tags=["calls"])
 
 # ファイルベースのログパス
 CALL_EVENTS_LOG_PATH = Path("/opt/libertycall/logs/call_events.log")
+
+# SSE購読者管理（リアルタイム更新用）
+sse_subscribers: Set[asyncio.Queue] = set()
 
 
 def get_mongo_client():
@@ -193,4 +199,88 @@ async def record_event(request: Request):
         logger = logging.getLogger(__name__)
         logger.error(f"[record_event] Failed: {e}", exc_info=True)
         return {"status": "error", "error": str(e)}
+
+
+async def push_call_event(call_id: str, summary: Optional[str] = None, event: Optional[Dict[str, Any]] = None):
+    """
+    通話イベントをSSE購読者にプッシュする（リアルタイム更新用）.
+    
+    Args:
+        call_id: 通話ID
+        summary: 要約テキスト（更新時）
+        event: イベントデータ（会話ログなど）
+    """
+    if not sse_subscribers:
+        return
+    
+    data = {
+        "call_id": call_id,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    if summary:
+        data["summary"] = summary
+    if event:
+        data["event"] = event
+    
+    # すべての購読者にイベントを送信
+    for queue in list(sse_subscribers):
+        try:
+            await queue.put(data)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to push event to subscriber: {e}")
+
+
+@router.get("/stream")
+async def calls_stream(request: Request, id: Optional[str] = Query(None, description="通話ID（フィルタ用）")):
+    """
+    SSEストリームエンドポイント（リアルタイム更新用）.
+    
+    通話中の会話ログや要約更新をリアルタイムで配信します。
+    """
+    async def event_generator():
+        queue = asyncio.Queue()
+        sse_subscribers.add(queue)
+        
+        try:
+            # 接続確認のための初期メッセージ
+            yield f"data: {json.dumps({'type': 'connected', 'call_id': id})}\n\n"
+            
+            while True:
+                # クライアントが切断したかチェック
+                if await request.is_disconnected():
+                    break
+                
+                try:
+                    # キューからイベントを取得（タイムアウト付き）
+                    event = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    
+                    # call_idフィルタリング
+                    if id and event.get("call_id") != id:
+                        continue
+                    
+                    # SSE形式で送信
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    # タイムアウト時はハートビートを送信（接続維持）
+                    yield f": heartbeat\n\n"
+                    continue
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Error in event stream: {e}", exc_info=True)
+                    break
+        finally:
+            sse_subscribers.discard(queue)
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Nginxバッファリング無効化
+        }
+    )
 
