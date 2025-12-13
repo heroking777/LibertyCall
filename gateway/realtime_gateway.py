@@ -2352,16 +2352,13 @@ class RealtimeGateway:
     async def _play_tts(self, call_id: str, text: str):
         """
         TTS音声を再生する
-        
-        :param call_id: 通話ID
-        :param text: 再生するテキスト
         """
         self.logger.debug(f"[PLAY_TTS] called text='{text}' stream={getattr(self, 'audio_out_stream', None)}")
-        if not hasattr(self, 'audio_out_stream') or not self.audio_out_stream:
-            self.logger.warning(f"[PLAY_TTS] skipped — no active audio stream for {call_id}")
-            return
         try:
+            # audio_out_stream の存在チェックは廃止
+            # TTS送信は self._send_tts() に任せる
             self._send_tts(call_id, text, None, False)
+            self.logger.debug(f"[PLAY_TTS] dispatched text='{text}' to TTS queue for {call_id}")
         except Exception as e:
             self.logger.error(f"TTS playback failed for call_id={call_id}: {e}", exc_info=True)
     
