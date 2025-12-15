@@ -968,23 +968,22 @@ class RealtimeGateway:
                 self._rtp_recv_count = 0
             self._rtp_recv_count += 1
             
-            # RTPピアの設定（Asteriskへの送信先は常にlisten_portに固定）
-            # addr はAsteriskの送信元ポート（例: 12548）だが、送信先は受信ポート（例: 7002）にすべき
-            asterisk_rtp_dest = (self.rtp_host, self.rtp_port)
+            # FreeSWITCH 双方向化: 受信元のアドレス/ポートへ返信する
+            incoming_peer = (addr[0], addr[1])
             last_peer_state = self.rtp_peer  # RTP確立前の状態を記録
             if self.rtp_peer is None:
-                self.logger.warning(f"[RTP_INIT] First RTP packet from {addr}, setting peer to Asterisk RTP destination {asterisk_rtp_dest}")
-                self.rtp_peer = asterisk_rtp_dest
+                self.logger.warning(f"[RTP_INIT] First RTP packet from {addr}, setting peer to {incoming_peer}")
+                self.rtp_peer = incoming_peer
                 queue_len = len(self.tts_queue)
-                self.logger.info(f"[RTP_RECONNECTED] rtp_peer={self.rtp_peer} (Asterisk RTP destination), received from {addr}, queue_len={queue_len}")
+                self.logger.info(f"[RTP_RECONNECTED] rtp_peer={self.rtp_peer}, received from {addr}, queue_len={queue_len}")
                 if queue_len > 0:
                     self.logger.info(f"[TTS_SENDER] RTP peer established: {self.rtp_peer}, {queue_len} queued packets will be sent")
                 else:
                     self.logger.info(f"[TTS_SENDER] RTP peer established: {self.rtp_peer}, queue_len={queue_len}")
-            elif self.rtp_peer != asterisk_rtp_dest:
-                # rtp_peerが正しく設定されていない場合は修正
-                self.logger.warning(f"[RTP_PEER_FIXED] RTP peer was {self.rtp_peer}, fixing to {asterisk_rtp_dest}")
-                self.rtp_peer = asterisk_rtp_dest
+            elif self.rtp_peer != incoming_peer:
+                # 送信元が変わった場合は最新の送信元へ更新
+                self.logger.warning(f"[RTP_PEER_FIXED] RTP peer was {self.rtp_peer}, updating to {incoming_peer}")
+                self.rtp_peer = incoming_peer
             elif self._rtp_recv_count % 100 == 0:
                 self.logger.debug(f"[RTP_RECV] received {self._rtp_recv_count} packets from {addr}")
         except Exception as e:
