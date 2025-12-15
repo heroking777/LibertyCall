@@ -589,16 +589,19 @@ class RealtimeGateway:
         consecutive_skips = 0
         while self.running:
             if self.tts_queue and self.rtp_transport:
-                # Asteriskへの送信先は常にlisten_portに固定（rtp_peerの状態に関係なく）
-                # rtp_peerは受信元アドレスの追跡用で、送信先とは別
-                asterisk_rtp_dest = (self.rtp_host, self.rtp_port)
+                # FreeSWITCH双方向化: 受信元アドレス（rtp_peer）に送信
+                # rtp_peerが設定されていない場合はlisten_portにフォールバック
+                if self.rtp_peer:
+                    rtp_dest = self.rtp_peer
+                else:
+                    rtp_dest = (self.rtp_host, self.rtp_port)
                 try:
                     payload = self.tts_queue.popleft()
                     packet = self.rtp_builder.build_packet(payload)
-                    self.rtp_transport.sendto(packet, asterisk_rtp_dest)
+                    self.rtp_transport.sendto(packet, rtp_dest)
                     # 実際に送信したタイミングでログ出力（運用ログ整備）
                     payload_type = packet[1] & 0x7F
-                    self.logger.debug(f"[TTS_QUEUE_SEND] sent RTP packet to {asterisk_rtp_dest}, queue_len={len(self.tts_queue)}, payload_type={payload_type}")
+                    self.logger.debug(f"[TTS_QUEUE_SEND] sent RTP packet to {rtp_dest}, queue_len={len(self.tts_queue)}, payload_type={payload_type}")
                     consecutive_skips = 0  # リセット
                 except Exception as e:
                     self.logger.error(f"TTS sender failed: {e}", exc_info=True)
@@ -997,15 +1000,8 @@ class RealtimeGateway:
             getattr(self, 'call_id', None),
         )
         now = time.time()
-        # Asteriskへの送信先は常にlisten_portに固定
-        asterisk_rtp_dest = (self.rtp_host, self.rtp_port)
-        if self.rtp_peer is None:
-            self.rtp_peer = asterisk_rtp_dest
-            self.logger.debug(f"RTP peer detected: {self.rtp_peer} (Asterisk RTP destination), received from {addr}")
-        elif self.rtp_peer != asterisk_rtp_dest:
-            # rtp_peerが正しく設定されていない場合は修正
-            self.logger.warning(f"[RTP_PEER_FIXED] RTP peer was {self.rtp_peer}, fixing to {asterisk_rtp_dest}")
-            self.rtp_peer = asterisk_rtp_dest
+        # FreeSWITCH双方向化: rtp_peerは上記で既に設定済み（incoming_peer）
+        # 上書きしない（FreeSWITCHは受信元アドレスに送信する必要がある）
         # 受信元アドレスの変更を検出（通話の切り替えなど）
         if not hasattr(self, "_rtp_src_addr"):
             self._rtp_src_addr = None
