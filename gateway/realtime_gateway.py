@@ -1121,6 +1121,42 @@ class RealtimeGateway:
         asr_provider = getattr(self.ai_core, 'asr_provider', 'google')
         is_google_streaming = (asr_provider == "google" and self.streaming_enabled)
         
+        # 最初の RTP パケット受信時に client_id を識別
+        # FreeSWITCH 側で local_rtp_port を destination_number+100 としているため、送信元ポートから決定する
+        # 例: 7002 -> local 7102 -> client_id 7002 / 7003 -> local 7103 -> client_id 7003
+        if not self.client_id and self.rtp_packet_count == 1:
+            src_port = addr[1]
+            inferred_client_id = None
+            try:
+                if 7100 <= src_port <= 8100:
+                    inferred = src_port - 100
+                    if 7000 <= inferred <= 7999:
+                        inferred_client_id = str(inferred)
+            except Exception:
+                inferred_client_id = None
+            
+            if not inferred_client_id:
+                inferred_client_id = os.getenv("LC_CLIENT_ID_FROM_FS") or self.default_client_id
+                self.logger.info(f"[CLIENT_ID_DEFAULT] src_port={src_port} -> client_id={inferred_client_id}")
+            else:
+                self.logger.info(f"[CLIENT_ID_DETECTED] src_port={src_port} -> client_id={inferred_client_id}")
+
+            self.client_id = inferred_client_id
+
+            # クライアントプロファイルをロード
+            try:
+                self.client_profile = load_client_profile(self.client_id)
+                self.rules = self.client_profile.get("rules", {})
+                self.logger.info(f"[CLIENT_PROFILE_LOADED] client_id={self.client_id}")
+            except FileNotFoundError:
+                self.logger.warning(f"[CLIENT_PROFILE_NOT_FOUND] client_id={self.client_id}, using default")
+                self.client_profile = None
+                self.rules = {}
+            except Exception as e:
+                self.logger.error(f"[CLIENT_PROFILE_ERROR] Failed to load profile for {self.client_id}: {e}", exc_info=True)
+                self.client_profile = None
+                self.rules = {}
+        
         # 最初の RTP パケット受信時に初回シーケンスを enqueue
         # client_id が設定されていない場合は default_client_id を使用
         if not self.initial_sequence_played and self.rtp_packet_count == 1:
