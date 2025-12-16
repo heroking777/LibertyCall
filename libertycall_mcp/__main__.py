@@ -6,3 +6,4 @@ This lets you run the MCP server via:
 from libertycall_mcp_http.server import main
 if __name__ == "__main__":
     main()
+
