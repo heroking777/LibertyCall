@@ -48,24 +48,33 @@ def main():
     
     try:
         while True:
-            e = con.recvEvent()
-            if e is None:
+            try:
+                e = con.recvEvent()
+                if e is None:
+                    continue
+                
+                event_name = e.getHeader("Event-Name")
+                uuid = e.getHeader("Unique-ID")
+                
+                # イベント名が取得できない場合はスキップ
+                if not event_name:
+                    continue
+                
+                logger.info(f"EVENT: {event_name} UUID={uuid}")
+                
+                if event_name == "CHANNEL_CREATE":
+                    logger.info(f"チャンネル作成: CREATE イベント UUID={uuid}")
+                    handle_channel_create(uuid, e)
+                elif event_name == "CHANNEL_ANSWER":
+                    logger.info(f"通話開始: ANSWER イベント UUID={uuid}")
+                    handle_call(uuid, e)
+                elif event_name == "CHANNEL_HANGUP":
+                    logger.info(f"通話終了: HANGUP イベント UUID={uuid}")
+                    handle_hangup(uuid, e)
+            except Exception as e:
+                # 個別のイベント処理エラーをログに記録して続行
+                logger.warning(f"イベント処理エラー（継続）: {e}")
                 continue
-            
-            event_name = e.getHeader("Event-Name")
-            uuid = e.getHeader("Unique-ID")
-            
-            logger.info(f"EVENT: {event_name} UUID={uuid}")
-            
-            if event_name == "CHANNEL_CREATE":
-                logger.info(f"チャンネル作成: CREATE イベント UUID={uuid}")
-                handle_channel_create(uuid, e)
-            elif event_name == "CHANNEL_ANSWER":
-                logger.info(f"通話開始: ANSWER イベント UUID={uuid}")
-                handle_call(uuid, e)
-            elif event_name == "CHANNEL_HANGUP":
-                logger.info(f"通話終了: HANGUP イベント UUID={uuid}")
-                handle_hangup(uuid, e)
     
     except KeyboardInterrupt:
         logger.info("Event Socket Listener を終了します")

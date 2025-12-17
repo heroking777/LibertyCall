@@ -308,7 +308,7 @@ class ESLconnection(object):
             command = "bgapi %s" % (command)
 
         if job_uuid:
-            command = "%s\nJob-UUID: %s" (command, job_uuid)
+            command = "%s\nJob-UUID: %s" % (command, job_uuid)
 
         return self.sendRecv(command)
 
