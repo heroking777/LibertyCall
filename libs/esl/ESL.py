@@ -385,6 +385,9 @@ class ESLconnection(object):
             data = self.__receive()
         except(socket.timeout):
             data = None
+        except Exception as e:
+            # 予期しないエラーを安全に処理（リスナーが落ちないように）
+            data = None
 
         self.__sock.settimeout(orig_timeout)
 
@@ -511,33 +514,59 @@ class ESLconnection(object):
     def __receive(self):
         chunks = []
         body_len = 0
-        chunk = self.__sock.recv(2048)
-        if chunk:
-            chunks.append(chunk)
-            chunk_split = chunk.split(b'\n\n')
-            headers = chunk_split.pop(0)
-            body = b'\n\n'.join(chunk_split)
-            for line in headers.splitlines():
-                if not line:
-                    continue
-
-                k, v = (None, None)
-                try:
-                    k, v = line.split(b': ')
-                except(ValueError):
-                    continue
-                if k == b'Content-Length':
-                    body_len = int(v)
-
-        need_bytes = body_len - len(body)
-
-        if need_bytes > 0:
-            bytes_recd = 0
-            while bytes_recd < need_bytes:
-                chunk = self.__sock.recv(min(need_bytes - bytes_recd, 2048))
-                if not chunk:
-                    break
+        body = b''  # body変数を初期化（UnboundLocalError回避）
+        
+        try:
+            chunk = self.__sock.recv(2048)
+            if chunk:
                 chunks.append(chunk)
-                bytes_recd = bytes_recd + len(chunk)
+                chunk_split = chunk.split(b'\n\n')
+                if chunk_split:
+                    headers = chunk_split.pop(0)
+                    if chunk_split:
+                        body = b'\n\n'.join(chunk_split)
+                    else:
+                        body = b''
+                else:
+                    headers = b''
+                    body = b''
+                
+                for line in headers.splitlines():
+                    if not line:
+                        continue
 
-        return (b''.join(chunks)).decode('utf=8')
+                    k, v = (None, None)
+                    try:
+                        k, v = line.split(b': ')
+                    except(ValueError):
+                        continue
+                    if k == b'Content-Length':
+                        try:
+                            body_len = int(v)
+                        except (ValueError):
+                            body_len = 0
+            else:
+                # 接続が閉じられた
+                return None
+
+            need_bytes = body_len - len(body)
+
+            if need_bytes > 0:
+                bytes_recd = 0
+                while bytes_recd < need_bytes:
+                    chunk = self.__sock.recv(min(need_bytes - bytes_recd, 2048))
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    bytes_recd = bytes_recd + len(chunk)
+
+            if chunks:
+                return (b''.join(chunks)).decode('utf-8')
+            else:
+                return None
+        except (socket.error, OSError, UnicodeDecodeError) as e:
+            # ソケットエラーやデコードエラーを安全に処理
+            return None
+        except Exception as e:
+            # その他の予期しないエラーも安全に処理
+            return None
