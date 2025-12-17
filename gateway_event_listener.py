@@ -119,7 +119,8 @@ def get_rtp_port(uuid):
     logger.info(f"[get_rtp_port] UUID={uuid} のRTPポートを取得中...")
     
     # fs_cliコマンドを明示的に実行（-H, -P, -pオプションを指定）
-    command = ["fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} local_media_port"]
+    # 絶対パスを使用してPATHの問題を回避
+    command = ["/usr/bin/fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} local_media_port"]
     
     # 最大5回リトライ（RTP確立を待つ）
     for i in range(5):
