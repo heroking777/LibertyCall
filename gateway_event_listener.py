@@ -102,94 +102,46 @@ def handle_channel_create(uuid, event):
 
 
 def get_rtp_port(uuid):
-    """FreeSWITCHから確実にB-LegのRTPポートを取得（リトライ機能付き）"""
+    """FreeSWITCH Inbound call 用 RTPポート取得（チャンネル変数から直接取得）"""
     import subprocess
     import time
-    import re
+    
+    logger.info(f"[get_rtp_port] UUID={uuid} のRTPポートを取得中...")
     
     # CHANNEL_EXECUTE_COMPLETE時点ではRTPネゴシエーションが完了しているため、
     # 短い待機時間で十分（念のため0.5秒待機）
     time.sleep(0.5)
     
-    logger.info(f"[get_rtp_port] A-Leg UUID={uuid} のB-Legを検索中...")
-    
-    # まずB-Leg UUIDを取得
-    target_uuid = uuid  # デフォルトはA-Leg
-    try:
-        leg_result = subprocess.run(
-            ["fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} uuid_bridge"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=2
-        )
-        
-        if leg_result.returncode == 0:
-            b_leg_uuid = leg_result.stdout.strip()
-            if b_leg_uuid and b_leg_uuid != "-ERR" and len(b_leg_uuid) > 10:
-                logger.info(f"[get_rtp_port] B-Leg UUIDを取得: {b_leg_uuid}")
-                target_uuid = b_leg_uuid
-            else:
-                logger.warning(f"[get_rtp_port] B-Leg UUIDが取得できません (A-Leg={uuid}), A-Legを使用")
-                target_uuid = uuid
-        else:
-            logger.warning(f"[get_rtp_port] uuid_getvar コマンドが失敗しました: {leg_result.stderr}")
-            target_uuid = uuid
-    except subprocess.TimeoutExpired:
-        logger.warning("[get_rtp_port] uuid_getvar タイムアウト, A-Legを使用")
-        target_uuid = uuid
-    except Exception as e:
-        logger.warning(f"[get_rtp_port] B-Leg取得中にエラー: {e}, A-Legを使用")
-        target_uuid = uuid
-    
-    # B-Leg UUIDでRTPポートを取得
+    # local_media_port を直接取得（Inbound構成ではA-Legのチャンネル変数に存在）
     for i in range(5):  # 最大5回リトライ
         try:
             result = subprocess.run(
-                ["fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_media {target_uuid}"],
+                ["fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} local_media_port"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 timeout=3
             )
             
-            if result.returncode == 0 and result.stdout:
-                logger.debug(f"[get_rtp_port] uuid_media 出力(試行{i+1}):\n{result.stdout.strip()}")
-                
-                # local_media_portを抽出
-                for line in result.stdout.splitlines():
-                    line_lower = line.lower()
-                    # 形式1: local_media_port=7002
-                    if "local_media_port" in line_lower and "=" in line:
-                        port = line.split("=")[-1].strip()
-                        if port.isdigit():
-                            logger.info(f"[get_rtp_port] RTPポート検出成功: {port} (試行{i+1}, UUID={target_uuid})")
-                            return port
-                    # 形式2: RTP Local Port: 7002
-                    elif "rtp" in line_lower and "local" in line_lower and "port" in line_lower:
-                        if ":" in line:
-                            port = line.split(":")[-1].strip()
-                            if port.isdigit():
-                                logger.info(f"[get_rtp_port] RTPポート検出成功: {port} (試行{i+1}, UUID={target_uuid})")
-                                return port
-                        else:
-                            # 数字だけを抽出
-                            match = re.search(r'\d+', line)
-                            if match:
-                                port = match.group()
-                                logger.info(f"[get_rtp_port] RTPポート検出成功: {port} (試行{i+1}, UUID={target_uuid})")
-                                return port
+            if result.returncode == 0:
+                port = result.stdout.strip()
+                # エラーメッセージや空文字列をチェック
+                if port and port.isdigit() and port != "-ERR":
+                    logger.info(f"[get_rtp_port] local_media_port={port} (試行{i+1})")
+                    return port
+                else:
+                    logger.debug(f"[get_rtp_port] 出力(試行{i+1}): {port}")
             else:
-                logger.debug(f"[get_rtp_port] uuid_media コマンドが失敗しました (試行{i+1}): {result.stderr}")
+                logger.debug(f"[get_rtp_port] uuid_getvar コマンドが失敗しました (試行{i+1}): {result.stderr}")
         except subprocess.TimeoutExpired:
-            logger.warning(f"[get_rtp_port] uuid_media タイムアウト (試行{i+1})")
+            logger.warning(f"[get_rtp_port] uuid_getvar タイムアウト (試行{i+1})")
         except Exception as e:
             logger.warning(f"[get_rtp_port] エラー (試行{i+1}): {e}")
         
         if i < 4:  # 最後の試行でない場合は待機
             time.sleep(0.5)  # 0.5秒待って再試行
     
-    logger.warning("[get_rtp_port] uuid_media 取得失敗、デフォルト7002使用")
+    logger.warning("[get_rtp_port] 取得失敗、デフォルト7002使用")
     return "7002"
 
 
