@@ -129,15 +129,18 @@ class FreeSwitchSocketClient:
             self.sock = None
 
 
-# グローバルなEvent Socket接続（永続接続）
-_fs_client = None
+# グローバルなPyESL Event Socket接続（メインのイベントリスナー接続を再利用）
+_esl_connection = None
 
-def get_fs_client():
-    """FreeSWITCH Event Socket接続を取得（シングルトン）"""
-    global _fs_client
-    if _fs_client is None:
-        _fs_client = FreeSwitchSocketClient()
-    return _fs_client
+def set_esl_connection(con):
+    """PyESL接続をグローバルに設定"""
+    global _esl_connection
+    _esl_connection = con
+
+def get_esl_connection():
+    """PyESL接続を取得"""
+    global _esl_connection
+    return _esl_connection
 
 
 def main():
@@ -157,6 +160,9 @@ def main():
         logger.error("確認: sudo netstat -tulnp | grep 8021")
         logger.error("確認: sudo systemctl status freeswitch")
         return 1
+    
+    # グローバルに接続を設定（get_rtp_port()で再利用）
+    set_esl_connection(con)
     
     logger.info("Event Socket Listener 起動")
     logger.info("受信イベント: CHANNEL_CREATE, CHANNEL_ANSWER, CHANNEL_EXECUTE_COMPLETE, CHANNEL_HANGUP")
@@ -220,11 +226,8 @@ def main():
     finally:
         con.disconnect()
         logger.info("Event Socket 接続を切断しました")
-        # 永続接続も閉じる
-        global _fs_client
-        if _fs_client:
-            _fs_client.close()
-            _fs_client = None
+        # グローバル接続をクリア
+        set_esl_connection(None)
 
 
 def handle_channel_create(uuid, event):
@@ -235,13 +238,16 @@ def handle_channel_create(uuid, event):
 
 
 def get_rtp_port(uuid):
-    """FreeSWITCH Inbound call 用 RTPポート取得（永続接続を使用）"""
+    """FreeSWITCH Inbound call 用 RTPポート取得（PyESL接続を再利用）"""
     import time
     
     logger.info(f"[get_rtp_port] UUID={uuid} のRTPポートを取得中...")
     
-    # 永続接続クライアントを取得
-    fs_client = get_fs_client()
+    # PyESL接続を取得（メインのイベントリスナー接続を再利用）
+    con = get_esl_connection()
+    if not con or not con.connected():
+        logger.warning("[get_rtp_port] PyESL接続が利用できません")
+        return "7002"
     
     # 最大5回リトライ（RTP確立を待つ）
     for i in range(5):
@@ -251,8 +257,17 @@ def get_rtp_port(uuid):
             
             logger.debug(f"[get_rtp_port] APIコマンド実行(試行{i+1}): uuid_getvar {uuid} local_media_port")
             
-            # APIコマンドを実行
-            response = fs_client.api(f"uuid_getvar {uuid} local_media_port")
+            # PyESLのapi()メソッドを使用（既存の接続を再利用）
+            event = con.api("uuid_getvar", f"{uuid} local_media_port")
+            
+            if event is None:
+                logger.warning(f"[get_rtp_port] API応答がNone (試行{i+1})")
+                continue
+            
+            # 応答ボディを取得
+            response = event.getBody()
+            if response:
+                response = response.strip()
             
             logger.debug(f"[get_rtp_port] 応答(試行{i+1}): {response}")
             
@@ -260,7 +275,7 @@ def get_rtp_port(uuid):
             if response and response.isdigit():
                 logger.info(f"[get_rtp_port] local_media_port={response} (試行{i+1})")
                 return response
-            elif "-ERR" in response:
+            elif response and "-ERR" in response:
                 logger.warning(f"[get_rtp_port] FreeSWITCH応答エラー: {response} (試行{i+1})")
                 # -ERR No such channel の場合は、まだRTPが確立していない可能性がある
                 if "No such channel" in response:
@@ -269,16 +284,7 @@ def get_rtp_port(uuid):
                 logger.debug(f"[get_rtp_port] 出力(試行{i+1}): {response}")
         
         except Exception as e:
-            logger.warning(f"[get_rtp_port] エラー (試行{i+1}): {e}")
-            # 接続エラーの場合は、接続をリセットして次回再接続させる
-            if "Connection" in str(e) or "socket" in str(e).lower():
-                try:
-                    fs_client.close()
-                except:
-                    pass
-                # グローバル接続をリセット
-                global _fs_client
-                _fs_client = None
+            logger.warning(f"[get_rtp_port] エラー (試行{i+1}): {e}", exc_info=True)
     
     logger.warning("[get_rtp_port] 全試行失敗、デフォルト7002使用")
     return "7002"
