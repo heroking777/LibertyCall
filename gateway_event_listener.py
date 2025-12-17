@@ -297,8 +297,11 @@ def handle_call(uuid, event):
     destination = event.getHeader("Caller-Destination-Number") or "unknown"
     logger.info(f"  Caller: {caller_id} -> Destination: {destination}")
     
+    # FreeSWITCHがUUIDにRTPポートを付与するのを待つ
+    # CHANNEL_EXECUTE_COMPLETE時点でも、内部チャンネル確立まで500-800msかかる
+    time.sleep(0.8)
+    
     # RTPポートをFreeSWITCHから取得（リトライ機能付き）
-    # get_rtp_port()内で1.5秒待機するため、ここでは待機不要
     rtp_port = get_rtp_port(uuid)
     logger.info(f"[handle_call] 使用するRTPポート: {rtp_port}")
     
