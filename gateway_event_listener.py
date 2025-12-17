@@ -112,27 +112,16 @@ def handle_channel_create(uuid, event):
 
 
 def get_rtp_port(uuid):
-    """FreeSWITCH Inbound call 用 RTPポート取得（チャンネル変数から直接取得）"""
-    import subprocess
+    """FreeSWITCH Inbound call 用 RTPポート取得（Event Socket Protocolを直接使用）"""
+    import socket
     import time
     
     logger.info(f"[get_rtp_port] UUID={uuid} のRTPポートを取得中...")
     
-    # fs_cliコマンドを明示的に実行（-H, -P, -pオプションを指定）
-    # 絶対パスを使用してPATHの問題を回避
-    # 127.0.0.1を明示的に使用してIPv4接続を強制（localhostのIPv6解決を回避）
-    command = ["/usr/bin/fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} local_media_port"]
-    
-    # 環境変数を完全に固定（subprocessで確実にroot権限・正しいPATHで実行）
-    import os
-    # 最小限の環境変数セット（PATH汚染を完全に回避）
-    env = {
-        "PATH": "/usr/bin:/bin",
-        "HOME": "/root",
-        "USER": "root",
-        "LC_ALL": "C",
-        "LANG": "en_US.UTF-8"
-    }
+    # Event Socket Protocolを直接使用（fs_cliを経由しない）
+    host = "127.0.0.1"
+    port = 8021
+    password = "ClueCon"
     
     # 最大5回リトライ（RTP確立を待つ）
     for i in range(5):
@@ -140,36 +129,90 @@ def get_rtp_port(uuid):
             # RTP確立待機（各リトライ前に1.5秒待機）
             time.sleep(1.5)
             
-            logger.debug(f"[get_rtp_port] 実行コマンド(試行{i+1}): {' '.join(command)} env[HOME]={env.get('HOME', 'N/A')}")
+            logger.debug(f"[get_rtp_port] Event Socket接続試行(試行{i+1}): {host}:{port}")
             
-            result = subprocess.run(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=5,  # タイムアウトを5秒に延長
-                env=env  # 環境変数を明示的に設定
-            )
+            # TCP接続
+            sock = socket.create_connection((host, port), timeout=5)
             
-            logger.debug(f"[get_rtp_port] returncode={result.returncode}, stdout={result.stdout.strip()}, stderr={result.stderr.strip()}")
-            
-            output = result.stdout.strip()
-            
-            # 数字かどうかをチェック（成功時）
-            if output.isdigit():
-                logger.info(f"[get_rtp_port] local_media_port={output} (試行{i+1})")
-                return output
-            
-            # エラーメッセージのチェック
-            if "-ERR" in output or result.returncode != 0:
-                logger.warning(f"[get_rtp_port] FreeSWITCH応答エラー: {output} (試行{i+1})")
-                if result.stderr.strip():
-                    logger.warning(f"[get_rtp_port] stderr: {result.stderr.strip()}")
-            else:
-                logger.debug(f"[get_rtp_port] 出力(試行{i+1}): {output}")
+            try:
+                # 認証リクエストを受信
+                auth_request = sock.recv(1024).decode('utf-8', errors='ignore')
+                logger.debug(f"[get_rtp_port] 認証リクエスト受信: {auth_request[:50]}")
+                
+                # 認証送信
+                auth_cmd = f"auth {password}\n\n"
+                sock.sendall(auth_cmd.encode('utf-8'))
+                
+                # 認証応答を受信
+                auth_response = sock.recv(1024).decode('utf-8', errors='ignore')
+                logger.debug(f"[get_rtp_port] 認証応答: {auth_response[:50]}")
+                
+                if "OK" not in auth_response and "accepted" not in auth_response.lower():
+                    logger.warning(f"[get_rtp_port] 認証失敗 (試行{i+1}): {auth_response[:100]}")
+                    sock.close()
+                    continue
+                
+                # uuid_getvarコマンドを送信
+                api_cmd = f"api uuid_getvar {uuid} local_media_port\n\n"
+                sock.sendall(api_cmd.encode('utf-8'))
+                
+                # 応答を受信
+                response = b""
+                while True:
+                    chunk = sock.recv(1024)
+                    if not chunk:
+                        break
+                    response += chunk
+                    # Content-Lengthを確認して完全な応答を受信
+                    if b"Content-Length:" in response:
+                        # Content-Lengthの値を取得
+                        lines = response.decode('utf-8', errors='ignore').split('\n')
+                        content_length = 0
+                        for line in lines:
+                            if line.startswith("Content-Length:"):
+                                try:
+                                    content_length = int(line.split(":")[1].strip())
+                                    break
+                                except (ValueError, IndexError):
+                                    pass
+                        
+                        if content_length > 0:
+                            # ヘッダー部分とボディ部分を分離
+                            header_end = response.find(b"\n\n")
+                            if header_end != -1:
+                                body_start = header_end + 2
+                                body = response[body_start:]
+                                if len(body) >= content_length:
+                                    # 完全な応答を受信
+                                    break
+                
+                response_text = response.decode('utf-8', errors='ignore')
+                logger.debug(f"[get_rtp_port] 応答(試行{i+1}): {response_text[:200]}")
+                
+                # ボディ部分を抽出
+                body_start = response_text.find("\n\n")
+                if body_start != -1:
+                    body = response_text[body_start + 2:].strip()
+                    # 数字かどうかをチェック（成功時）
+                    if body.isdigit():
+                        logger.info(f"[get_rtp_port] local_media_port={body} (試行{i+1})")
+                        sock.close()
+                        return body
+                    elif "-ERR" in body:
+                        logger.warning(f"[get_rtp_port] FreeSWITCH応答エラー: {body} (試行{i+1})")
+                    else:
+                        logger.debug(f"[get_rtp_port] 出力(試行{i+1}): {body}")
+                
+                sock.close()
+                
+            except Exception as e:
+                sock.close()
+                raise e
         
-        except subprocess.TimeoutExpired:
-            logger.warning(f"[get_rtp_port] uuid_getvar タイムアウト (試行{i+1})")
+        except socket.timeout:
+            logger.warning(f"[get_rtp_port] Event Socket接続タイムアウト (試行{i+1})")
+        except socket.error as e:
+            logger.warning(f"[get_rtp_port] Event Socket接続エラー (試行{i+1}): {e}")
         except Exception as e:
             logger.warning(f"[get_rtp_port] エラー (試行{i+1}): {e}", exc_info=True)
     
