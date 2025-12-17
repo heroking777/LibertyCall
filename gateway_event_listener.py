@@ -120,8 +120,8 @@ def get_rtp_port(uuid):
     
     # fs_cliコマンドを明示的に実行（-H, -P, -pオプションを指定）
     # 絶対パスを使用してPATHの問題を回避
-    # localhostを使用してIPv6優先解決の問題を回避
-    command = ["/usr/bin/fs_cli", "-H", "localhost", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} local_media_port"]
+    # 127.0.0.1を明示的に使用してIPv4接続を強制（localhostのIPv6解決を回避）
+    command = ["/usr/bin/fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} local_media_port"]
     
     # 環境変数を明示的に設定（Pythonプロセスの環境を継承）
     import os
