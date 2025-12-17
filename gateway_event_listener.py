@@ -311,11 +311,25 @@ def handle_call(uuid, event):
     logger.info(f"  Caller: {caller_id} -> Destination: {destination}")
     
     # FreeSWITCHがUUIDにRTPポートを付与するのを確実に待つ
-    # CHANNEL_ANSWER時点でも、内部RTPバインド完了まで1.0-1.2秒かかる
-    time.sleep(1.2)
+    # CHANNEL_ANSWER時点でも、内部RTPバインド完了まで2.0秒かかる
+    # ここで十分に待機しないと、gateway起動時にRTPポートが未確立で切断される
+    time.sleep(2.0)
     
-    # RTPポートをFreeSWITCHから取得（PyESL接続を再利用）
-    rtp_port = get_rtp_port(uuid)
+    # RTPポート取得を最大5回リトライ（FreeSWITCHがRTPポートを確立するまで待つ）
+    rtp_port = None
+    for i in range(5):
+        rtp_port = get_rtp_port(uuid)
+        if rtp_port != "7002":  # 成功時は7002ではない（実際のポート番号が返る）
+            logger.info(f"[handle_call] RTPポート取得成功: {rtp_port} (試行{i+1})")
+            break
+        logger.info(f"[handle_call] RTPポート未確立、再試行({i+1}/5)...")
+        if i < 4:  # 最後の試行でない場合は待機
+            time.sleep(1.0)
+    
+    if not rtp_port or rtp_port == "7002":
+        logger.warning(f"[handle_call] RTPポート取得に失敗、デフォルト7002使用")
+        rtp_port = "7002"
+    
     logger.info(f"[handle_call] 使用するRTPポート: {rtp_port}")
     
     # gateway スクリプトのパス
