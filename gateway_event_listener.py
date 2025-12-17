@@ -122,6 +122,13 @@ def get_rtp_port(uuid):
     # 絶対パスを使用してPATHの問題を回避
     command = ["/usr/bin/fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} local_media_port"]
     
+    # 環境変数を明示的に設定（Pythonプロセスの環境を継承）
+    import os
+    env = os.environ.copy()
+    # HOME環境変数を設定（fs_cliが~/.freeswitchを参照する場合がある）
+    if 'HOME' not in env:
+        env['HOME'] = '/root'
+    
     # 最大5回リトライ（RTP確立を待つ）
     for i in range(5):
         try:
@@ -135,7 +142,8 @@ def get_rtp_port(uuid):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=5  # タイムアウトを5秒に延長
+                timeout=5,  # タイムアウトを5秒に延長
+                env=env  # 環境変数を明示的に設定
             )
             
             logger.debug(f"[get_rtp_port] returncode={result.returncode}, stdout={result.stdout.strip()}, stderr={result.stderr.strip()}")
