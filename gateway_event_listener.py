@@ -47,6 +47,9 @@ def main():
     # CHANNEL_EXECUTE_COMPLETE: RTPネゴシエーションが完了した時点で発火（RTPポート確定済み）
     con.events("plain", "CHANNEL_CREATE CHANNEL_ANSWER CHANNEL_EXECUTE_COMPLETE CHANNEL_HANGUP")
     
+    # 重複起動を防ぐためのUUID管理
+    active_calls = set()
+    
     try:
         while True:
             try:
@@ -73,10 +76,17 @@ def main():
                     # handle_call(uuid, e)  # コメントアウト：重複起動を防ぐ
                 elif event_name == "CHANNEL_EXECUTE_COMPLETE":
                     logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}")
-                    # RTPネゴシエーションが完了した時点で確実にポートを取得できる
-                    handle_call(uuid, e)
+                    # 重複起動を防ぐ（同じUUIDで既に処理中でないか確認）
+                    if uuid not in active_calls:
+                        active_calls.add(uuid)
+                        # RTPネゴシエーションが完了した時点で確実にポートを取得できる
+                        handle_call(uuid, e)
+                    else:
+                        logger.debug(f"[重複防止] UUID={uuid} は既に処理中です")
                 elif event_name == "CHANNEL_HANGUP":
                     logger.info(f"通話終了: HANGUP イベント UUID={uuid}")
+                    # 処理完了したUUIDを削除
+                    active_calls.discard(uuid)
                     handle_hangup(uuid, e)
             except Exception as e:
                 # 個別のイベント処理エラーをログに記録して続行
@@ -109,8 +119,8 @@ def get_rtp_port(uuid):
     logger.info(f"[get_rtp_port] UUID={uuid} のRTPポートを取得中...")
     
     # CHANNEL_EXECUTE_COMPLETE時点ではRTPネゴシエーションが完了しているため、
-    # 短い待機時間で十分（念のため0.5秒待機）
-    time.sleep(0.5)
+    # 短い待機時間で十分（念のため1.0秒待機 - RTP確立を確実にするため）
+    time.sleep(1.0)
     
     # local_media_port を直接取得（Inbound構成ではA-Legのチャンネル変数に存在）
     for i in range(5):  # 最大5回リトライ
