@@ -125,28 +125,38 @@ def get_rtp_port(uuid):
     # local_media_port を直接取得（Inbound構成ではA-Legのチャンネル変数に存在）
     for i in range(5):  # 最大5回リトライ
         try:
+            # fs_cliコマンドを明示的に実行（-H, -P, -pオプションを指定）
+            cmd = ["fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} local_media_port"]
+            logger.debug(f"[get_rtp_port] 実行コマンド(試行{i+1}): {' '.join(cmd)}")
+            
             result = subprocess.run(
-                ["fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} local_media_port"],
+                cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 timeout=3
             )
             
+            logger.debug(f"[get_rtp_port] リターンコード: {result.returncode}, stdout: {result.stdout.strip()}, stderr: {result.stderr.strip()}")
+            
             if result.returncode == 0:
                 port = result.stdout.strip()
                 # エラーメッセージや空文字列をチェック
-                if port and port.isdigit() and port != "-ERR":
-                    logger.info(f"[get_rtp_port] local_media_port={port} (試行{i+1})")
-                    return port
+                if port and port != "-ERR" and port != "":
+                    # 数字かどうかをチェック
+                    if port.isdigit():
+                        logger.info(f"[get_rtp_port] local_media_port={port} (試行{i+1})")
+                        return port
+                    else:
+                        logger.debug(f"[get_rtp_port] 出力が数字ではありません(試行{i+1}): '{port}'")
                 else:
-                    logger.debug(f"[get_rtp_port] 出力(試行{i+1}): {port}")
+                    logger.debug(f"[get_rtp_port] 出力が空またはエラー(試行{i+1}): '{port}'")
             else:
-                logger.debug(f"[get_rtp_port] uuid_getvar コマンドが失敗しました (試行{i+1}): {result.stderr}")
+                logger.warning(f"[get_rtp_port] uuid_getvar コマンドが失敗しました (試行{i+1}): returncode={result.returncode}, stderr={result.stderr.strip()}")
         except subprocess.TimeoutExpired:
             logger.warning(f"[get_rtp_port] uuid_getvar タイムアウト (試行{i+1})")
         except Exception as e:
-            logger.warning(f"[get_rtp_port] エラー (試行{i+1}): {e}")
+            logger.warning(f"[get_rtp_port] エラー (試行{i+1}): {e}", exc_info=True)
         
         if i < 4:  # 最後の試行でない場合は待機
             time.sleep(0.5)  # 0.5秒待って再試行
