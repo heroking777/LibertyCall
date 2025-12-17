@@ -123,15 +123,16 @@ def get_rtp_port(uuid):
     # 127.0.0.1を明示的に使用してIPv4接続を強制（localhostのIPv6解決を回避）
     command = ["/usr/bin/fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} local_media_port"]
     
-    # 環境変数を明示的に設定（Pythonプロセスの環境を継承）
+    # 環境変数を完全に固定（subprocessで確実にroot権限・正しいPATHで実行）
     import os
-    env = os.environ.copy()
-    # HOME環境変数を設定（fs_cliが~/.freeswitchを参照する場合がある）
-    if 'HOME' not in env:
-        env['HOME'] = '/root'
-    # localeエラーやsnap環境によるPATH汚染を防ぐ
-    env['LC_ALL'] = 'C'
-    env['LANG'] = 'en_US.UTF-8'
+    # 最小限の環境変数セット（PATH汚染を完全に回避）
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": "/root",
+        "USER": "root",
+        "LC_ALL": "C",
+        "LANG": "en_US.UTF-8"
+    }
     
     # 最大5回リトライ（RTP確立を待つ）
     for i in range(5):
