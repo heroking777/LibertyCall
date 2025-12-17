@@ -22,6 +22,123 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class FreeSwitchSocketClient:
+    """FreeSWITCH Event Socket Protocol 永続接続クライアント"""
+    def __init__(self, host="127.0.0.1", port=8021, password="ClueCon"):
+        self.host = host
+        self.port = port
+        self.password = password
+        self.sock = None
+        self._lock = None  # スレッドセーフ用（必要に応じて）
+    
+    def connect(self):
+        """Event Socketに接続して認証（既に接続済みの場合は再利用）"""
+        if self.sock:
+            try:
+                # 接続が生きているか確認（簡単なテスト）
+                self.sock.settimeout(0.1)
+                self.sock.recv(1, socket.MSG_PEEK)
+                self.sock.settimeout(None)
+                return  # 既に接続済み
+            except (socket.error, OSError):
+                # 接続が切れている場合は再接続
+                try:
+                    self.sock.close()
+                except:
+                    pass
+                self.sock = None
+        
+        # 新規接続
+        import socket
+        self.sock = socket.create_connection((self.host, self.port), timeout=5)
+        
+        # バナーを受信
+        banner = self.sock.recv(1024).decode('utf-8', errors='ignore')
+        logger.debug(f"[FreeSwitchSocketClient] バナー受信: {banner[:50]}")
+        
+        if "auth/request" in banner:
+            # 認証送信
+            auth_cmd = f"auth {self.password}\r\n\r\n"
+            self.sock.sendall(auth_cmd.encode('utf-8'))
+            
+            # 認証応答を受信
+            reply = self.sock.recv(1024).decode('utf-8', errors='ignore')
+            logger.debug(f"[FreeSwitchSocketClient] 認証応答: {reply[:50]}")
+            
+            if "+OK" not in reply and "accepted" not in reply.lower():
+                self.sock.close()
+                self.sock = None
+                raise Exception(f"認証失敗: {reply[:100]}")
+            
+            logger.debug("[FreeSwitchSocketClient] 認証成功")
+        else:
+            logger.warning(f"[FreeSwitchSocketClient] 認証リクエストが見つかりません: {banner[:50]}")
+    
+    def api(self, cmd):
+        """APIコマンドを実行して応答を取得"""
+        self.connect()  # 接続確認・必要に応じて再接続
+        
+        # コマンド送信
+        api_cmd = f"api {cmd}\r\n\r\n"
+        self.sock.sendall(api_cmd.encode('utf-8'))
+        
+        # 応答を受信
+        response = b""
+        while True:
+            chunk = self.sock.recv(1024)
+            if not chunk:
+                break
+            response += chunk
+            # Content-Lengthを確認して完全な応答を受信
+            if b"Content-Length:" in response:
+                lines = response.decode('utf-8', errors='ignore').split('\n')
+                content_length = 0
+                for line in lines:
+                    if line.startswith("Content-Length:"):
+                        try:
+                            content_length = int(line.split(":")[1].strip())
+                            break
+                        except (ValueError, IndexError):
+                            pass
+                
+                if content_length > 0:
+                    header_end = response.find(b"\n\n")
+                    if header_end != -1:
+                        body_start = header_end + 2
+                        body = response[body_start:]
+                        if len(body) >= content_length:
+                            break
+        
+        response_text = response.decode('utf-8', errors='ignore')
+        
+        # ボディ部分を抽出
+        body_start = response_text.find("\n\n")
+        if body_start != -1:
+            body = response_text[body_start + 2:].strip()
+            return body
+        return response_text.strip()
+    
+    def close(self):
+        """接続を閉じる"""
+        if self.sock:
+            try:
+                self.sock.close()
+            except:
+                pass
+            self.sock = None
+
+
+# グローバルなEvent Socket接続（永続接続）
+_fs_client = None
+
+def get_fs_client():
+    """FreeSWITCH Event Socket接続を取得（シングルトン）"""
+    global _fs_client
+    if _fs_client is None:
+        _fs_client = FreeSwitchSocketClient()
+    return _fs_client
+
+
 def main():
     """Event Socket Listener のメイン処理"""
     # FreeSWITCH Event Socket 接続パラメータ
@@ -102,6 +219,11 @@ def main():
     finally:
         con.disconnect()
         logger.info("Event Socket 接続を切断しました")
+        # 永続接続も閉じる
+        global _fs_client
+        if _fs_client:
+            _fs_client.close()
+            _fs_client = None
 
 
 def handle_channel_create(uuid, event):
@@ -112,16 +234,13 @@ def handle_channel_create(uuid, event):
 
 
 def get_rtp_port(uuid):
-    """FreeSWITCH Inbound call 用 RTPポート取得（Event Socket Protocolを直接使用）"""
-    import socket
+    """FreeSWITCH Inbound call 用 RTPポート取得（永続接続を使用）"""
     import time
     
     logger.info(f"[get_rtp_port] UUID={uuid} のRTPポートを取得中...")
     
-    # Event Socket Protocolを直接使用（fs_cliを経由しない）
-    host = "127.0.0.1"
-    port = 8021
-    password = "ClueCon"
+    # 永続接続クライアントを取得
+    fs_client = get_fs_client()
     
     # 最大5回リトライ（RTP確立を待つ）
     for i in range(5):
@@ -129,92 +248,36 @@ def get_rtp_port(uuid):
             # RTP確立待機（各リトライ前に1.5秒待機）
             time.sleep(1.5)
             
-            logger.debug(f"[get_rtp_port] Event Socket接続試行(試行{i+1}): {host}:{port}")
+            logger.debug(f"[get_rtp_port] APIコマンド実行(試行{i+1}): uuid_getvar {uuid} local_media_port")
             
-            # TCP接続
-            sock = socket.create_connection((host, port), timeout=5)
+            # APIコマンドを実行
+            response = fs_client.api(f"uuid_getvar {uuid} local_media_port")
             
-            try:
-                # 認証リクエストを受信
-                auth_request = sock.recv(1024).decode('utf-8', errors='ignore')
-                logger.debug(f"[get_rtp_port] 認証リクエスト受信: {auth_request[:50]}")
-                
-                # 認証送信（\r\n\r\nを使用 - FreeSWITCHのEvent Socket Protocol仕様）
-                auth_cmd = f"auth {password}\r\n\r\n"
-                sock.sendall(auth_cmd.encode('utf-8'))
-                
-                # 認証応答を受信
-                auth_response = sock.recv(1024).decode('utf-8', errors='ignore')
-                logger.debug(f"[get_rtp_port] 認証応答: {auth_response[:50]}")
-                
-                if "OK" not in auth_response and "accepted" not in auth_response.lower():
-                    logger.warning(f"[get_rtp_port] 認証失敗 (試行{i+1}): {auth_response[:100]}")
-                    sock.close()
-                    continue
-                
-                # uuid_getvarコマンドを送信（\r\n\r\nを使用）
-                api_cmd = f"api uuid_getvar {uuid} local_media_port\r\n\r\n"
-                sock.sendall(api_cmd.encode('utf-8'))
-                
-                # 応答を受信
-                response = b""
-                while True:
-                    chunk = sock.recv(1024)
-                    if not chunk:
-                        break
-                    response += chunk
-                    # Content-Lengthを確認して完全な応答を受信
-                    if b"Content-Length:" in response:
-                        # Content-Lengthの値を取得
-                        lines = response.decode('utf-8', errors='ignore').split('\n')
-                        content_length = 0
-                        for line in lines:
-                            if line.startswith("Content-Length:"):
-                                try:
-                                    content_length = int(line.split(":")[1].strip())
-                                    break
-                                except (ValueError, IndexError):
-                                    pass
-                        
-                        if content_length > 0:
-                            # ヘッダー部分とボディ部分を分離
-                            header_end = response.find(b"\n\n")
-                            if header_end != -1:
-                                body_start = header_end + 2
-                                body = response[body_start:]
-                                if len(body) >= content_length:
-                                    # 完全な応答を受信
-                                    break
-                
-                response_text = response.decode('utf-8', errors='ignore')
-                logger.debug(f"[get_rtp_port] 応答(試行{i+1}): {response_text[:200]}")
-                
-                # ボディ部分を抽出
-                body_start = response_text.find("\n\n")
-                if body_start != -1:
-                    body = response_text[body_start + 2:].strip()
-                    # 数字かどうかをチェック（成功時）
-                    if body.isdigit():
-                        logger.info(f"[get_rtp_port] local_media_port={body} (試行{i+1})")
-                        sock.close()
-                        return body
-                    elif "-ERR" in body:
-                        logger.warning(f"[get_rtp_port] FreeSWITCH応答エラー: {body} (試行{i+1})")
-                    else:
-                        logger.debug(f"[get_rtp_port] 出力(試行{i+1}): {body}")
-                
-                sock.close()
-                
-            except Exception as e:
-                sock.close()
-                raise e
+            logger.debug(f"[get_rtp_port] 応答(試行{i+1}): {response}")
+            
+            # 数字かどうかをチェック（成功時）
+            if response and response.isdigit():
+                logger.info(f"[get_rtp_port] local_media_port={response} (試行{i+1})")
+                return response
+            elif "-ERR" in response:
+                logger.warning(f"[get_rtp_port] FreeSWITCH応答エラー: {response} (試行{i+1})")
+                # -ERR No such channel の場合は、まだRTPが確立していない可能性がある
+                if "No such channel" in response:
+                    continue  # 次の試行へ
+            else:
+                logger.debug(f"[get_rtp_port] 出力(試行{i+1}): {response}")
         
-        except socket.timeout:
-            logger.warning(f"[get_rtp_port] Event Socket接続タイムアウト (試行{i+1})")
-        except socket.error as e:
-            logger.warning(f"[get_rtp_port] Event Socket接続エラー (試行{i+1}): {e}")
         except Exception as e:
-            logger.warning(f"[get_rtp_port] エラー (試行{i+1}): {e}", exc_info=True)
+            logger.warning(f"[get_rtp_port] エラー (試行{i+1}): {e}")
+            # 接続エラーの場合は、接続をリセットして次回再接続させる
+            if "Connection" in str(e) or "socket" in str(e).lower():
+                try:
+                    fs_client.close()
+                except:
+                    pass
+                # グローバル接続をリセット
+                global _fs_client
+                _fs_client = None
     
     logger.warning("[get_rtp_port] 全試行失敗、デフォルト7002使用")
     return "7002"
