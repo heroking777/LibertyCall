@@ -96,18 +96,41 @@ def handle_channel_create(uuid, event):
 
 def handle_call(uuid, event):
     """通話開始時の処理をここに書きます"""
-    # 例: realtime_gateway の処理を呼び出す
-    logger.info(f"handle_call 実行 UUID={uuid}")
+    import subprocess
+    import os
+    
+    logger.info(f"[handle_call] 通話処理を開始します UUID={uuid}")
     
     # 通話情報を取得
     caller_id = event.getHeader("Caller-Caller-ID-Number") or "unknown"
     destination = event.getHeader("Caller-Destination-Number") or "unknown"
     logger.info(f"  Caller: {caller_id} -> Destination: {destination}")
     
-    # TODO: realtime_gateway の処理を呼び出す
-    # import realtime_gateway
-    # realtime_gateway.process_call(uuid)
-    # などの実装
+    # gateway スクリプトのパス
+    gateway_script = "/opt/libertycall/libertycall/gateway/realtime_gateway.py"
+    
+    # パスが存在しない場合は別のパスを試す
+    if not os.path.exists(gateway_script):
+        gateway_script = "/opt/libertycall/gateway/realtime_gateway.py"
+    
+    if not os.path.exists(gateway_script):
+        logger.error(f"[handle_call] gateway スクリプトが見つかりません: {gateway_script}")
+        return
+    
+    # 通話ごとに独立したプロセスで起動
+    try:
+        log_file = f"/tmp/gateway_{uuid}.log"
+        with open(log_file, "w") as log_fd:
+            subprocess.Popen(
+                ["python3", gateway_script, "--uuid", uuid],
+                stdout=log_fd,
+                stderr=subprocess.STDOUT,
+                cwd="/opt/libertycall"
+            )
+        logger.info(f"[handle_call] realtime_gateway を起動しました (UUID={uuid})")
+        logger.info(f"[handle_call] ログファイル: {log_file}")
+    except Exception as e:
+        logger.error(f"[handle_call] gateway 起動中にエラー: {e}", exc_info=True)
 
 
 def handle_hangup(uuid, event):
