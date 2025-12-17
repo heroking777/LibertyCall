@@ -286,11 +286,12 @@ class RealtimeGateway:
         try:
             loop = asyncio.get_running_loop()
             
-            # ソケットをメンバに保持してbind（IPv4ループバック固定、GC防止）
+            # ソケットをメンバに保持してbind（IPv4固定、0.0.0.0で全インターフェースにバインド）
+            # 0.0.0.0 にバインドすることで、FreeSWITCHからのRTPパケットを確実に受信できる
             self.rtp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.rtp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.rtp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            self.rtp_sock.bind(("127.0.0.1", self.rtp_port))
+            self.rtp_sock.bind(("0.0.0.0", self.rtp_port))
             self.rtp_sock.setblocking(False)  # asyncio用にノンブロッキングへ
             bound_addr = self.rtp_sock.getsockname()
             self.logger.info(f"[RTP_BIND_FINAL] Bound UDP socket to {bound_addr}")
