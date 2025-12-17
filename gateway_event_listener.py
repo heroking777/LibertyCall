@@ -41,10 +41,11 @@ def main():
         return 1
     
     logger.info("Event Socket Listener 起動")
-    logger.info("受信イベント: CHANNEL_CREATE, CHANNEL_ANSWER, CHANNEL_HANGUP")
+    logger.info("受信イベント: CHANNEL_CREATE, CHANNEL_ANSWER, CHANNEL_EXECUTE_COMPLETE, CHANNEL_HANGUP")
     
     # 受け取るイベントを購読
-    con.events("plain", "CHANNEL_CREATE CHANNEL_ANSWER CHANNEL_HANGUP")
+    # CHANNEL_EXECUTE_COMPLETE: RTPネゴシエーションが完了した時点で発火（RTPポート確定済み）
+    con.events("plain", "CHANNEL_CREATE CHANNEL_ANSWER CHANNEL_EXECUTE_COMPLETE CHANNEL_HANGUP")
     
     try:
         while True:
@@ -67,6 +68,12 @@ def main():
                     handle_channel_create(uuid, e)
                 elif event_name == "CHANNEL_ANSWER":
                     logger.info(f"通話開始: ANSWER イベント UUID={uuid}")
+                    # CHANNEL_ANSWER時点ではRTPポートがまだ確定していないため、
+                    # ここではログのみ記録（handle_callはCHANNEL_EXECUTE_COMPLETEで実行）
+                    # handle_call(uuid, e)  # コメントアウト：重複起動を防ぐ
+                elif event_name == "CHANNEL_EXECUTE_COMPLETE":
+                    logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}")
+                    # RTPネゴシエーションが完了した時点で確実にポートを取得できる
                     handle_call(uuid, e)
                 elif event_name == "CHANNEL_HANGUP":
                     logger.info(f"通話終了: HANGUP イベント UUID={uuid}")
@@ -100,9 +107,9 @@ def get_rtp_port(uuid):
     import time
     import re
     
-    # ANSWER直後はまだRTPネゴシエーションが完了していない
-    # FreeSWITCHがRTPポートを確定するまで1.5秒待機
-    time.sleep(1.5)
+    # CHANNEL_EXECUTE_COMPLETE時点ではRTPネゴシエーションが完了しているため、
+    # 短い待機時間で十分（念のため0.5秒待機）
+    time.sleep(0.5)
     
     for i in range(5):  # 最大5回リトライ
         try:
