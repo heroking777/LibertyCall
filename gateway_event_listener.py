@@ -195,18 +195,17 @@ def main():
                     handle_channel_create(uuid, e)
                 elif event_name == "CHANNEL_ANSWER":
                     logger.info(f"通話開始: ANSWER イベント UUID={uuid}")
-                    # CHANNEL_ANSWER時点ではRTPポートがまだ確定していないため、
-                    # ここではログのみ記録（handle_callはCHANNEL_EXECUTE_COMPLETEで実行）
-                    # handle_call(uuid, e)  # コメントアウト：重複起動を防ぐ
-                elif event_name == "CHANNEL_EXECUTE_COMPLETE":
-                    logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}")
+                    # CHANNEL_ANSWER時点でRTPが確立しているため、ここで通話処理を開始
                     # 重複起動を防ぐ（同じUUIDで既に処理中でないか確認）
                     if uuid not in active_calls:
                         active_calls.add(uuid)
-                        # RTPネゴシエーションが完了した時点で確実にポートを取得できる
                         handle_call(uuid, e)
                     else:
                         logger.debug(f"[重複防止] UUID={uuid} は既に処理中です")
+                elif event_name == "CHANNEL_EXECUTE_COMPLETE":
+                    logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}")
+                    # CHANNEL_EXECUTE_COMPLETE時点ではRTP未確立のため、ここでは処理しない
+                    # 実際の通話処理はCHANNEL_ANSWERで実行
                 elif event_name == "CHANNEL_HANGUP":
                     logger.info(f"通話終了: HANGUP イベント UUID={uuid}")
                     # 処理完了したUUIDを削除
@@ -291,23 +290,31 @@ def get_rtp_port(uuid):
 
 
 def handle_call(uuid, event):
-    """通話開始時の処理をここに書きます"""
+    """通話開始時の処理（CHANNEL_ANSWERイベントで呼び出される）"""
     import subprocess
     import os
     import time
     
     logger.info(f"[handle_call] 通話処理を開始します UUID={uuid}")
     
+    # イベント種別を確認（CHANNEL_ANSWER以外ではRTP未確立のため処理をスキップ）
+    event_name = event.getHeader("Event-Name")
+    if event_name != "CHANNEL_ANSWER":
+        logger.info(f"[handle_call] {event_name} イベントではRTP未確立のため処理をスキップします")
+        return
+    
+    logger.info(f"[handle_call] CHANNEL_ANSWER イベント検出 → 通話処理開始")
+    
     # 通話情報を取得
     caller_id = event.getHeader("Caller-Caller-ID-Number") or "unknown"
     destination = event.getHeader("Caller-Destination-Number") or "unknown"
     logger.info(f"  Caller: {caller_id} -> Destination: {destination}")
     
-    # FreeSWITCHがUUIDにRTPポートを付与するのを待つ
-    # CHANNEL_EXECUTE_COMPLETE時点でも、内部チャンネル確立まで500-800msかかる
-    time.sleep(0.8)
+    # FreeSWITCHがUUIDにRTPポートを付与するのを確実に待つ
+    # CHANNEL_ANSWER時点でも、内部RTPバインド完了まで1.0-1.2秒かかる
+    time.sleep(1.2)
     
-    # RTPポートをFreeSWITCHから取得（リトライ機能付き）
+    # RTPポートをFreeSWITCHから取得（PyESL接続を再利用）
     rtp_port = get_rtp_port(uuid)
     logger.info(f"[handle_call] 使用するRTPポート: {rtp_port}")
     
