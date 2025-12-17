@@ -100,6 +100,10 @@ def get_rtp_port(uuid):
     import time
     import re
     
+    # ANSWER直後はまだRTPネゴシエーションが完了していない
+    # FreeSWITCHがRTPポートを確定するまで1.5秒待機
+    time.sleep(1.5)
+    
     for i in range(5):  # 最大5回リトライ
         try:
             result = subprocess.run(
@@ -164,9 +168,7 @@ def handle_call(uuid, event):
     logger.info(f"  Caller: {caller_id} -> Destination: {destination}")
     
     # RTPポートをFreeSWITCHから取得（リトライ機能付き）
-    import time
-    time.sleep(0.5)  # RTPネゴシエーションが完了するまで少し待つ
-    
+    # get_rtp_port()内で1.5秒待機するため、ここでは待機不要
     rtp_port = get_rtp_port(uuid)
     logger.info(f"[handle_call] 使用するRTPポート: {rtp_port}")
     
