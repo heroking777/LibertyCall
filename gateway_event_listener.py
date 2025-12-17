@@ -139,8 +139,8 @@ def get_rtp_port(uuid):
                 auth_request = sock.recv(1024).decode('utf-8', errors='ignore')
                 logger.debug(f"[get_rtp_port] 認証リクエスト受信: {auth_request[:50]}")
                 
-                # 認証送信
-                auth_cmd = f"auth {password}\n\n"
+                # 認証送信（\r\n\r\nを使用 - FreeSWITCHのEvent Socket Protocol仕様）
+                auth_cmd = f"auth {password}\r\n\r\n"
                 sock.sendall(auth_cmd.encode('utf-8'))
                 
                 # 認証応答を受信
@@ -152,8 +152,8 @@ def get_rtp_port(uuid):
                     sock.close()
                     continue
                 
-                # uuid_getvarコマンドを送信
-                api_cmd = f"api uuid_getvar {uuid} local_media_port\n\n"
+                # uuid_getvarコマンドを送信（\r\n\r\nを使用）
+                api_cmd = f"api uuid_getvar {uuid} local_media_port\r\n\r\n"
                 sock.sendall(api_cmd.encode('utf-8'))
                 
                 # 応答を受信
