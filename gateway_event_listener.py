@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 class FreeSwitchSocketClient:
     """FreeSWITCH Event Socket Protocol 永続接続クライアント"""
     def __init__(self, host="127.0.0.1", port=8021, password="ClueCon"):
+        import socket
+        self.socket = socket  # socketモジュールを保持
         self.host = host
         self.port = port
         self.password = password
@@ -37,10 +39,10 @@ class FreeSwitchSocketClient:
             try:
                 # 接続が生きているか確認（簡単なテスト）
                 self.sock.settimeout(0.1)
-                self.sock.recv(1, socket.MSG_PEEK)
+                self.sock.recv(1, self.socket.MSG_PEEK)
                 self.sock.settimeout(None)
                 return  # 既に接続済み
-            except (socket.error, OSError):
+            except (self.socket.error, OSError):
                 # 接続が切れている場合は再接続
                 try:
                     self.sock.close()
@@ -49,8 +51,7 @@ class FreeSwitchSocketClient:
                 self.sock = None
         
         # 新規接続
-        import socket
-        self.sock = socket.create_connection((self.host, self.port), timeout=5)
+        self.sock = self.socket.create_connection((self.host, self.port), timeout=5)
         
         # バナーを受信
         banner = self.sock.recv(1024).decode('utf-8', errors='ignore')
