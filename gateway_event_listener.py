@@ -118,50 +118,48 @@ def get_rtp_port(uuid):
     
     logger.info(f"[get_rtp_port] UUID={uuid} のRTPポートを取得中...")
     
-    # CHANNEL_EXECUTE_COMPLETE時点ではRTPネゴシエーションが完了しているため、
-    # 短い待機時間で十分（念のため1.0秒待機 - RTP確立を確実にするため）
-    time.sleep(1.0)
+    # fs_cliコマンドを明示的に実行（-H, -P, -pオプションを指定）
+    command = ["fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} local_media_port"]
     
-    # local_media_port を直接取得（Inbound構成ではA-Legのチャンネル変数に存在）
-    for i in range(5):  # 最大5回リトライ
+    # 最大5回リトライ（RTP確立を待つ）
+    for i in range(5):
         try:
-            # fs_cliコマンドを明示的に実行（-H, -P, -pオプションを指定）
-            cmd = ["fs_cli", "-H", "127.0.0.1", "-P", "8021", "-p", "ClueCon", "-x", f"uuid_getvar {uuid} local_media_port"]
-            logger.debug(f"[get_rtp_port] 実行コマンド(試行{i+1}): {' '.join(cmd)}")
+            # RTP確立待機（各リトライ前に1.5秒待機）
+            time.sleep(1.5)
+            
+            logger.debug(f"[get_rtp_port] 実行コマンド(試行{i+1}): {' '.join(command)}")
             
             result = subprocess.run(
-                cmd,
+                command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=3
+                timeout=5  # タイムアウトを5秒に延長
             )
             
-            logger.debug(f"[get_rtp_port] リターンコード: {result.returncode}, stdout: {result.stdout.strip()}, stderr: {result.stderr.strip()}")
+            logger.debug(f"[get_rtp_port] returncode={result.returncode}, stdout={result.stdout.strip()}, stderr={result.stderr.strip()}")
             
-            if result.returncode == 0:
-                port = result.stdout.strip()
-                # エラーメッセージや空文字列をチェック
-                if port and port != "-ERR" and port != "":
-                    # 数字かどうかをチェック
-                    if port.isdigit():
-                        logger.info(f"[get_rtp_port] local_media_port={port} (試行{i+1})")
-                        return port
-                    else:
-                        logger.debug(f"[get_rtp_port] 出力が数字ではありません(試行{i+1}): '{port}'")
-                else:
-                    logger.debug(f"[get_rtp_port] 出力が空またはエラー(試行{i+1}): '{port}'")
+            output = result.stdout.strip()
+            
+            # 数字かどうかをチェック（成功時）
+            if output.isdigit():
+                logger.info(f"[get_rtp_port] local_media_port={output} (試行{i+1})")
+                return output
+            
+            # エラーメッセージのチェック
+            if "-ERR" in output or result.returncode != 0:
+                logger.warning(f"[get_rtp_port] FreeSWITCH応答エラー: {output} (試行{i+1})")
+                if result.stderr.strip():
+                    logger.warning(f"[get_rtp_port] stderr: {result.stderr.strip()}")
             else:
-                logger.warning(f"[get_rtp_port] uuid_getvar コマンドが失敗しました (試行{i+1}): returncode={result.returncode}, stderr={result.stderr.strip()}")
+                logger.debug(f"[get_rtp_port] 出力(試行{i+1}): {output}")
+        
         except subprocess.TimeoutExpired:
             logger.warning(f"[get_rtp_port] uuid_getvar タイムアウト (試行{i+1})")
         except Exception as e:
             logger.warning(f"[get_rtp_port] エラー (試行{i+1}): {e}", exc_info=True)
-        
-        if i < 4:  # 最後の試行でない場合は待機
-            time.sleep(0.5)  # 0.5秒待って再試行
     
-    logger.warning("[get_rtp_port] 取得失敗、デフォルト7002使用")
+    logger.warning("[get_rtp_port] 全試行失敗、デフォルト7002使用")
     return "7002"
 
 
