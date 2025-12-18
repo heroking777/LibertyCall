@@ -165,11 +165,12 @@ def main():
     set_esl_connection(con)
     
     logger.info("Event Socket Listener 起動")
-    logger.info("受信イベント: CHANNEL_CREATE, CHANNEL_ANSWER, CHANNEL_EXECUTE_COMPLETE, CHANNEL_HANGUP")
+    logger.info("受信イベント: CHANNEL_CREATE, CHANNEL_ANSWER, CHANNEL_EXECUTE_COMPLETE, CHANNEL_PARK, CHANNEL_HANGUP")
     
     # 受け取るイベントを購読
-    # CHANNEL_EXECUTE_COMPLETE: RTPネゴシエーションが完了した時点で発火（RTPポート確定済み）
-    con.events("plain", "CHANNEL_CREATE CHANNEL_ANSWER CHANNEL_EXECUTE_COMPLETE CHANNEL_HANGUP")
+    # CHANNEL_PARK: park完了後、parking bridgeに移動した新しいUUIDを取得（RTP確立済み）
+    # CHANNEL_EXECUTE_COMPLETE: park実行完了（RTP確立前の可能性あり）
+    con.events("plain", "CHANNEL_CREATE CHANNEL_ANSWER CHANNEL_EXECUTE_COMPLETE CHANNEL_PARK CHANNEL_HANGUP")
     
     # 重複起動を防ぐためのUUID管理
     active_calls = set()
@@ -200,15 +201,24 @@ def main():
                 elif event_name == "CHANNEL_EXECUTE_COMPLETE":
                     application = e.getHeader("Application")
                     logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}, Application={application}")
-                    # park完了後にRTPが確立しているため、ここで通話処理を開始
+                    # park完了時はCHANNEL_PARKイベントで処理するため、ここではスキップ
+                    # CHANNEL_PARKイベントの方が確実に新しいUUID（RTP確立済み）を取得できる
                     if application == "park":
-                        logger.info(f"通話処理開始: park 完了後に handle_call 実行 UUID={uuid}")
-                        # 重複起動を防ぐ（同じUUIDで既に処理中でないか確認）
-                        if uuid not in active_calls:
-                            active_calls.add(uuid)
-                            handle_call(uuid, e)
-                        else:
-                            logger.debug(f"[重複防止] UUID={uuid} は既に処理中です")
+                        logger.debug(f"[CHANNEL_EXECUTE_COMPLETE] park完了を検出（CHANNEL_PARK待機中） UUID={uuid}")
+                elif event_name == "CHANNEL_PARK":
+                    # CHANNEL_PARK: park完了後、parking bridgeに移動した新しいUUIDを取得
+                    # この時点でRTPが確立されているため、ここで通話処理を開始
+                    new_uuid = e.getHeader("Unique-ID")
+                    old_uuid = e.getHeader("Channel-Call-UUID") or e.getHeader("Channel-UUID") or uuid
+                    logger.info(f"[CHANNEL_PARK] 通話がparking bridgeに移動: 新UUID={new_uuid}, 元UUID={old_uuid}")
+                    # 重複起動を防ぐ（同じUUIDで既に処理中でないか確認）
+                    if new_uuid and new_uuid not in active_calls:
+                        active_calls.add(new_uuid)
+                        # 元のUUIDも記録（gateway起動時に使用）
+                        e.addHeader("Original-UUID", old_uuid)
+                        handle_call(new_uuid, e)
+                    else:
+                        logger.debug(f"[重複防止] UUID={new_uuid} は既に処理中です")
                 elif event_name == "CHANNEL_HANGUP":
                     logger.info(f"通話終了: HANGUP イベント UUID={uuid}")
                     # 処理完了したUUIDを削除
@@ -306,7 +316,7 @@ def get_rtp_port(uuid):
 
 
 def handle_call(uuid, event):
-    """通話開始時の処理（CHANNEL_EXECUTE_COMPLETE (park完了) イベントで呼び出される）"""
+    """通話開始時の処理（CHANNEL_PARK イベントで呼び出される）"""
     import subprocess
     import os
     
@@ -314,25 +324,24 @@ def handle_call(uuid, event):
     
     # イベント種別を確認
     event_name = event.getHeader("Event-Name")
-    application = event.getHeader("Application")
     
-    # CHANNEL_EXECUTE_COMPLETE で park 完了を確認
-    if event_name == "CHANNEL_EXECUTE_COMPLETE" and application == "park":
-        logger.info(f"[handle_call] CHANNEL_EXECUTE_COMPLETE (park完了) イベント検出 → 通話処理開始")
+    # CHANNEL_PARK イベントで呼び出される（この時点でRTP確立済み）
+    if event_name == "CHANNEL_PARK":
+        logger.info(f"[handle_call] CHANNEL_PARK イベント検出 → 通話処理開始（RTP確立済み）")
+        # CHANNEL_PARKイベントでは、UUIDが既に新しいUUID（parking bridge上のチャネル）になっている
+        rtp_uuid = uuid  # このUUIDが実際のRTPチャネルUUID
+        original_uuid = event.getHeader("Original-UUID") or event.getHeader("Channel-Call-UUID") or event.getHeader("Channel-UUID")
+        if original_uuid and original_uuid != uuid:
+            logger.info(f"[handle_call] park完了: 元のUUID={original_uuid} → 実際のRTPチャネルUUID={rtp_uuid}")
     else:
-        logger.info(f"[handle_call] {event_name} (Application={application}) イベントでは処理をスキップします")
-        return
-    
-    # park完了後、parking bridgeに移動した新しいUUIDを取得
-    # FreeSWITCHはpark実行時に通話をbridgeに移動し、元のUUIDは破棄される
-    # 実際のRTPチャネルは新しいUUID（Other-Leg-UUIDまたはParked-UUID）で管理される
-    new_uuid = event.getHeader("Other-Leg-UUID") or event.getHeader("Parked-UUID") or event.getHeader("Other-Unique-ID")
-    if new_uuid and new_uuid != uuid:
-        logger.info(f"[handle_call] park完了: 元のUUID={uuid} → 実際のRTPチャネルUUID={new_uuid}")
-        rtp_uuid = new_uuid  # 新しいUUIDを使用
-    else:
-        logger.info(f"[handle_call] park完了: UUID={uuid} (Other-Leg-UUID未検出、元のUUIDを使用)")
-        rtp_uuid = uuid  # フォールバック: 元のUUIDを使用
+        # フォールバック: CHANNEL_EXECUTE_COMPLETE (park) の場合（非推奨）
+        application = event.getHeader("Application")
+        if event_name == "CHANNEL_EXECUTE_COMPLETE" and application == "park":
+            logger.warning(f"[handle_call] CHANNEL_EXECUTE_COMPLETE (park) で処理（CHANNEL_PARK推奨） UUID={uuid}")
+            rtp_uuid = uuid
+        else:
+            logger.info(f"[handle_call] {event_name} (Application={application}) イベントでは処理をスキップします")
+            return
     
     # 通話情報を取得
     caller_id = event.getHeader("Caller-Caller-ID-Number") or "unknown"
