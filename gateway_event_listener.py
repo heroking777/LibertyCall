@@ -165,12 +165,13 @@ def main():
     set_esl_connection(con)
     
     logger.info("Event Socket Listener 起動")
-    logger.info("受信イベント: CHANNEL_CREATE, CHANNEL_ANSWER, CHANNEL_EXECUTE_COMPLETE, CHANNEL_PARK, CHANNEL_HANGUP")
+    logger.info("受信イベント: CHANNEL_CREATE, CHANNEL_ANSWER, CHANNEL_EXECUTE, CHANNEL_EXECUTE_COMPLETE, CHANNEL_PARK, CHANNEL_HANGUP")
     
     # 受け取るイベントを購読
+    # CHANNEL_EXECUTE: playback開始時（この時点でチャンネルが生きており、RTP確立済み）
     # CHANNEL_PARK: park完了後、parking bridgeに移動した新しいUUIDを取得（RTP確立済み）
-    # CHANNEL_EXECUTE_COMPLETE: park実行完了（RTP確立前の可能性あり）
-    con.events("plain", "CHANNEL_CREATE CHANNEL_ANSWER CHANNEL_EXECUTE_COMPLETE CHANNEL_PARK CHANNEL_HANGUP")
+    # CHANNEL_EXECUTE_COMPLETE: playback完了時（チャンネル終了の可能性あり）
+    con.events("plain", "CHANNEL_CREATE CHANNEL_ANSWER CHANNEL_EXECUTE CHANNEL_EXECUTE_COMPLETE CHANNEL_PARK CHANNEL_HANGUP")
     
     # 重複起動を防ぐためのUUID管理
     active_calls = set()
@@ -197,7 +198,19 @@ def main():
                 elif event_name == "CHANNEL_ANSWER":
                     logger.info(f"通話開始: ANSWER イベント UUID={uuid}")
                     # CHANNEL_ANSWER時点ではまだRTP未確立のため、ここでは処理しない
-                    # 実際の通話処理はCHANNEL_EXECUTE_COMPLETE (park完了) で実行
+                    # 実際の通話処理はCHANNEL_EXECUTE (playback開始) で実行
+                elif event_name == "CHANNEL_EXECUTE":
+                    # CHANNEL_EXECUTE: playback開始時（この時点でチャンネルが生きており、RTP確立済み）
+                    application = e.getHeader("Application")
+                    logger.info(f"実行開始: EXECUTE イベント UUID={uuid}, Application={application}")
+                    if application == "playback":
+                        logger.info(f"[CHANNEL_EXECUTE] playback開始を検出 → 通話処理開始（UUID={uuid}）")
+                        # 重複起動を防ぐ（同じUUIDで既に処理中でないか確認）
+                        if uuid not in active_calls:
+                            active_calls.add(uuid)
+                            handle_call(uuid, e)
+                        else:
+                            logger.debug(f"[重複防止] UUID={uuid} は既に処理中です")
                 elif event_name == "CHANNEL_EXECUTE_COMPLETE":
                     application = e.getHeader("Application")
                     logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}, Application={application}")
@@ -334,8 +347,11 @@ def handle_call(uuid, event):
     event_name = event.getHeader("Event-Name")
     application = event.getHeader("Application")
     
-    # CHANNEL_PARK イベントで呼び出される（この時点でRTP確立済み）
-    if event_name == "CHANNEL_PARK":
+    # CHANNEL_EXECUTE (playback開始) イベントで呼び出される（この時点でRTP確立済み、チャンネルが生きている）
+    if event_name == "CHANNEL_EXECUTE" and application == "playback":
+        logger.info(f"[handle_call] CHANNEL_EXECUTE (playback開始) イベント検出 → 通話処理開始（RTP確立済み、チャンネル生存中）")
+        rtp_uuid = uuid  # playback開始時点ではUUIDは変わらない、チャンネルが生きている
+    elif event_name == "CHANNEL_PARK":
         logger.info(f"[handle_call] CHANNEL_PARK イベント検出 → 通話処理開始（RTP確立済み）")
         # CHANNEL_PARKイベントでは、UUIDが既に新しいUUID（parking bridge上のチャネル）になっている
         rtp_uuid = uuid  # このUUIDが実際のRTPチャネルUUID
@@ -343,9 +359,9 @@ def handle_call(uuid, event):
         if original_uuid and original_uuid != uuid:
             logger.info(f"[handle_call] park完了: 元のUUID={original_uuid} → 実際のRTPチャネルUUID={rtp_uuid}")
     elif event_name == "CHANNEL_EXECUTE_COMPLETE" and application == "playback":
-        # playback完了時はRTPストリームが維持されているため、このUUIDで処理
-        logger.info(f"[handle_call] CHANNEL_EXECUTE_COMPLETE (playback) イベント検出 → 通話処理開始（RTP維持中）")
-        rtp_uuid = uuid  # playbackではUUIDは変わらない
+        # playback完了時はチャンネルが終了している可能性があるため、非推奨
+        logger.warning(f"[handle_call] CHANNEL_EXECUTE_COMPLETE (playback完了) で処理（CHANNEL_EXECUTE推奨） UUID={uuid}")
+        rtp_uuid = uuid  # playbackではUUIDは変わらないが、チャンネルが終了している可能性あり
     else:
         # フォールバック: CHANNEL_EXECUTE_COMPLETE (park) の場合（非推奨）
         if event_name == "CHANNEL_EXECUTE_COMPLETE" and application == "park":
