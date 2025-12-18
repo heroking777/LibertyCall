@@ -214,22 +214,20 @@ def main():
                 elif event_name == "CHANNEL_EXECUTE_COMPLETE":
                     application = e.getHeader("Application")
                     logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}, Application={application}")
-                    # playback完了時は、CHANNEL_EXECUTE（開始時）で既に処理済みの可能性があるため、スキップ
+                    # playback完了時の処理を明示的に制御
                     if application == "playback":
                         if uuid in active_calls:
-                            logger.info(f"[CHANNEL_EXECUTE_COMPLETE] playback完了を検出 → 既に処理済みUUID={uuid}（スキップ）")
-                            # 既にCHANNEL_EXECUTE（開始時）で処理済みのため、スキップ
-                            continue
+                            logger.info(f"[CHANNEL_EXECUTE_COMPLETE] playback完了を検出 → 既に処理済みUUID={uuid}（完全スキップ）")
+                            continue  # ここで完全にスキップしてフォールバックに入らない
                         else:
-                            # フォールバック: CHANNEL_EXECUTEが発火しなかった場合のみ処理
+                            # フォールバック（CHANNEL_EXECUTEが発火しなかった場合のみ）
                             logger.warning(f"[CHANNEL_EXECUTE_COMPLETE] playback完了を検出 → 通話処理開始（フォールバック） UUID={uuid}")
-                            if uuid not in active_calls:
-                                active_calls.add(uuid)
-                                handle_call(uuid, e)
-                            else:
-                                logger.debug(f"[重複防止] UUID={uuid} は既に処理中です")
+                            active_calls.add(uuid)
+                            handle_call(uuid, e)
+                            continue  # フォールバック処理後も後続処理を止める
                     elif application == "park":
                         logger.debug(f"[CHANNEL_EXECUTE_COMPLETE] park完了を検出（CHANNEL_PARK待機中） UUID={uuid}")
+                        continue  # park完了時も後続処理をスキップ
                 elif event_name == "CHANNEL_PARK":
                     # CHANNEL_PARK: park完了後、parking bridgeに移動した新しいUUIDを取得
                     # この時点でRTPが確立されているため、ここで通話処理を開始
