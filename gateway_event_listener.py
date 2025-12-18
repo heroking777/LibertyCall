@@ -195,17 +195,20 @@ def main():
                     handle_channel_create(uuid, e)
                 elif event_name == "CHANNEL_ANSWER":
                     logger.info(f"通話開始: ANSWER イベント UUID={uuid}")
-                    # CHANNEL_ANSWER時点でRTPが確立しているため、ここで通話処理を開始
-                    # 重複起動を防ぐ（同じUUIDで既に処理中でないか確認）
-                    if uuid not in active_calls:
-                        active_calls.add(uuid)
-                        handle_call(uuid, e)
-                    else:
-                        logger.debug(f"[重複防止] UUID={uuid} は既に処理中です")
+                    # CHANNEL_ANSWER時点ではまだRTP未確立のため、ここでは処理しない
+                    # 実際の通話処理はCHANNEL_EXECUTE_COMPLETE (park完了) で実行
                 elif event_name == "CHANNEL_EXECUTE_COMPLETE":
-                    logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}")
-                    # CHANNEL_EXECUTE_COMPLETE時点ではRTP未確立のため、ここでは処理しない
-                    # 実際の通話処理はCHANNEL_ANSWERで実行
+                    application = e.getHeader("Application")
+                    logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}, Application={application}")
+                    # park完了後にRTPが確立しているため、ここで通話処理を開始
+                    if application == "park":
+                        logger.info(f"通話処理開始: park 完了後に handle_call 実行 UUID={uuid}")
+                        # 重複起動を防ぐ（同じUUIDで既に処理中でないか確認）
+                        if uuid not in active_calls:
+                            active_calls.add(uuid)
+                            handle_call(uuid, e)
+                        else:
+                            logger.debug(f"[重複防止] UUID={uuid} は既に処理中です")
                 elif event_name == "CHANNEL_HANGUP":
                     logger.info(f"通話終了: HANGUP イベント UUID={uuid}")
                     # 処理完了したUUIDを削除
@@ -237,7 +240,10 @@ def handle_channel_create(uuid, event):
 
 
 def get_rtp_port(uuid):
-    """FreeSWITCH Inbound call 用 RTPポート取得（PyESL接続を再利用）"""
+    """FreeSWITCH Inbound call 用 RTPポート取得（PyESL接続を再利用）
+    
+    remote_media_port: FreeSWITCHが送信するポート（gatewayが受信するポート）
+    """
     import time
     
     logger.info(f"[get_rtp_port] UUID={uuid} のRTPポートを取得中...")
@@ -248,19 +254,22 @@ def get_rtp_port(uuid):
         logger.warning("[get_rtp_port] PyESL接続が利用できません")
         return "7002"
     
+    # 初期待機（RTP確立を待つ）
+    time.sleep(1.0)
+    
     # 最大5回リトライ（RTP確立を待つ）
     for i in range(5):
         try:
-            # RTP確立待機（各リトライ前に1.5秒待機）
-            time.sleep(1.5)
-            
-            logger.debug(f"[get_rtp_port] APIコマンド実行(試行{i+1}): uuid_getvar {uuid} local_media_port")
+            logger.debug(f"[get_rtp_port] APIコマンド実行(試行{i+1}): uuid_getvar {uuid} remote_media_port")
             
             # PyESLのapi()メソッドを使用（既存の接続を再利用）
-            event = con.api("uuid_getvar", f"{uuid} local_media_port")
+            # remote_media_port: FreeSWITCHが送信するポート（gatewayが受信するポート）
+            event = con.api("uuid_getvar", f"{uuid} remote_media_port")
             
             if event is None:
                 logger.warning(f"[get_rtp_port] API応答がNone (試行{i+1})")
+                if i < 4:  # 最後の試行でない場合は待機
+                    time.sleep(0.5)
                 continue
             
             # 応答ボディを取得
@@ -272,100 +281,28 @@ def get_rtp_port(uuid):
             
             # 数字かどうかをチェック（成功時）
             if response and response.isdigit():
-                logger.info(f"[get_rtp_port] local_media_port={response} (試行{i+1})")
+                logger.info(f"[get_rtp_port] remote_media_port={response} (試行{i+1})")
                 return response
             elif response and "-ERR" in response:
                 logger.warning(f"[get_rtp_port] FreeSWITCH応答エラー: {response} (試行{i+1})")
                 # -ERR No such channel の場合は、まだRTPが確立していない可能性がある
                 if "No such channel" in response:
+                    if i < 4:  # 最後の試行でない場合は待機
+                        time.sleep(0.5)
                     continue  # 次の試行へ
             else:
                 logger.debug(f"[get_rtp_port] 出力(試行{i+1}): {response}")
+            
+            if i < 4:  # 最後の試行でない場合は待機
+                time.sleep(0.5)
         
         except Exception as e:
             logger.warning(f"[get_rtp_port] エラー (試行{i+1}): {e}", exc_info=True)
+            if i < 4:  # 最後の試行でない場合は待機
+                time.sleep(0.5)
     
     logger.warning("[get_rtp_port] 全試行失敗、デフォルト7002使用")
     return "7002"
 
 
-def handle_call(uuid, event):
-    """通話開始時の処理（CHANNEL_ANSWERイベントで呼び出される）"""
-    import subprocess
-    import os
-    import time
-    
-    logger.info(f"[handle_call] 通話処理を開始します UUID={uuid}")
-    
-    # イベント種別を確認（CHANNEL_ANSWER以外ではRTP未確立のため処理をスキップ）
-    event_name = event.getHeader("Event-Name")
-    if event_name != "CHANNEL_ANSWER":
-        logger.info(f"[handle_call] {event_name} イベントではRTP未確立のため処理をスキップします")
-        return
-    
-    logger.info(f"[handle_call] CHANNEL_ANSWER イベント検出 → 通話処理開始")
-    
-    # 通話情報を取得
-    caller_id = event.getHeader("Caller-Caller-ID-Number") or "unknown"
-    destination = event.getHeader("Caller-Destination-Number") or "unknown"
-    logger.info(f"  Caller: {caller_id} -> Destination: {destination}")
-    
-    # FreeSWITCHがUUIDにRTPポートを付与するのを確実に待つ
-    # CHANNEL_ANSWER時点でも、内部RTPバインド完了まで2.0秒かかる
-    # ここで十分に待機しないと、gateway起動時にRTPポートが未確立で切断される
-    time.sleep(2.0)
-    
-    # RTPポート取得を最大5回リトライ（FreeSWITCHがRTPポートを確立するまで待つ）
-    rtp_port = None
-    for i in range(5):
-        rtp_port = get_rtp_port(uuid)
-        if rtp_port != "7002":  # 成功時は7002ではない（実際のポート番号が返る）
-            logger.info(f"[handle_call] RTPポート取得成功: {rtp_port} (試行{i+1})")
-            break
-        logger.info(f"[handle_call] RTPポート未確立、再試行({i+1}/5)...")
-        if i < 4:  # 最後の試行でない場合は待機
-            time.sleep(1.0)
-    
-    if not rtp_port or rtp_port == "7002":
-        logger.warning(f"[handle_call] RTPポート取得に失敗、デフォルト7002使用")
-        rtp_port = "7002"
-    
-    logger.info(f"[handle_call] 使用するRTPポート: {rtp_port}")
-    
-    # gateway スクリプトのパス
-    gateway_script = "/opt/libertycall/libertycall/gateway/realtime_gateway.py"
-    
-    # パスが存在しない場合は別のパスを試す
-    if not os.path.exists(gateway_script):
-        gateway_script = "/opt/libertycall/gateway/realtime_gateway.py"
-    
-    if not os.path.exists(gateway_script):
-        logger.error(f"[handle_call] gateway スクリプトが見つかりません: {gateway_script}")
-        return
-    
-    # 通話ごとに独立したプロセスで起動
-    try:
-        log_file = f"/tmp/gateway_{uuid}.log"
-        with open(log_file, "w") as log_fd:
-            subprocess.Popen(
-                ["python3", gateway_script, "--uuid", uuid, "--rtp_port", rtp_port],
-                stdout=log_fd,
-                stderr=subprocess.STDOUT,
-                cwd="/opt/libertycall"
-            )
-        logger.info(f"[handle_call] realtime_gateway を起動しました (UUID={uuid}, RTP_PORT={rtp_port})")
-        logger.info(f"[handle_call] ログファイル: {log_file}")
-    except Exception as e:
-        logger.error(f"[handle_call] gateway 起動中にエラー: {e}", exc_info=True)
-
-
-def handle_hangup(uuid, event):
-    """通話終了時の処理"""
-    hangup_cause = event.getHeader("Hangup-Cause") or "unknown"
-    duration = event.getHeader("variable_duration") or "0"
-    logger.info(f"  終了理由: {hangup_cause}, 通話時間: {duration}秒")
-
-
-if __name__ == "__main__":
-    sys.exit(main())
-
+def handle_call(u

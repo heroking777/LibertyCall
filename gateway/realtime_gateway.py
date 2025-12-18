@@ -93,25 +93,30 @@ class RTPPacketBuilder:
         return bytes(header) + payload
 
 class RealtimeGateway:
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, rtp_port_override: Optional[int] = None):
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.rtp_host = config["rtp"]["listen_host"]
-        # ポート番号の優先順位: LC_RTP_PORT > LC_GATEWAY_PORT > gateway.yaml > 固定値 7100
-        # LC_RTP_PORT を優先（新規環境変数）
-        env_port = os.getenv("LC_RTP_PORT") or os.getenv("LC_GATEWAY_PORT")
-        if env_port:
-            try:
-                self.rtp_port = int(env_port)
-                env_name = "LC_RTP_PORT" if os.getenv("LC_RTP_PORT") else "LC_GATEWAY_PORT"
-                self.logger.debug(f"{env_name} override detected: {self.rtp_port}")
-            except ValueError:
-                self.logger.warning("LC_RTP_PORT/LC_GATEWAY_PORT is invalid (%s). Falling back to config file.", env_port)
-                # 環境変数が無効な場合は config ファイルの値を試す
-                self.rtp_port = config["rtp"].get("listen_port", 7100)
+        # ポート番号の優先順位: コマンドライン引数 > LC_RTP_PORT > LC_GATEWAY_PORT > gateway.yaml > 固定値 7100
+        if rtp_port_override is not None:
+            # コマンドライン引数が最優先
+            self.rtp_port = rtp_port_override
+            self.logger.info(f"[INIT] RTP port overridden by CLI argument: {self.rtp_port}")
         else:
-            # 環境変数が無い場合は config ファイルの値を使用
-            self.rtp_port = config["rtp"].get("listen_port", 7100)
+            # 環境変数をチェック
+            env_port = os.getenv("LC_RTP_PORT") or os.getenv("LC_GATEWAY_PORT")
+            if env_port:
+                try:
+                    self.rtp_port = int(env_port)
+                    env_name = "LC_RTP_PORT" if os.getenv("LC_RTP_PORT") else "LC_GATEWAY_PORT"
+                    self.logger.debug(f"{env_name} override detected: {self.rtp_port}")
+                except ValueError:
+                    self.logger.warning("LC_RTP_PORT/LC_GATEWAY_PORT is invalid (%s). Falling back to config file.", env_port)
+                    # 環境変数が無効な場合は config ファイルの値を試す
+                    self.rtp_port = config["rtp"].get("listen_port", 7100)
+            else:
+                # 環境変数が無い場合は config ファイルの値を使用
+                self.rtp_port = config["rtp"].get("listen_port", 7100)
         self.payload_type = config["rtp"]["payload_type"]
         self.sample_rate = config["rtp"]["sample_rate"]
         self.ws_url = config["ws"]["url"]
@@ -591,11 +596,17 @@ class RealtimeGateway:
         while self.running:
             if self.tts_queue and self.rtp_transport:
                 # FreeSWITCH双方向化: 受信元アドレス（rtp_peer）に送信
-                # rtp_peerが設定されていない場合はlisten_portにフォールバック
+                # rtp_peerが設定されていない場合は警告を出してスキップ
+                # （rtp_peerは最初のRTPパケット受信時に自動設定される）
                 if self.rtp_peer:
                     rtp_dest = self.rtp_peer
                 else:
-                    rtp_dest = (self.rtp_host, self.rtp_port)
+                    # rtp_peerが未設定の場合は送信をスキップ（最初のRTPパケット受信待ち）
+                    if consecutive_skips == 0:
+                        self.logger.warning("[TTS_SENDER] rtp_peer not set yet, waiting for first RTP packet...")
+                    consecutive_skips += 1
+                    await asyncio.sleep(0.02)
+                    continue
                 try:
                     payload = self.tts_queue.popleft()
                     packet = self.rtp_builder.build_packet(payload)
@@ -2769,6 +2780,14 @@ def setup_logging(level: str = "DEBUG"):
     logging.debug("[LOG_SETUP] Configured to output logs to stdout (journalctl integration enabled)")
 
 async def main():
+    import argparse
+    
+    # コマンドライン引数の解析
+    parser = argparse.ArgumentParser(description="LibertyCall Realtime Gateway")
+    parser.add_argument("--uuid", help="Call UUID")
+    parser.add_argument("--rtp_port", type=int, required=False, help="RTP port for inbound media")
+    args = parser.parse_args()
+    
     # ログ設定初期化
     setup_logging("DEBUG")
 
@@ -2781,7 +2800,13 @@ async def main():
     if log_level != "DEBUG":
         setup_logging(log_level)
 
-    gateway = RealtimeGateway(config)
+    # --rtp_port が指定されている場合は config を上書き
+    rtp_port_override = None
+    if args.rtp_port:
+        rtp_port_override = args.rtp_port
+        logging.info(f"[MAIN] RTP port overridden by --rtp_port: {rtp_port_override}")
+
+    gateway = RealtimeGateway(config, rtp_port_override=rtp_port_override)
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
