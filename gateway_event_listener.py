@@ -214,16 +214,20 @@ def main():
                 elif event_name == "CHANNEL_EXECUTE_COMPLETE":
                     application = e.getHeader("Application")
                     logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}, Application={application}")
-                    # playback完了時はRTPストリームが維持されているため、ここで通話処理を開始
-                    # park完了時はCHANNEL_PARKイベントで処理するため、ここではスキップ
+                    # playback完了時は、CHANNEL_EXECUTE（開始時）で既に処理済みの可能性があるため、スキップ
                     if application == "playback":
-                        logger.info(f"[CHANNEL_EXECUTE_COMPLETE] playback完了を検出 → 通話処理開始 UUID={uuid}")
-                        # 重複起動を防ぐ（同じUUIDで既に処理中でないか確認）
-                        if uuid not in active_calls:
-                            active_calls.add(uuid)
-                            handle_call(uuid, e)
+                        if uuid in active_calls:
+                            logger.info(f"[CHANNEL_EXECUTE_COMPLETE] playback完了を検出 → 既に処理済みUUID={uuid}（スキップ）")
+                            # 既にCHANNEL_EXECUTE（開始時）で処理済みのため、スキップ
+                            continue
                         else:
-                            logger.debug(f"[重複防止] UUID={uuid} は既に処理中です")
+                            # フォールバック: CHANNEL_EXECUTEが発火しなかった場合のみ処理
+                            logger.warning(f"[CHANNEL_EXECUTE_COMPLETE] playback完了を検出 → 通話処理開始（フォールバック） UUID={uuid}")
+                            if uuid not in active_calls:
+                                active_calls.add(uuid)
+                                handle_call(uuid, e)
+                            else:
+                                logger.debug(f"[重複防止] UUID={uuid} は既に処理中です")
                     elif application == "park":
                         logger.debug(f"[CHANNEL_EXECUTE_COMPLETE] park完了を検出（CHANNEL_PARK待機中） UUID={uuid}")
                 elif event_name == "CHANNEL_PARK":
