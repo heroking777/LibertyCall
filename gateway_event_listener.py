@@ -323,6 +323,17 @@ def handle_call(uuid, event):
         logger.info(f"[handle_call] {event_name} (Application={application}) イベントでは処理をスキップします")
         return
     
+    # park完了後、parking bridgeに移動した新しいUUIDを取得
+    # FreeSWITCHはpark実行時に通話をbridgeに移動し、元のUUIDは破棄される
+    # 実際のRTPチャネルは新しいUUID（Other-Leg-UUIDまたはParked-UUID）で管理される
+    new_uuid = event.getHeader("Other-Leg-UUID") or event.getHeader("Parked-UUID") or event.getHeader("Other-Unique-ID")
+    if new_uuid and new_uuid != uuid:
+        logger.info(f"[handle_call] park完了: 元のUUID={uuid} → 実際のRTPチャネルUUID={new_uuid}")
+        rtp_uuid = new_uuid  # 新しいUUIDを使用
+    else:
+        logger.info(f"[handle_call] park完了: UUID={uuid} (Other-Leg-UUID未検出、元のUUIDを使用)")
+        rtp_uuid = uuid  # フォールバック: 元のUUIDを使用
+    
     # 通話情報を取得
     caller_id = event.getHeader("Caller-Caller-ID-Number") or "unknown"
     destination = event.getHeader("Caller-Destination-Number") or "unknown"
@@ -333,10 +344,10 @@ def handle_call(uuid, event):
     logger.info(f"[handle_call] park完了 → RTP確立待機中 (1.0秒)")
     time.sleep(1.0)
     
-    # RTPポート取得（再試行ロジック付き）
+    # RTPポート取得（再試行ロジック付き、実際のRTPチャネルUUIDを使用）
     rtp_port = None
     for i in range(6):  # 最大6回試行（合計約3秒待機）
-        rtp_port = get_rtp_port(uuid)
+        rtp_port = get_rtp_port(rtp_uuid)
         if rtp_port and rtp_port != "7002" and rtp_port.isdigit():
             logger.info(f"[handle_call] RTPポート取得成功: {rtp_port} (試行{i+1})")
             break
