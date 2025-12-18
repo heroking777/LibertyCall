@@ -328,8 +328,21 @@ def handle_call(uuid, event):
     destination = event.getHeader("Caller-Destination-Number") or "unknown"
     logger.info(f"  Caller: {caller_id} -> Destination: {destination}")
     
-    # RTPポート取得（get_rtp_port()内で適切な待機時間を設定済み）
-    rtp_port = get_rtp_port(uuid)
+    # park完了後にRTPメディア確立を待つ（FreeSWITCHが内部でRTPバインドを完了するまで待機）
+    import time
+    logger.info(f"[handle_call] park完了 → RTP確立待機中 (1.0秒)")
+    time.sleep(1.0)
+    
+    # RTPポート取得（再試行ロジック付き）
+    rtp_port = None
+    for i in range(6):  # 最大6回試行（合計約3秒待機）
+        rtp_port = get_rtp_port(uuid)
+        if rtp_port and rtp_port != "7002" and rtp_port.isdigit():
+            logger.info(f"[handle_call] RTPポート取得成功: {rtp_port} (試行{i+1})")
+            break
+        if i < 5:  # 最後の試行でない場合は待機
+            logger.debug(f"[handle_call] RTPポート取得失敗、再試行待機中 (0.5秒)...")
+            time.sleep(0.5)
     
     if not rtp_port or rtp_port == "7002":
         logger.warning(f"[handle_call] RTPポート取得に失敗、デフォルト7002使用")
