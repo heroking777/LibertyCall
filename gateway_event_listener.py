@@ -305,4 +305,72 @@ def get_rtp_port(uuid):
     return "7002"
 
 
-def handle_call(u
+def handle_call(uuid, event):
+    """通話開始時の処理（CHANNEL_EXECUTE_COMPLETE (park完了) イベントで呼び出される）"""
+    import subprocess
+    import os
+    
+    logger.info(f"[handle_call] 通話処理を開始します UUID={uuid}")
+    
+    # イベント種別を確認
+    event_name = event.getHeader("Event-Name")
+    application = event.getHeader("Application")
+    
+    # CHANNEL_EXECUTE_COMPLETE で park 完了を確認
+    if event_name == "CHANNEL_EXECUTE_COMPLETE" and application == "park":
+        logger.info(f"[handle_call] CHANNEL_EXECUTE_COMPLETE (park完了) イベント検出 → 通話処理開始")
+    else:
+        logger.info(f"[handle_call] {event_name} (Application={application}) イベントでは処理をスキップします")
+        return
+    
+    # 通話情報を取得
+    caller_id = event.getHeader("Caller-Caller-ID-Number") or "unknown"
+    destination = event.getHeader("Caller-Destination-Number") or "unknown"
+    logger.info(f"  Caller: {caller_id} -> Destination: {destination}")
+    
+    # RTPポート取得（get_rtp_port()内で適切な待機時間を設定済み）
+    rtp_port = get_rtp_port(uuid)
+    
+    if not rtp_port or rtp_port == "7002":
+        logger.warning(f"[handle_call] RTPポート取得に失敗、デフォルト7002使用")
+        rtp_port = "7002"
+    
+    logger.info(f"[handle_call] 使用するRTPポート: {rtp_port}")
+    
+    # gateway スクリプトのパス
+    gateway_script = "/opt/libertycall/libertycall/gateway/realtime_gateway.py"
+    
+    # パスが存在しない場合は別のパスを試す
+    if not os.path.exists(gateway_script):
+        gateway_script = "/opt/libertycall/gateway/realtime_gateway.py"
+    
+    if not os.path.exists(gateway_script):
+        logger.error(f"[handle_call] gateway スクリプトが見つかりません: {gateway_script}")
+        return
+    
+    # 通話ごとに独立したプロセスで起動
+    try:
+        log_file = f"/tmp/gateway_{uuid}.log"
+        with open(log_file, "w") as log_fd:
+            subprocess.Popen(
+                ["python3", gateway_script, "--uuid", uuid, "--rtp_port", rtp_port],
+                stdout=log_fd,
+                stderr=subprocess.STDOUT,
+                cwd="/opt/libertycall",
+                env={}  # 親環境変数を完全にリセット（LC_RTP_PORT等が引数を上書きしないように）
+            )
+        logger.info(f"[handle_call] realtime_gateway を起動しました (UUID={uuid}, RTP_PORT={rtp_port})")
+        logger.info(f"[handle_call] ログファイル: {log_file}")
+    except Exception as e:
+        logger.error(f"[handle_call] gateway 起動中にエラー: {e}", exc_info=True)
+
+
+def handle_hangup(uuid, event):
+    """通話終了時の処理"""
+    hangup_cause = event.getHeader("Hangup-Cause") or "unknown"
+    duration = event.getHeader("variable_duration") or "0"
+    logger.info(f"  終了理由: {hangup_cause}, 通話時間: {duration}秒")
+
+
+if __name__ == "__main__":
+    sys.exit(main())
