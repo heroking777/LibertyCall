@@ -132,10 +132,11 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │       ├── console_bridge.py                    # コンソールバックエンド連携
 │       └── gateway/
 │           ├── __init__.py
-│           ├── ai_core.py                       # AIコア（ASR→Intent→TTS統合処理・テンプレート選択・音声生成）
+│           ├── ai_core.py                       # AIコア（ASR→Intent→TTS統合処理・テンプレート選択・音声生成・会話フロー管理・クライアント別設定読み込み）
 │           ├── audio_utils.py                   # 音声変換ユーティリティ（u-law⇄PCM・RMS計算・音量正規化）
 │           ├── intent_rules.py                  # インテント判定ルール（テンプレートID選択・応答生成）
-│           └── transcript_normalizer.py          # トランスクリプト正規化（全角・半角統一・記号除去）
+│           ├── transcript_normalizer.py          # トランスクリプト正規化（全角・半角統一・記号除去）
+│           └── client_mapper.py                 # クライアントID自動判定（発信者番号・宛先番号・SIPヘッダー）
 │
 ├── [Console Backend - 管理画面API]
 │   └── console_backend/
@@ -151,7 +152,8 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │       │   ├── calls.py                         # 通話API（通話履歴・詳細・ログ追記）
 │       │   ├── dashboard.py                     # ダッシュボードAPI（統計情報・グラフデータ）
 │       │   ├── users.py                         # ユーザー管理API（CRUD操作）
-│       │   └── audio_tests.py                   # 音声テストAPI（ASR評価結果・履歴・WebSocketログ）
+│       │   ├── audio_tests.py                   # 音声テストAPI（ASR評価結果・履歴・WebSocketログ）
+│       │   └── flow.py                          # 会話フロー管理API（FlowEditor用・flow.json読み込み・保存・ホットリロード）
 │       ├── services/                             # ビジネスロジック層
 │       │   ├── __init__.py
 │       │   ├── call_service.py                 # 通話サービス（通話作成・更新・ログ管理）
@@ -178,6 +180,8 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │       ├── scheduler_service_prod.py            # 本番用スケジューラーサービス
 │       ├── main.py                              # エントリーポイント（手動実行用）
 │       ├── run_batch.py                         # バッチ送信スクリプト
+│       ├── rebuild_master_leads.py               # master_leads.csv再構築スクリプト（業種別CSVから統合）
+│       ├── clean_master_leads.py                # master_leads.csvクリーニングスクリプト（無効メール・重複ドメイン削除）
 │       ├── recipients_sample.csv                # 送信先サンプル
 │       ├── email-sender.service.example         # systemdサービス設定例
 │       ├── README.md                            # 使用方法・セットアップ
@@ -303,7 +307,17 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │
 ├── [Config - 設定ファイル]
 │   └── config/
-│       └── gateway.yaml                         # Gateway設定（ポート・クライアント）
+│       ├── gateway.yaml                         # Gateway設定（ポート・クライアント）
+│       ├── client_mapping.json                  # クライアントID自動判定ルール（発信者番号・宛先番号・SIPヘッダー）
+│       ├── clients/                             # クライアント別会話フロー設定
+│       │   └── {client_id}/
+│       │       ├── flow.json                    # 会話フロー定義（phase遷移・テンプレートID・条件分岐）
+│       │       ├── keywords.json                # キーワード定義（インテント判定用）
+│       │       └── templates.json               # テンプレート定義（応答メッセージ）
+│       └── system/                              # システムデフォルト設定
+│           ├── default_flow.json                # デフォルト会話フロー
+│           ├── default_keywords.json            # デフォルトキーワード
+│           └── default_templates.json          # デフォルトテンプレート
 │
 ├── [Key - 認証キー]
 │   └── key/
@@ -392,6 +406,16 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │       ├── asr_eval_results.json                # ASR評価結果（WER計算結果・Webダッシュボード用）
 │       └── audio_test_history/                  # 音声テスト履歴（将来用）
 │
+├── [Systemd - サービス管理]
+│   └── /etc/systemd/system/
+│       ├── libertycall.service                  # Gateway Event Listenerサービス（常時稼働）
+│       ├── check_rtp_alive.service              # RTP監視サービス（oneshot）
+│       └── check_rtp_alive.timer                # RTP監視タイマー（5分ごと）
+│
+├── [Logrotate - ログローテーション]
+│   └── /etc/logrotate.d/
+│       └── libertycall                          # ログローテーション設定（event_listener.log, gateway_*.log）
+│
 ├── [Data - データファイル]
 │   └── data/
 │       └── sample_audio.wav                     # サンプル音声
@@ -430,7 +454,12 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │
 ├── [Tools - ツール]
 │   └── tools/
-│       └── __init__.py
+│       ├── __init__.py
+│       ├── check_rtp_alive.sh                   # RTP監視スクリプト（5分ごとに実行・systemd.timerで管理）
+│       └── validate_flow.py                     # 会話フロー検証ツール（flow.json構文チェック・参照エラー検出）
+│       ├── __init__.py
+│       ├── check_rtp_alive.sh                   # RTP監視スクリプト（5分ごとに実行・systemd.timerで管理）
+│       └── validate_flow.py                     # 会話フロー検証ツール（flow.json構文チェック・参照エラー検出）
 │
 ├── [Src - TypeScriptソース（プロジェクト状態管理API）]
 │   └── src/
