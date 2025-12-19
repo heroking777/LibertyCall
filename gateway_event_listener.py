@@ -379,22 +379,10 @@ def handle_call(uuid, event):
     logger.info(f"[handle_call] park完了 → RTP確立待機中 (1.0秒)")
     time.sleep(1.0)
     
-    # RTPポート取得（再試行ロジック付き、実際のRTPチャネルUUIDを使用）
-    rtp_port = None
-    for i in range(6):  # 最大6回試行（合計約3秒待機）
-        rtp_port = get_rtp_port(rtp_uuid)
-        if rtp_port and rtp_port != "7002" and rtp_port.isdigit():
-            logger.info(f"[handle_call] RTPポート取得成功: {rtp_port} (試行{i+1})")
-            break
-        if i < 5:  # 最後の試行でない場合は待機
-            logger.debug(f"[handle_call] RTPポート取得失敗、再試行待機中 (0.5秒)...")
-            time.sleep(0.5)
-    
-    if not rtp_port or rtp_port == "7002":
-        logger.warning(f"[handle_call] RTPポート取得に失敗、デフォルト7002使用")
-        rtp_port = "7002"
-    
-    logger.info(f"[handle_call] 使用するRTPポート: {rtp_port}")
+    # execute_on_mediaで固定ポート7002にRTP転送するため、固定ポートを使用
+    # FreeSWITCHがsocket:127.0.0.1:7002にRTPを転送するため、Gatewayも7002で待機
+    rtp_port = "7002"
+    logger.info(f"[handle_call] execute_on_media使用のため、固定ポート7002を使用")
     
     # gateway スクリプトのパス
     gateway_script = "/opt/libertycall/libertycall/gateway/realtime_gateway.py"
