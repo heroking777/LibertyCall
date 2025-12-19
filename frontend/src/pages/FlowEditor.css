@@ -1,0 +1,18 @@
+.flow-editor-container {
+  padding: 1.5rem;
+  max-width: 100%;
+}
+
+.flow-editor-header {
+  margin-bottom: 1.5rem;
+}
+
+.flow-editor-content {
+  margin-bottom: 1rem;
+}
+
+.flow-editor-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+

@@ -4,6 +4,7 @@ import ConsoleLayout from './components/ConsoleLayout'
 import FileLogsList from './pages/FileLogsList'
 import FileLogDetail from './pages/FileLogDetail'
 import AudioTestDashboard from './pages/AudioTestDashboard'
+import FlowEditor from './pages/FlowEditor'
 import './App.css'
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
           <Route path="/console/file-logs" element={<FileLogsList />} />
           <Route path="/console/file-logs/:clientId/:callId" element={<FileLogDetail />} />
           <Route path="/console/audio-tests" element={<AudioTestDashboard />} />
+          <Route path="/console/flow-editor" element={<FlowEditor />} />
         </Routes>
       </ConsoleLayout>
     </BrowserRouter>
