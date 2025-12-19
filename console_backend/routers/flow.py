@@ -21,7 +21,6 @@ async def reload_flow(
     :param request: リクエストボディ（flow_dataを含む場合、保存してからリロード）
     :return: リロード結果
     """
-    from fastapi import Request
     import json
     from pathlib import Path
     from datetime import datetime
