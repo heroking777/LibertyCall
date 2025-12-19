@@ -131,7 +131,9 @@ class RealtimeGateway:
 
         # --- AI & 音声制御用パラメータ ---
         self.logger.debug("Initializing AI Core...")
-        self.ai_core = AICore()
+        # デフォルトクライアントIDで初期化（後でWebSocket init時に再読み込みされる）
+        initial_client_id = os.getenv("LC_DEFAULT_CLIENT_ID", "000")
+        self.ai_core = AICore(client_id=initial_client_id)
         # TTS 送信用コールバックを設定
         self.ai_core.tts_callback = self._send_tts
         self.ai_core.transfer_callback = self._handle_transfer
@@ -1080,13 +1082,33 @@ class RealtimeGateway:
                 await asyncio.sleep(5)  # エラー時は5秒待って再試行
 
     async def _handle_init_from_asterisk(self, data: dict):
-        """Asterisk側からのinitメッセージを処理（既存ロジックを再利用）"""
-        req_client_id = data.get("client_id", "000")
+        """
+        Asteriskからのinitメッセージを処理（クライアントID自動判定対応）
+        """
+        from libertycall.gateway.client_mapper import resolve_client_id
+        
         req_call_id = data.get("call_id")
         req_caller_number = data.get("caller_number")
+        req_destination_number = data.get("destination_number")  # 着信番号（将来実装）
+        req_sip_headers = data.get("sip_headers")  # SIPヘッダ（将来実装）
         
         # caller_numberをログで確認（最初に記録）
         self.logger.info(f"[Init from Asterisk] caller_number received: {req_caller_number}")
+        
+        # クライアントID自動判定（優先順位: 明示指定 > SIPヘッダ > 着信番号 > 発信者番号 > デフォルト）
+        explicit_client_id = data.get("client_id")
+        if explicit_client_id:
+            req_client_id = explicit_client_id
+            self.logger.info(f"[Init from Asterisk] Using explicit client_id: {req_client_id}")
+        else:
+            # 自動判定
+            req_client_id = resolve_client_id(
+                caller_number=req_caller_number,
+                destination_number=req_destination_number,
+                sip_headers=req_sip_headers,
+                fallback=self.default_client_id
+            )
+            self.logger.info(f"[Init from Asterisk] Auto-resolved client_id: {req_client_id} (caller={req_caller_number}, dest={req_destination_number})")
         
         self.logger.debug(f"[Init from Asterisk] client_id={req_client_id}, call_id={req_call_id}, caller_number={req_caller_number}")
 
