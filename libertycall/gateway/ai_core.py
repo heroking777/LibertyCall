@@ -5,6 +5,7 @@ import wave
 import time
 import threading
 import queue
+import json
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Tuple, List, Dict, Any, Callable
@@ -980,76 +981,32 @@ class HandoffStateMachine:
 
 
 class AICore:
-    AFTER_085_NEGATIVE_KEYWORDS = [
-        "もうだいじょうぶ",
-        "もう大丈夫",
-        "だいじょうぶです",
-        "大丈夫です",
-        "大丈夫",
-        "ほかはない",
-        "他はない",
-        "そんなもん",
-        "いじょうです",
-        "以上です",
-        "けっこうです",
-        "結構です",
-        "たぶんいい",
-        "質問ない",
-        "他にない",
-    ]
-    ENTRY_TRIGGER_KEYWORDS = [
-        "ホームページ",
-        "hp",
-        "ｈｐ",
-        "lp",
-        "ｌｐ",
-        "dm",
-        "メール",
-        "メッセージ",
-        "案内",
-        "連絡",
-    ]
-    CLOSING_YES_KEYWORDS = [
-        "はい",
-        "お願いします",
-        "おねがいします",
-        "頼む",
-        "頼みます",
-        "教えて",
-        "知りたい",
-        "聞きたい",
-        "うん",
-        "いいよ",
-        "ぜひ",
-        "進めて",
-        "案内して",
-    ]
-    CLOSING_NO_KEYWORDS = [
-        "今日はいい",
-        "今日は聞くだけ",
-        "今日は聞くだけなんで",
-        "また考える",
-        "また考えます",
-        "検討する",
-        "やめとく",
-        "やめておく",
-        "また今度",
-        "不要",
-        "いりません",
-        "結構です",
-        "けっこうです",
-        "大丈夫です",
-        "遠慮します",
-        "やめます",
-        "また連絡",
-    ]
+    # キーワードはインスタンス変数として初期化時にJSONから読み込まれる（後方互換性のためクラス変数としても定義）
+    AFTER_085_NEGATIVE_KEYWORDS = []  # 初期化時にJSONから読み込まれる
+    ENTRY_TRIGGER_KEYWORDS = []  # 初期化時にJSONから読み込まれる
+    CLOSING_YES_KEYWORDS = []  # 初期化時にJSONから読み込まれる
+    CLOSING_NO_KEYWORDS = []  # 初期化時にJSONから読み込まれる
 
-    def __init__(self, init_clients: bool = True):
+    def __init__(self, init_clients: bool = True, client_id: str = "000"):
         self.logger = logging.getLogger(__name__)
         self._handoff_sm = HandoffStateMachine(self.logger)
         self._mis_guard = MisunderstandingGuard(self.logger)
         self.init_clients = init_clients
-        self.client_id = None
+        self.client_id = client_id
+        
+        # クライアントごとの会話フロー・テンプレート・キーワードを読み込む
+        self.flow = self._load_flow(client_id)
+        self.templates = self._load_json(
+            f"/opt/libertycall/config/clients/{client_id}/templates.json",
+            default="/opt/libertycall/config/system/default_templates.json"
+        )
+        self.keywords = self._load_json(
+            f"/opt/libertycall/config/clients/{client_id}/keywords.json",
+            default="/opt/libertycall/config/system/default_keywords.json"
+        )
+        
+        # キーワードをインスタンス変数として設定（後方互換性のため）
+        self._load_keywords_from_config()
         self.call_id = None
         self.caller_number = None
         self.log_session_id = None  # 通話ログ用のセッションID（call_idがない場合に使用）
@@ -1291,6 +1248,97 @@ class AICore:
         if not call_id:
             return
         self.session_states.pop(call_id, None)
+
+    def _load_flow(self, client_id: str) -> dict:
+        """
+        クライアントごとの会話フローを読み込む
+        
+        :param client_id: クライアントID
+        :return: 会話フロー設定（dict）
+        """
+        path = f"/opt/libertycall/config/clients/{client_id}/flow.json"
+        default_path = "/opt/libertycall/config/system/default_flow.json"
+        
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                flow = json.load(f)
+                version = flow.get("version", "unknown")
+                self.logger.info(f"[FLOW] client={client_id} version={version} loaded")
+                return flow
+        else:
+            if os.path.exists(default_path):
+                with open(default_path, "r", encoding="utf-8") as f:
+                    flow = json.load(f)
+                    self.logger.warning(f"[FLOW] client={client_id} missing, loaded default version={flow.get('version', 'unknown')}")
+                    return flow
+            else:
+                self.logger.error(f"[FLOW] client={client_id} missing and default not found, using empty flow")
+                return {}
+    
+    def _load_json(self, path: str, default: str = None) -> dict:
+        """
+        汎用JSON読み込みヘルパー
+        
+        :param path: JSONファイルのパス
+        :param default: フォールバック用のデフォルトパス
+        :return: JSONデータ（dict）
+        """
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        elif default and os.path.exists(default):
+            with open(default, "r", encoding="utf-8") as f:
+                self.logger.debug(f"[FLOW] Using default file: {default}")
+                return json.load(f)
+        return {}
+    
+    def _load_keywords_from_config(self) -> None:
+        """
+        keywords.jsonからキーワードを読み込んでインスタンス変数に設定
+        """
+        if not self.keywords:
+            self.logger.warning("[FLOW] keywords not loaded, using empty lists")
+            self.AFTER_085_NEGATIVE_KEYWORDS = []
+            self.ENTRY_TRIGGER_KEYWORDS = []
+            self.CLOSING_YES_KEYWORDS = []
+            self.CLOSING_NO_KEYWORDS = []
+            return
+        
+        self.AFTER_085_NEGATIVE_KEYWORDS = self.keywords.get("AFTER_085_NEGATIVE_KEYWORDS", [])
+        self.ENTRY_TRIGGER_KEYWORDS = self.keywords.get("ENTRY_TRIGGER_KEYWORDS", [])
+        self.CLOSING_YES_KEYWORDS = self.keywords.get("CLOSING_YES_KEYWORDS", [])
+        self.CLOSING_NO_KEYWORDS = self.keywords.get("CLOSING_NO_KEYWORDS", [])
+        
+        self.logger.debug(
+            f"[FLOW] Keywords loaded: ENTRY_TRIGGER={len(self.ENTRY_TRIGGER_KEYWORDS)}, "
+            f"CLOSING_YES={len(self.CLOSING_YES_KEYWORDS)}, CLOSING_NO={len(self.CLOSING_NO_KEYWORDS)}, "
+            f"AFTER_085_NEGATIVE={len(self.AFTER_085_NEGATIVE_KEYWORDS)}"
+        )
+    
+    def reload_flow(self) -> None:
+        """
+        会話フロー・テンプレート・キーワードを再読み込みする
+        """
+        self.flow = self._load_flow(self.client_id)
+        self.templates = self._load_json(
+            f"/opt/libertycall/config/clients/{self.client_id}/templates.json",
+            default="/opt/libertycall/config/system/default_templates.json"
+        )
+        self.keywords = self._load_json(
+            f"/opt/libertycall/config/clients/{self.client_id}/keywords.json",
+            default="/opt/libertycall/config/system/default_keywords.json"
+        )
+        self._load_keywords_from_config()
+        self.logger.info(f"[FLOW] reloaded for client={self.client_id}")
+    
+    def set_client_id(self, client_id: str) -> None:
+        """
+        クライアントIDを変更して会話フローを再読み込みする
+        
+        :param client_id: 新しいクライアントID
+        """
+        self.client_id = client_id
+        self.reload_flow()
 
     def _contains_keywords(self, normalized_text: str, keywords: List[str]) -> bool:
         if not normalized_text:

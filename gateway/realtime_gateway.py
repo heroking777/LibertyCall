@@ -914,6 +914,14 @@ class RealtimeGateway:
                                         self.config = self.client_profile["config"]
                                         self.rules = self.client_profile["rules"]
                                         
+                                        # クライアントIDが変更された場合、AICoreの会話フローを再読み込み
+                                        if hasattr(self.ai_core, 'set_client_id'):
+                                            self.ai_core.set_client_id(req_client_id)
+                                        elif hasattr(self.ai_core, 'client_id'):
+                                            self.ai_core.client_id = req_client_id
+                                            if hasattr(self.ai_core, 'reload_flow'):
+                                                self.ai_core.reload_flow()
+                                        
                                         # caller_numberをAICoreに設定
                                         if req_caller_number:
                                             self.ai_core.caller_number = req_caller_number
