@@ -2731,6 +2731,16 @@ class RTPProtocol(asyncio.DatagramProtocol):
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
         # RTP受信ログ（軽量版：fromとlenのみ）
         self.gateway.logger.info(f"[RTP_RECV_RAW] from={addr}, len={len(data)}")
+        
+        # RakutenのRTP監視対策：受信したパケットをそのまま送り返す（エコー）
+        # これによりRakuten側は「RTP到達OK」と判断し、通話が切れなくなる
+        try:
+            if self.transport:
+                self.transport.sendto(data, addr)
+                self.gateway.logger.debug(f"[RTP_ECHO] sent echo packet to {addr}, len={len(data)}")
+        except Exception as e:
+            self.gateway.logger.warning(f"[RTP_ECHO] failed to send echo: {e}")
+        
         try:
             task = asyncio.create_task(self.gateway.handle_rtp_packet(data, addr))
             def log_exception(task: asyncio.Task) -> None:
