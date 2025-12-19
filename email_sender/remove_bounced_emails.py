@@ -18,8 +18,8 @@ from typing import Set
 # プロジェクトルートのパス
 PROJECT_ROOT = Path(__file__).parent.parent
 EVENTS_LOG_PATH = PROJECT_ROOT / "logs" / "sendgrid_events.csv"
-MASTER_LEADS_PATH = PROJECT_ROOT / "corp_collector" / "data" / "output" / "master_leads.csv"
-BACKUP_PATH = PROJECT_ROOT / "corp_collector" / "data" / "output" / "master_leads.csv.backup"
+MASTER_LEADS_PATH = Path(__file__).parent / "data" / "master_leads.csv"
+BACKUP_PATH = Path(__file__).parent / "data" / "master_leads.csv.backup"
 
 
 def load_bounced_emails() -> Set[str]:

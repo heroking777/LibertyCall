@@ -193,6 +193,7 @@
       "logs": "クライアント専用ログ",
       "app_YYYYMMDD.log": "日次ログ",
       "output": "出力ファイル",
+      "data": "データディレクトリ",
       "master_leads.csv": "本リスト（メアド・会社名・住所・ステージ）",
       "leads_YYYYMMDD.csv": "日次リードリスト",
       "state": "状態管理",

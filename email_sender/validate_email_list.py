@@ -43,8 +43,8 @@ def main():
     print("master_leads.csvのメールアドレスを検証します\n")
     
     # デフォルトのパス
-    default_input = "corp_collector/data/output/master_leads.csv"
-    default_output = "corp_collector/data/output/master_leads_validated.csv"
+    default_input = "email_sender/data/master_leads.csv"
+    default_output = "email_sender/data/master_leads_validated.csv"
     
     input_file = input(f"入力CSVファイル名を指定してください（デフォルト: {default_input}）: ").strip()
     if not input_file:

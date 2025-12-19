@@ -60,7 +60,7 @@ class ProductionCSVRepository:
             self.recipients_file = Path(recipients_file)
         else:
             # デフォルトパス: master_leads.csvを直接使用
-            self.recipients_file = Path(__file__).parent.parent / "corp_collector" / "data" / "output" / "master_leads.csv"
+            self.recipients_file = Path(__file__).parent / "data" / "master_leads.csv"
         
         if unsubscribe_file:
             self.unsubscribe_file = Path(unsubscribe_file)

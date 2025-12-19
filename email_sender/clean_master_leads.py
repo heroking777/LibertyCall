@@ -16,8 +16,8 @@ from collections import defaultdict
 
 # プロジェクトルートのパス
 PROJECT_ROOT = Path(__file__).parent.parent
-MASTER_LEADS_PATH = PROJECT_ROOT / "corp_collector" / "data" / "output" / "master_leads.csv"
-BACKUP_PATH = PROJECT_ROOT / "corp_collector" / "data" / "output" / "master_leads.csv.backup"
+MASTER_LEADS_PATH = Path(__file__).parent / "data" / "master_leads.csv"
+BACKUP_PATH = Path(__file__).parent / "data" / "master_leads.csv.backup"
 
 # 無効なメールアドレスのパターン
 INVALID_EMAIL_PATTERNS = [

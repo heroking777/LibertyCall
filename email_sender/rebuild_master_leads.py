@@ -14,7 +14,7 @@ from typing import List, Dict, Set
 # プロジェクトルートのパス
 PROJECT_ROOT = Path(__file__).parent.parent
 LIST_DIR = PROJECT_ROOT / "email_sender" / "list" / "豕穂ｺｺ蝟ｶ讌ｭ繝ｪ繧ｹ繝・(2)_csv"
-OUTPUT_DIR = PROJECT_ROOT / "corp_collector" / "data" / "output"
+OUTPUT_DIR = Path(__file__).parent / "data"
 MASTER_LEADS_PATH = OUTPUT_DIR / "master_leads.csv"
 
 

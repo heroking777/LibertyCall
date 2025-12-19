@@ -187,7 +187,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--csv",
         type=str,
-        default="/opt/libertycall/corp_collector/data/output/master_leads.csv",
+        default="/opt/libertycall/email_sender/data/master_leads.csv",
         help="master_leads.csvのパス"
     )
     parser.add_argument(

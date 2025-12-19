@@ -181,6 +181,8 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │       ├── email-sender.service.example         # systemdサービス設定例
 │       ├── README.md                            # 使用方法・セットアップ
 │       ├── README_PROD.md                       # 本番環境用README
+│       ├── data/                                # データディレクトリ
+│       │   └── master_leads.csv                 # 本リスト（メアド・会社名・住所・ステージ）
 │       └── templates/                           # メールテンプレート
 │           ├── initial_email.txt                # 初回メール
 │           ├── followup_1.txt                   # フォローメール1
@@ -188,41 +190,6 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │           ├── followup_3.txt                   # フォローメール3
 │           ├── consultation_reply.txt           # 相談返信
 │           └── material_request_reply.txt        # 資料請求返信
-│
-├── [Corp Collector - 企業情報収集]
-│   └── corp_collector/
-│       ├── README.md                            # 使用方法・セットアップ
-│       ├── requirements.txt                     # Python依存パッケージ
-│       ├── config/                              # 設定ファイル
-│       │   ├── settings.toml                    # メイン設定（Google CSE API・出力形式）
-│       │   ├── settings.example.toml           # 設定例
-│       │   ├── queries.txt                     # 検索クエリリスト
-│       │   └── queries.example.txt             # クエリ例
-│       ├── data/                                # データディレクトリ
-│       │   ├── logs/                            # ログファイル
-│       │   │   └── app_YYYYMMDD.log            # 日次ログ
-│       │   ├── output/                          # 出力ファイル
-│       │   │   ├── master_leads.csv            # 本リスト（メアド・会社名・住所・ステージ）
-│       │   │   └── leads_YYYYMMDD.csv          # 日次リードリスト
-│       │   └── state/                           # 状態管理
-│       │       └── query_state.json             # クエリ実行状態
-│       ├── src/                                 # ソースコード
-│       │   ├── __init__.py
-│       │   ├── main.py                          # メインエントリーポイント
-│       │   ├── cse_client.py                   # Google CSE クライアント
-│       │   ├── fetcher.py                       # HTML取得
-│       │   ├── extractor.py                     # OpenAI情報抽出
-│       │   ├── storage.py                       # データ保存（CSV/SQLite）
-│       │   ├── stage_manager.py                 # ステージ管理（メール送信ステージ）
-│       │   ├── logging_config.py                # ログ設定
-│       │   └── utils.py                         # ユーティリティ
-│       └── scripts/                             # スクリプト
-│           ├── run_once.sh                     # 1回実行スクリプト
-│           ├── append_daily.sh                 # 毎日本リストに追記
-│           ├── append_to_master.py             # 本リスト追記スクリプト
-│           ├── update_stage.py                 # ステージ更新スクリプト
-│           ├── README_APPEND.md                # 追記機能ドキュメント
-│           └── README_STAGE.md                 # ステージ管理ドキュメント
 │
 ├── [LP - ランディングページ]
 │   └── lp/
@@ -503,12 +470,7 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
    - 初回メール + フォローアップ3回を自動送信
    - APSchedulerで定期実行
 
-4. Corp Collector (corp_collector/)
-   - Google CSEで企業情報を収集
-   - OpenAIで情報抽出
-   - 本リスト（master_leads.csv）に統合
-
-5. LP (lp/)
+4. LP (lp/)
    - ランディングページ
    - お問い合わせフォーム・配信停止機能
 
