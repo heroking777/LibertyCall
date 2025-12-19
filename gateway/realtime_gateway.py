@@ -450,26 +450,151 @@ class RealtimeGateway:
         # ChatGPT音声風: 文節単位再生のためのフラグ（短い応答やバックチャネルは一括再生）
         use_segmented_playback = reply_text and len(reply_text) > 10 and not template_ids
         
-        # TTS生成
-        tts_audio_24k = None
+        # ChatGPT音声風: TTS生成を非同期タスクで実行（応答遅延を短縮）
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # イベントループが実行されていない場合は同期実行（フォールバック）
+            self.logger.warning("[TTS_ASYNC] Event loop not running, falling back to sync execution")
+            loop = None
+        
         if template_ids and self.ai_core.tts_client:
-            # template_ids ベースで TTS 合成（文節単位再生は適用しない）
-            tts_audio_24k = self.ai_core._synthesize_template_sequence(template_ids)
+            # template_ids ベースで TTS 合成（非同期タスクで実行）
+            if loop:
+                loop.create_task(self._send_tts_async(call_id, template_ids=template_ids, transfer_requested=transfer_requested))
+            else:
+                # フォールバック: 同期実行
+                tts_audio_24k = self.ai_core._synthesize_template_sequence(template_ids)
+                if tts_audio_24k:
+                    ulaw_response = pcm24k_to_ulaw8k(tts_audio_24k)
+                    chunk_size = 160
+                    for i in range(0, len(ulaw_response), chunk_size):
+                        self.tts_queue.append(ulaw_response[i:i+chunk_size])
+                    self.is_speaking_tts = True
+                    self._tts_sender_wakeup.set()
+            return
         elif reply_text and self.ai_core.tts_client and self.ai_core.voice_params and self.ai_core.audio_config:
             # 文節単位再生が有効な場合は非同期タスクで処理
             if use_segmented_playback:
                 # 非同期タスクで文節単位再生を実行
-                asyncio.create_task(self._send_tts_segmented(call_id, reply_text))
+                if loop:
+                    loop.create_task(self._send_tts_segmented(call_id, reply_text))
+                else:
+                    # フォールバック: 同期実行（文節単位再生はスキップ）
+                    synthesis_input = texttospeech.SynthesisInput(text=reply_text)
+                    response = self.ai_core.tts_client.synthesize_speech(
+                        input=synthesis_input,
+                        voice=self.ai_core.voice_params,
+                        audio_config=self.ai_core.audio_config
+                    )
+                    tts_audio_24k = response.audio_content
+                    if tts_audio_24k:
+                        ulaw_response = pcm24k_to_ulaw8k(tts_audio_24k)
+                        chunk_size = 160
+                        for i in range(0, len(ulaw_response), chunk_size):
+                            self.tts_queue.append(ulaw_response[i:i+chunk_size])
+                        self.is_speaking_tts = True
+                        self._tts_sender_wakeup.set()
                 return
             else:
-                # 従来通り reply_text から TTS 合成（後方互換性のため）
-                synthesis_input = texttospeech.SynthesisInput(text=reply_text)
-                response = self.ai_core.tts_client.synthesize_speech(
-                    input=synthesis_input,
-                    voice=self.ai_core.voice_params,
-                    audio_config=self.ai_core.audio_config
+                # 従来通り reply_text から TTS 合成（非同期タスクで実行）
+                if loop:
+                    loop.create_task(self._send_tts_async(call_id, reply_text=reply_text, transfer_requested=transfer_requested))
+                else:
+                    # フォールバック: 同期実行
+                    tts_audio_24k = self._synthesize_text_sync(reply_text)
+                    if tts_audio_24k:
+                        ulaw_response = pcm24k_to_ulaw8k(tts_audio_24k)
+                        chunk_size = 160
+                        for i in range(0, len(ulaw_response), chunk_size):
+                            self.tts_queue.append(ulaw_response[i:i+chunk_size])
+                        self.is_speaking_tts = True
+                        self._tts_sender_wakeup.set()
+                return
+        
+        # リアルタイム更新: AI発話をConsoleに送信（非同期タスクで実行）
+        try:
+            effective_call_id = call_id or self._get_effective_call_id()
+            if effective_call_id:
+                event = {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "role": "AI",
+                    "text": reply_text or (",".join(template_ids) if template_ids else ""),
+                }
+                # 非同期タスクとして実行（ブロックしない）
+                asyncio.create_task(self._push_console_update(effective_call_id, event=event))
+        except Exception as e:
+            self.logger.warning(f"[REALTIME_PUSH] Failed to send AI speech event: {e}")
+        
+        # wait_time_afterの処理: テンプレート006の場合は1.8秒待機
+        # 注意: 実際の待機処理は非同期で行うため、ここではフラグを設定
+        if template_ids and "006" in template_ids:
+            from libertycall.gateway.intent_rules import get_template_config
+            template_config = get_template_config("006")
+            if template_config and template_config.get("wait_time_after"):
+                wait_time = template_config.get("wait_time_after", 1.8)
+                # 非同期タスクで待機処理を実行（実際の実装は後で追加）
+                self.logger.debug(f"TTS_WAIT: template 006 sent, will wait {wait_time}s for user response")
+
+    async def _flush_tts_queue(self) -> None:
+        """
+        ChatGPT音声風: TTSキューを即座に送信（wakeupイベント用）
+        """
+        if not self.tts_queue or not self.rtp_transport or not self.rtp_peer:
+            return
+        
+        # キュー内のすべてのパケットを即座に送信
+        sent_count = 0
+        while self.tts_queue and self.running:
+            try:
+                payload = self.tts_queue.popleft()
+                packet = self.rtp_builder.build_packet(payload)
+                self.rtp_transport.sendto(packet, self.rtp_peer)
+                sent_count += 1
+            except Exception as e:
+                self.logger.error(f"[TTS_FLUSH_ERROR] Failed to send packet: {e}", exc_info=True)
+                break
+        
+        if sent_count > 0:
+            self.logger.debug(f"[TTS_FLUSH] Flushed {sent_count} packets from queue")
+    
+    async def _send_tts_async(self, call_id: str, reply_text: str | None = None, template_ids: list[str] | None = None, transfer_requested: bool = False) -> None:
+        """
+        ChatGPT音声風: TTS生成を非同期で実行（応答遅延を短縮）
+        
+        :param call_id: 通話ID
+        :param reply_text: 返答テキスト
+        :param template_ids: テンプレIDのリスト
+        :param transfer_requested: 転送要求フラグ
+        """
+        tts_audio_24k = None
+        
+        if template_ids and self.ai_core.tts_client:
+            # ChatGPT音声風: ThreadPoolExecutorで非同期TTS合成
+            if hasattr(self.ai_core, 'tts_executor') and self.ai_core.tts_executor:
+                # 非同期でTTS合成を実行
+                loop = asyncio.get_event_loop()
+                tts_audio_24k = await loop.run_in_executor(
+                    self.ai_core.tts_executor,
+                    self.ai_core._synthesize_template_sequence,
+                    template_ids
                 )
-                tts_audio_24k = response.audio_content
+            else:
+                # フォールバック: 同期実行
+                tts_audio_24k = self.ai_core._synthesize_template_sequence(template_ids)
+        elif reply_text and self.ai_core.tts_client and self.ai_core.voice_params and self.ai_core.audio_config:
+            # ChatGPT音声風: ThreadPoolExecutorで非同期TTS合成
+            if hasattr(self.ai_core, 'tts_executor') and self.ai_core.tts_executor:
+                # 非同期でTTS合成を実行
+                loop = asyncio.get_event_loop()
+                tts_audio_24k = await loop.run_in_executor(
+                    self.ai_core.tts_executor,
+                    self._synthesize_text_sync,
+                    reply_text
+                )
+            else:
+                # フォールバック: 同期実行
+                tts_audio_24k = self._synthesize_text_sync(reply_text)
         
         # TTSキューに追加
         if tts_audio_24k:
@@ -498,62 +623,35 @@ class RealtimeGateway:
                 self.logger.warning(f"[REALTIME_PUSH] Failed to send AI speech event: {e}")
             
             # TTS送信完了時刻を記録（無音検出用）
-            # 実際の送信完了は_tts_sender_loopでキューが空になった時だが、
-            # ここでは送信開始時刻を記録（無音検出の基準時刻として使用）
             effective_call_id = call_id or self._get_effective_call_id()
             if effective_call_id:
                 # TTS送信完了を待つ非同期タスクを起動
                 asyncio.create_task(self._wait_for_tts_completion_and_update_time(effective_call_id, len(ulaw_response)))
             
-            # wait_time_afterの処理: テンプレート006の場合は1.8秒待機
-            # 注意: 実際の待機処理は非同期で行うため、ここではフラグを設定
-            if template_ids and "006" in template_ids:
-                from libertycall.gateway.intent_rules import get_template_config
-                template_config = get_template_config("006")
-                if template_config and template_config.get("wait_time_after"):
-                    wait_time = template_config.get("wait_time_after", 1.8)
-                    # 非同期タスクで待機処理を実行（実際の実装は後で追加）
-                    self.logger.debug(f"TTS_WAIT: template 006 sent, will wait {wait_time}s for user response")
-        
-        # 転送要求フラグが立っている場合、TTS送信完了後に転送処理を開始
-        if transfer_requested:
-            self.logger.info("Transfer requested by AI core (handoff flag received). Will start transfer after TTS completion.")
-            self._pending_transfer_call_id = call_id
-            # TTS送信完了を待ってから転送処理を開始する非同期タスクを作成
-            # 注意: _send_ttsは同期メソッドなので、イベントループを取得してからタスクを作成
-            try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(self._wait_for_tts_and_transfer(call_id))
-            except RuntimeError:
-                # イベントループが実行されていない場合は、_transfer_task_queueに追加
-                # process_queued_transfers が定期的にチェックして処理する
-                self._transfer_task_queue.append(call_id)
-                self.logger.info(
-                    f"TRANSFER_TASK_QUEUED: call_id={call_id} queue_len={len(self._transfer_task_queue)} "
-                    "(event loop not running, will be processed by process_queued_transfers)"
-                )
-
-    async def _flush_tts_queue(self) -> None:
+            # 転送要求フラグが立っている場合、TTS送信完了後に転送処理を開始
+            if transfer_requested:
+                self.logger.info("Transfer requested by AI core (handoff flag received). Will start transfer after TTS completion.")
+                self._pending_transfer_call_id = call_id
+                asyncio.create_task(self._wait_for_tts_and_transfer(call_id))
+    
+    def _synthesize_text_sync(self, text: str) -> Optional[bytes]:
         """
-        ChatGPT音声風: TTSキューを即座に送信（wakeupイベント用）
+        ChatGPT音声風: テキストのTTS合成を同期実行（ThreadPoolExecutor用）
+        
+        :param text: テキスト
+        :return: 音声データ（bytes）または None
         """
-        if not self.tts_queue or not self.rtp_transport or not self.rtp_peer:
-            return
-        
-        # キュー内のすべてのパケットを即座に送信
-        sent_count = 0
-        while self.tts_queue and self.running:
-            try:
-                payload = self.tts_queue.popleft()
-                packet = self.rtp_builder.build_packet(payload)
-                self.rtp_transport.sendto(packet, self.rtp_peer)
-                sent_count += 1
-            except Exception as e:
-                self.logger.error(f"[TTS_FLUSH_ERROR] Failed to send packet: {e}", exc_info=True)
-                break
-        
-        if sent_count > 0:
-            self.logger.debug(f"[TTS_FLUSH] Flushed {sent_count} packets from queue")
+        try:
+            synthesis_input = texttospeech.SynthesisInput(text=text)
+            response = self.ai_core.tts_client.synthesize_speech(
+                input=synthesis_input,
+                voice=self.ai_core.voice_params,
+                audio_config=self.ai_core.audio_config
+            )
+            return response.audio_content
+        except Exception as e:
+            self.logger.exception(f"[TTS_SYNTHESIS_ERROR] text={text!r} error={e}")
+            return None
     
     async def _send_tts_segmented(self, call_id: str, reply_text: str) -> None:
         """
