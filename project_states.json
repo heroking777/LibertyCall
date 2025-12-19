@@ -213,10 +213,6 @@
       "build": "ビルド成果物",
       "css": "CSSファイル",
       "js": "JavaScriptファイル",
-      "server.py": "HTTPサーバー",
-      "tools": "ツール（会話フロー・音声テスト）",
-      "files.py": "ファイル操作ツール",
-      "logs.py": "ログ操作ツール",
       "_TEMPLATE": "新規クライアント作成用テンプレート",
       "incoming_sequence.json": "着信シーケンス設定",
       "logs": "クライアント専用ログ",
@@ -239,7 +235,6 @@
       "prompts": "プロンプト音声",
       "dialog_manager.py": "対話管理（状態遷移）",
       "dialog_state.py": "対話状態定義",
-      "check_mcp_health.py": "MCPヘルスチェック",
       "check_template_voice_diff.py": "テンプレート音声差分チェック",
       "dev_run_gateway.sh": "開発用Gateway起動",
       "dummy_upwork_search.html": "Upwork検索ダミーHTML",
@@ -256,7 +251,6 @@
       "handoff_redirect.py": "ハンドオフリダイレクト",
       "hangup_call.py": "通話終了",
       "regenerate_000.py": "クライアント000再生成",
-      "start_mcp.sh": "MCP起動スクリプト",
       "test_audio_asr.py": "音声ファイルASR認識テスト",
       "test_ai_response.py": "AI処理テスト（テキスト→フェーズ・テンプレート）",
       "test_audio_flow.sh": "音声フロー統合テスト（ASR→AI→WER）",
@@ -283,8 +277,6 @@
       "*.log": "通話ログファイル",
       "handoff_redirect.log": "ハンドオフリダイレクトログ",
       "hangup_call.log": "通話終了ログ",
-      "mcp_http.log": "MCP HTTPログ",
-      "mcp_server.log": "MCPサーバーログ",
       "ngrok.log": "ngrokログ",
       "realtime_gateway.log": "リアルタイムゲートウェイログ",
       "conversation_trace.log": "会話トレースログ（フェーズ・テンプレートID・発話内容）",
@@ -315,6 +307,7 @@
       "projectRoutes.ts": "プロジェクトルート（/projects, /projects/:id/state）",
       "projectStateStorage.ts": "プロジェクト状態ストレージ（project_states.json管理）",
       "ProjectState.ts": "プロジェクト状態型定義",
+      "tools": "ツール（会話フロー・音声テスト）",
       "flow_tester.ts": "会話フローテスター（JSON構造版からintent指定でシミュレーション）",
       "flow_diff_parser.ts": "フロー差分パーサー（git diff→intentマッピング）",
       "audio_flow_tester.ts": "音声フローテスター（音声→ASR→AI→ログ検証）",
@@ -322,6 +315,6 @@
       "_archive_20251113": "2025年11月13日アーカイブ",
       "LibertyCall": "旧バージョンコード"
     },
-    "updatedAt": "2025-12-19T16:50:01.542477Z"
+    "updatedAt": "2025-12-19T17:00:01.327604Z"
   }
 }
