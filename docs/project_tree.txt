@@ -18,17 +18,13 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 ├── call_console.db                              # SQLiteデータベース（通話ログ・ユーザー管理）
 ├── recipients.csv                               # メール送信先リスト
 ├── unsubscribe_list.csv                         # 配信停止リスト
-├── cookies.json                                 # ブラウザクッキー（開発用）
 ├── process_csv.py                               # CSV処理ユーティリティ
-├── demo.py                                      # デモ用スクリプト
-├── demo_output.csv                              # デモ出力ファイル
 ├── test_flow.py                                 # フローテスト
 ├── test_init.py                                 # 初期化テスト
 ├── test_output_audio.wav                        # テスト用音声ファイル
 ├── sample_audio.wav                             # サンプル音声ファイル
 ├── gemini_reply.wav                             # Gemini応答音声（テスト用）
 ├── setup_env.sh                                 # 環境セットアップスクリプト
-├── run_demo.sh                                  # デモ実行スクリプト
 ├── run_test_gateway.sh                          # Gatewayテスト実行スクリプト
 ├── monitor_asr_errors.sh                        # ASRエラー監視スクリプト
 ├── test_asr_error.sh                            # ASRエラーテストスクリプト
@@ -51,7 +47,6 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │   ├── CHECK_VPS_FIREWALL.md                    # VPSファイアウォール確認
 │   ├── QUICK_START.md                           # クイックスタートガイド
 │   ├── TROUBLESHOOTING.md                       # トラブルシューティング
-│   ├── twitter_demo_README.md                   # TwitterデモREADME
 │   └── docs/
 │       ├── ANNOUNCEMENT_FLOW_FIX.md             # アナウンスフロー修正
 │       ├── ANNOUNCEMENT_FLOW_VERIFICATION.md    # アナウンスフロー検証

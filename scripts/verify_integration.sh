@@ -84,8 +84,9 @@ test_step "フロントエンドファイルの確認" \
     "test -f $PROJECT_ROOT/frontend/src/pages/AudioTestDashboard.jsx && grep -q 'AudioTestDashboard' $PROJECT_ROOT/frontend/src/pages/AudioTestDashboard.jsx"
 
 # 11. 統合テスト（音声→ASR→AI）
-test_step "統合テスト（音声→ASR→AI）" \
-    "cd $PROJECT_ROOT && npx ts-node src/tools/audio_flow_tester.ts tts_test/004_moshimoshi.wav 2>&1 | grep -E '(認識結果|PHASE=|✅|❌)' | head -5"
+# 注意: audio_flow_tester.ts は削除されました。必要に応じて別の検証方法を使用してください。
+# test_step "統合テスト（音声→ASR→AI）" \
+#     "cd $PROJECT_ROOT && npx ts-node src/tools/audio_flow_tester.ts tts_test/004_moshimoshi.wav 2>&1 | grep -E '(認識結果|PHASE=|✅|❌)' | head -5"
 
 # 結果サマリー
 echo ""
