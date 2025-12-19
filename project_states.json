@@ -288,6 +288,9 @@
       "start_mcp.sh": "MCP起動スクリプト",
       "test_audio_asr.py": "音声ファイルASR認識テスト",
       "test_ai_response.py": "AI処理テスト（テキスト→フェーズ・テンプレート）",
+      "test_audio_flow.sh": "音声フロー統合テスト（ASR→AI→WER）",
+      "test_regression_audio.sh": "自動リグレッションテスト（git diff検知＋部分テスト）",
+      "test_flow_integration.sh": "会話フロー統合テスト（全主要インテント）",
       "test_gateway_sync.sh": "Gatewayログ監視（conversation_trace.log）",
       "asr_eval.py": "ASR評価（WER計算・精度評価）",
       "map_intent_audio.py": "intentと音声ファイルのマッピング",
@@ -341,10 +344,13 @@
       "projectRoutes.ts": "プロジェクトルート（/projects, /projects/:id/state）",
       "projectStateStorage.ts": "プロジェクト状態ストレージ（project_states.json管理）",
       "ProjectState.ts": "プロジェクト状態型定義",
+      "flow_tester.ts": "会話フローテスター（JSON構造版からintent指定でシミュレーション）",
+      "flow_diff_parser.ts": "フロー差分パーサー（git diff→intentマッピング）",
+      "audio_flow_tester.ts": "音声フローテスター（音声→ASR→AI→ログ検証）",
       "dist": "TypeScriptコンパイル結果",
       "_archive_20251113": "2025年11月13日アーカイブ",
       "LibertyCall": "旧バージョンコード"
     },
-    "updatedAt": "2025-12-19T16:40:01.843827Z"
+    "updatedAt": "2025-12-19T16:45:02.098791Z"
   }
 }
