@@ -2381,6 +2381,20 @@ class AICore:
                 merged_text,
             )
             
+            # ChatGPT音声風: 短い部分認識をトリガーに即応答（バックチャネル）
+            text_stripped = text.strip() if text else ""
+            if 1 <= len(text_stripped) <= 6:
+                backchannel_keywords = ["はい", "えっと", "あの", "ええ", "そう", "うん", "ああ"]
+                if any(keyword in text_stripped for keyword in backchannel_keywords):
+                    self.logger.debug(f"[BACKCHANNEL_TRIGGER] Detected short utterance: {text_stripped}")
+                    # tts_callback が設定されている場合のみ実行
+                    if hasattr(self, 'tts_callback') and self.tts_callback:  # type: ignore[attr-defined]
+                        try:
+                            self.tts_callback(call_id, "はい", None, False)  # type: ignore[misc, attr-defined]
+                            self.logger.info(f"[BACKCHANNEL_SENT] call_id={call_id} text='はい' (triggered by partial: {text_stripped!r})")
+                        except Exception as e:
+                            self.logger.exception(f"[BACKCHANNEL_ERROR] call_id={call_id} error={e}")
+            
             # partial の場合は会話ロジックを実行しない
             return None
         

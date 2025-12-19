@@ -440,20 +440,29 @@ class RealtimeGateway:
             if tts_text_for_check:
                 self._last_tts_text = tts_text_for_check
         
+        # ChatGPT音声風: 文節単位再生のためのフラグ（短い応答やバックチャネルは一括再生）
+        use_segmented_playback = reply_text and len(reply_text) > 10 and not template_ids
+        
         # TTS生成
         tts_audio_24k = None
         if template_ids and self.ai_core.tts_client:
-            # template_ids ベースで TTS 合成
+            # template_ids ベースで TTS 合成（文節単位再生は適用しない）
             tts_audio_24k = self.ai_core._synthesize_template_sequence(template_ids)
         elif reply_text and self.ai_core.tts_client and self.ai_core.voice_params and self.ai_core.audio_config:
-            # 従来通り reply_text から TTS 合成（後方互換性のため）
-            synthesis_input = texttospeech.SynthesisInput(text=reply_text)
-            response = self.ai_core.tts_client.synthesize_speech(
-                input=synthesis_input,
-                voice=self.ai_core.voice_params,
-                audio_config=self.ai_core.audio_config
-            )
-            tts_audio_24k = response.audio_content
+            # 文節単位再生が有効な場合は非同期タスクで処理
+            if use_segmented_playback:
+                # 非同期タスクで文節単位再生を実行
+                asyncio.create_task(self._send_tts_segmented(call_id, reply_text))
+                return
+            else:
+                # 従来通り reply_text から TTS 合成（後方互換性のため）
+                synthesis_input = texttospeech.SynthesisInput(text=reply_text)
+                response = self.ai_core.tts_client.synthesize_speech(
+                    input=synthesis_input,
+                    voice=self.ai_core.voice_params,
+                    audio_config=self.ai_core.audio_config
+                )
+                tts_audio_24k = response.audio_content
         
         # TTSキューに追加
         if tts_audio_24k:
@@ -514,6 +523,61 @@ class RealtimeGateway:
                     "(event loop not running, will be processed by process_queued_transfers)"
                 )
 
+    async def _send_tts_segmented(self, call_id: str, reply_text: str) -> None:
+        """
+        ChatGPT音声風: 応答文を文節単位で分割して再生する
+        
+        :param call_id: 通話ID
+        :param reply_text: 返答テキスト
+        """
+        import re
+        
+        self.logger.info(f"[TTS_SEGMENTED] call_id={call_id} text={reply_text!r}")
+        self.is_speaking_tts = True
+        
+        # 「。」「、」で分割（ただし、空のセグメントはスキップ）
+        segments = re.split(r"([、。])", reply_text)
+        # 区切り文字とテキストを結合（「、」「。」を前のセグメントに含める）
+        combined_segments = []
+        for i in range(0, len(segments), 2):
+            if i + 1 < len(segments):
+                combined_segments.append(segments[i] + segments[i + 1])
+            elif segments[i].strip():
+                combined_segments.append(segments[i])
+        
+        # 各文節を個別にTTS合成してキューに追加
+        for segment in combined_segments:
+            segment = segment.strip()
+            if not segment:
+                continue
+            
+            try:
+                # 文節ごとにTTS合成
+                synthesis_input = texttospeech.SynthesisInput(text=segment)
+                response = self.ai_core.tts_client.synthesize_speech(
+                    input=synthesis_input,
+                    voice=self.ai_core.voice_params,
+                    audio_config=self.ai_core.audio_config
+                )
+                segment_audio = response.audio_content
+                
+                # μ-law変換してキューに追加
+                ulaw_segment = pcm24k_to_ulaw8k(segment_audio)
+                chunk_size = 160
+                for i in range(0, len(ulaw_segment), chunk_size):
+                    self.tts_queue.append(ulaw_segment[i:i+chunk_size])
+                
+                self.logger.debug(f"[TTS_SEGMENT] call_id={call_id} segment={segment!r} queued={len(ulaw_segment)//chunk_size} chunks")
+                
+                # 文節間に0.2秒ポーズを挿入（最後の文節以外）
+                if segment != combined_segments[-1]:
+                    await asyncio.sleep(0.2)
+                    
+            except Exception as e:
+                self.logger.exception(f"[TTS_SEGMENT_ERROR] call_id={call_id} segment={segment!r} error={e}")
+        
+        self.logger.info(f"[TTS_SEGMENTED_COMPLETE] call_id={call_id} segments={len(combined_segments)}")
+    
     async def _wait_for_tts_completion_and_update_time(self, call_id: str, tts_audio_length: int) -> None:
         """
         TTS送信完了を待って、_last_tts_end_timeを更新する
@@ -1097,6 +1161,11 @@ class RealtimeGateway:
                 # 有音フレーム検出時は無音カウンターをリセット
                 if hasattr(self, "_silent_frame_count"):
                     self._silent_frame_count = 0
+                
+                # ChatGPT音声風: 有音検出時にバックチャネルフラグをリセット
+                if not hasattr(self, "_backchannel_flags"):
+                    self._backchannel_flags = {}
+                self._backchannel_flags[effective_call_id] = False
             else:
                 # 無音時は _last_voice_time を更新しない（ただし初回のみ初期化）
                 # 初回の無音だけ記録（連続無音なら上書きしない）
@@ -1107,6 +1176,26 @@ class RealtimeGateway:
                 if effective_call_id not in self._last_voice_time:
                     self._last_voice_time[effective_call_id] = current_time
                     self.logger.debug(f"[RTP_INIT] Initialized _last_voice_time for silent stream call_id={effective_call_id}")
+                
+                # ChatGPT音声風: 2秒以上無音が続いたらバックチャネルを挿入
+                if effective_call_id in self._last_voice_time:
+                    silence_duration = current_time - self._last_voice_time[effective_call_id]
+                    if silence_duration >= 2.0:
+                        # バックチャネルフラグを初期化（存在しない場合）
+                        if not hasattr(self, "_backchannel_flags"):
+                            self._backchannel_flags = {}
+                        # まだバックチャネルを送っていない場合のみ送信
+                        if not self._backchannel_flags.get(effective_call_id, False):
+                            self._backchannel_flags[effective_call_id] = True
+                            self.logger.debug(f"[BACKCHANNEL_SILENCE] call_id={effective_call_id} silence={silence_duration:.2f}s -> sending backchannel")
+                            # 非同期タスクでバックチャネルを送信
+                            try:
+                                if hasattr(self.ai_core, 'tts_callback') and self.ai_core.tts_callback:
+                                    self.ai_core.tts_callback(effective_call_id, "はい", None, False)
+                                    self.logger.info(f"[BACKCHANNEL_SENT] call_id={effective_call_id} text='はい' (silence={silence_duration:.2f}s)")
+                            except Exception as e:
+                                self.logger.exception(f"[BACKCHANNEL_ERROR] call_id={effective_call_id} error={e}")
+                
                 # デバッグログは頻度を下げる（100フレームに1回）
                 if not hasattr(self, "_silent_frame_count"):
                     self._silent_frame_count = 0
