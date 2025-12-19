@@ -204,6 +204,15 @@ class GoogleASR:
         self._stream_thread.start()
         self.logger.info(f"GoogleASR: STREAM_WORKER_START call_id={call_id}")
         
+        # ChatGPT音声風: 通話開始時に200ms無音フレームを送信してウォームアップ
+        # 16kHz * 2バイト * 0.2秒 = 6400バイト
+        warmup_silence = b"\x00" * 6400
+        try:
+            self._q.put_nowait(warmup_silence)
+            self.logger.debug(f"GoogleASR: WARMUP_SILENCE sent: {len(warmup_silence)} bytes (200ms)")
+        except queue.Full:
+            self.logger.warning("GoogleASR: WARMUP_SILENCE queue full, skipping")
+        
         # 【修正】ストリーム起動後、バッファがあれば送信
         if len(self._pre_stream_buffer) > 0:
             self._flush_pre_stream_buffer()
@@ -336,6 +345,34 @@ class GoogleASR:
                         try:
                             # call_id を取得（feed_audio で渡された call_id を使用）
                             call_id = getattr(self, '_current_call_id', 'TEMP_CALL')
+                            
+                            # ChatGPT音声風: partial結果を受信した瞬間に即反応（バックチャネル）
+                            if not is_final:
+                                text_stripped = transcript.strip() if transcript else ""
+                                if 1 <= len(text_stripped) <= 6:
+                                    backchannel_keywords = ["はい", "えっと", "あの", "ええ", "そう", "うん", "ああ"]
+                                    if any(keyword in text_stripped for keyword in backchannel_keywords):
+                                        self.logger.debug(f"[BACKCHANNEL_TRIGGER_ASR] Detected short utterance: {text_stripped}")
+                                        # tts_callback が設定されている場合のみ実行（非同期で実行）
+                                        if hasattr(self.ai_core, 'tts_callback') and self.ai_core.tts_callback:  # type: ignore[attr-defined]
+                                            try:
+                                                # 非同期タスクで実行（ブロックしない）
+                                                import asyncio
+                                                try:
+                                                    loop = asyncio.get_event_loop()
+                                                    loop.create_task(
+                                                        asyncio.to_thread(
+                                                            self.ai_core.tts_callback,  # type: ignore[misc, attr-defined]
+                                                            call_id, "はい", None, False
+                                                        )
+                                                    )
+                                                except RuntimeError:
+                                                    # イベントループが実行されていない場合は同期実行
+                                                    self.ai_core.tts_callback(call_id, "はい", None, False)  # type: ignore[misc, attr-defined]
+                                                self.logger.info(f"[BACKCHANNEL_SENT_ASR] call_id={call_id} text='はい' (triggered by partial: {text_stripped!r})")
+                                            except Exception as e:
+                                                self.logger.exception(f"[BACKCHANNEL_ERROR_ASR] call_id={call_id} error={e}")
+                            
                             # partial と final の両方を on_transcript に送る
                             self.ai_core.on_transcript(call_id, transcript, is_final=is_final)
                         except Exception as e:
@@ -1139,6 +1176,11 @@ class AICore:
         if texttospeech is None:
             self.logger.debug("google-cloud-texttospeech 未導入のため TTS 初期化をスキップします。")
             return
+
+        # ChatGPT音声風: TTSを完全非同期化するためのThreadPoolExecutorを初期化
+        from concurrent.futures import ThreadPoolExecutor
+        self.tts_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="TTS")
+        self.logger.debug("AICore: TTS ThreadPoolExecutor initialized (max_workers=2)")
 
         # WAV保存機能の設定
         self.debug_save_wav = os.getenv("LC_DEBUG_SAVE_WAV", "0") == "1"

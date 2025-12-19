@@ -145,11 +145,18 @@ class RealtimeGateway:
         # ストリーミングモード判定
         self.streaming_enabled = os.getenv("LC_ASR_STREAMING_ENABLED", "0") == "1"
         
+        # ChatGPT音声風: ASRチャンクを短縮（デフォルト250ms）
+        os.environ.setdefault("LC_ASR_CHUNK_MS", "250")
+        
+        # ChatGPT音声風: TTS送信ループの即時flush用イベント
+        self._tts_sender_wakeup = asyncio.Event()
+        
         # ASR プロバイダに応じたログ出力
         asr_provider = getattr(self.ai_core, 'asr_provider', 'google')
         if asr_provider == "whisper" and self.streaming_enabled:
             model_name = os.getenv("LC_ASR_WHISPER_MODEL", "base")
-            chunk_ms = os.getenv("LC_ASR_CHUNK_MS", "1000")
+            # ChatGPT音声風: ASRチャンクを短縮（デフォルト250ms）
+            chunk_ms = os.getenv("LC_ASR_CHUNK_MS", "250")
             silence_ms = os.getenv("LC_ASR_SILENCE_MS", "700")
             self.logger.info(
                 f"Streaming ASR モードで起動 (model={model_name}, chunk={chunk_ms}ms, silence={silence_ms}ms)"
@@ -473,6 +480,9 @@ class RealtimeGateway:
             self.logger.info(f"TTS_SEND: call_id={call_id} text={reply_text!r} queued={len(ulaw_response)//chunk_size} chunks")
             self.is_speaking_tts = True
             
+            # ChatGPT音声風: 即時送信トリガーを発火
+            self._tts_sender_wakeup.set()
+            
             # 🔹 リアルタイム更新: AI発話をConsoleに送信
             try:
                 effective_call_id = call_id or self._get_effective_call_id()
@@ -523,6 +533,28 @@ class RealtimeGateway:
                     "(event loop not running, will be processed by process_queued_transfers)"
                 )
 
+    async def _flush_tts_queue(self) -> None:
+        """
+        ChatGPT音声風: TTSキューを即座に送信（wakeupイベント用）
+        """
+        if not self.tts_queue or not self.rtp_transport or not self.rtp_peer:
+            return
+        
+        # キュー内のすべてのパケットを即座に送信
+        sent_count = 0
+        while self.tts_queue and self.running:
+            try:
+                payload = self.tts_queue.popleft()
+                packet = self.rtp_builder.build_packet(payload)
+                self.rtp_transport.sendto(packet, self.rtp_peer)
+                sent_count += 1
+            except Exception as e:
+                self.logger.error(f"[TTS_FLUSH_ERROR] Failed to send packet: {e}", exc_info=True)
+                break
+        
+        if sent_count > 0:
+            self.logger.debug(f"[TTS_FLUSH] Flushed {sent_count} packets from queue")
+    
     async def _send_tts_segmented(self, call_id: str, reply_text: str) -> None:
         """
         ChatGPT音声風: 応答文を文節単位で分割して再生する
@@ -552,14 +584,21 @@ class RealtimeGateway:
                 continue
             
             try:
-                # 文節ごとにTTS合成
-                synthesis_input = texttospeech.SynthesisInput(text=segment)
-                response = self.ai_core.tts_client.synthesize_speech(
-                    input=synthesis_input,
-                    voice=self.ai_core.voice_params,
-                    audio_config=self.ai_core.audio_config
-                )
-                segment_audio = response.audio_content
+                # ChatGPT音声風: ThreadPoolExecutorで非同期TTS合成
+                if hasattr(self.ai_core, 'tts_executor') and self.ai_core.tts_executor:
+                    # 非同期でTTS合成を実行
+                    loop = asyncio.get_event_loop()
+                    segment_audio = await loop.run_in_executor(
+                        self.ai_core.tts_executor,
+                        self._synthesize_segment_sync,
+                        segment
+                    )
+                else:
+                    # フォールバック: 同期実行
+                    segment_audio = self._synthesize_segment_sync(segment)
+                
+                if not segment_audio:
+                    continue
                 
                 # μ-law変換してキューに追加
                 ulaw_segment = pcm24k_to_ulaw8k(segment_audio)
@@ -569,6 +608,9 @@ class RealtimeGateway:
                 
                 self.logger.debug(f"[TTS_SEGMENT] call_id={call_id} segment={segment!r} queued={len(ulaw_segment)//chunk_size} chunks")
                 
+                # ChatGPT音声風: 文節ごとに即時送信トリガーを発火
+                self._tts_sender_wakeup.set()
+                
                 # 文節間に0.2秒ポーズを挿入（最後の文節以外）
                 if segment != combined_segments[-1]:
                     await asyncio.sleep(0.2)
@@ -577,6 +619,25 @@ class RealtimeGateway:
                 self.logger.exception(f"[TTS_SEGMENT_ERROR] call_id={call_id} segment={segment!r} error={e}")
         
         self.logger.info(f"[TTS_SEGMENTED_COMPLETE] call_id={call_id} segments={len(combined_segments)}")
+    
+    def _synthesize_segment_sync(self, segment: str) -> Optional[bytes]:
+        """
+        ChatGPT音声風: 文節のTTS合成を同期実行（ThreadPoolExecutor用）
+        
+        :param segment: 文節テキスト
+        :return: 音声データ（bytes）または None
+        """
+        try:
+            synthesis_input = texttospeech.SynthesisInput(text=segment)
+            response = self.ai_core.tts_client.synthesize_speech(
+                input=synthesis_input,
+                voice=self.ai_core.voice_params,
+                audio_config=self.ai_core.audio_config
+            )
+            return response.audio_content
+        except Exception as e:
+            self.logger.exception(f"[TTS_SYNTHESIS_ERROR] segment={segment!r} error={e}")
+            return None
     
     async def _wait_for_tts_completion_and_update_time(self, call_id: str, tts_audio_length: int) -> None:
         """
@@ -658,6 +719,11 @@ class RealtimeGateway:
         self.logger.debug("TTS Sender loop started.")
         consecutive_skips = 0
         while self.running:
+            # ChatGPT音声風: wakeupイベントがセットされていたら即flush
+            if self._tts_sender_wakeup.is_set():
+                await self._flush_tts_queue()
+                self._tts_sender_wakeup.clear()
+            
             if self.tts_queue and self.rtp_transport:
                 # FreeSWITCH双方向化: 受信元アドレス（rtp_peer）に送信
                 # rtp_peerが設定されていない場合は警告を出してスキップ
