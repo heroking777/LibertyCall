@@ -241,18 +241,6 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │               ├── css/                         # CSSファイル
 │               └── js/                          # JavaScriptファイル
 │
-├── [MCP - Model Context Protocol]
-│   ├── libertycall_mcp/                         # MCPサーバー
-│   │   ├── __init__.py
-│   │   └── __main__.py                          # MCPエントリーポイント
-│   └── libertycall_mcp_http/                    # MCP HTTPサーバー
-│       ├── __init__.py
-│       ├── server.py                            # HTTPサーバー
-│       └── tools/                               # MCPツール
-│           ├── __init__.py
-│           ├── files.py                         # ファイル操作ツール
-│           └── logs.py                          # ログ操作ツール
-│
 ├── [Clients - クライアント設定]
 │   └── clients/
 │       ├── _TEMPLATE/                           # 新規クライアント作成用テンプレート
@@ -287,9 +275,6 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │
 ├── [Deploy - デプロイ設定]
 │   └── deploy/
-│       └── asterisk/
-│           ├── agi/
-│           │   └── ai_handler.py               # AGIハンドラー（Asterisk連携）
 │           ├── hello.ulaw                       # テスト用音声
 │           └── prompts/                         # プロンプト音声
 │               ├── ai_operator.ulaw
@@ -306,7 +291,6 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 ├── [Scripts - ユーティリティスクリプト]
 │   └── scripts/
 │       ├── __init__.py
-│       ├── check_mcp_health.py                 # MCPヘルスチェック
 │       ├── check_template_voice_diff.py         # テンプレート音声差分チェック
 │       ├── dev_run_gateway.sh                  # 開発用Gateway起動
 │       ├── dummy_upwork_search.html            # Upwork検索ダミーHTML
@@ -323,7 +307,6 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │       ├── handoff_redirect.py                 # ハンドオフリダイレクト
 │       ├── hangup_call.py                      # 通話終了
 │       ├── regenerate_000.py                   # クライアント000再生成
-│       ├── start_mcp.sh                        # MCP起動スクリプト
 │       ├── test_audio_asr.py                   # 音声ファイルASR認識テスト
 │       ├── test_ai_response.py                 # AI処理テスト（テキスト→フェーズ・テンプレート）
 │       ├── test_audio_flow.sh                  # 音声フロー統合テスト（ASR→AI→WER）
@@ -360,8 +343,6 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │       │       └── *.log                        # 通話ログファイル
 │       ├── handoff_redirect.log                 # ハンドオフリダイレクトログ
 │       ├── hangup_call.log                      # 通話終了ログ
-│       ├── mcp_http.log                         # MCP HTTPログ
-│       ├── mcp_server.log                       # MCPサーバーログ
 │       ├── ngrok.log                            # ngrokログ
 │       ├── realtime_gateway.log                 # リアルタイムゲートウェイログ
 │       ├── conversation_trace.log               # 会話トレースログ（フェーズ・テンプレートID・発話内容）
@@ -457,7 +438,7 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 1. Gateway (gateway/)
    - リアルタイム音声処理の中核
    - RTP受信・送信、VAD（音声区間検出）、AI呼び出し
-   - Asteriskと連携して通話を処理
+   - FreeSWITCHと連携して通話を処理
 
 2. Console Backend (console_backend/)
    - 管理画面用REST API
@@ -478,9 +459,6 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
    - コア機能（ASR・Intent・TTS統合）
    - クライアント設定ローダー
 
-7. MCP (libertycall_mcp/, libertycall_mcp_http/)
-   - Model Context Protocolサーバー
-   - AI開発アシスタントとの連携
 
 8. Project State Backend (src/, dist/)
    - プロジェクト状態管理API（Node.js/Express）
@@ -495,7 +473,6 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 🚫 ポート番号変更時の注意事項:
    - ポート番号を変更する前に、必ずこの一覧を確認してください
    - 既存のポートと競合すると、システムが停止する可能性があります
-   - 例: FastAPIを8000で起動しようとしたらMCPと競合 → 8001に変更が必要
    - ポート変更後は、この一覧を更新してください（追記のみ、上書き禁止）
 
 ⚠️ 重要: ポート情報は基本的に上書き禁止です。
@@ -509,13 +486,7 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
    - 443:  HTTPS（SSL/TLS）
    - 用途: libcall.com, console.libcall.com, api.libcall.com
 
-2. MCP (Model Context Protocol)
-   - 8000: MCP HTTPサーバー
-   - 用途: AI開発アシスタント連携
-   - サービス: libertycall-mcp.service (systemd)
-   - エンドポイント: http://0.0.0.0:8000/mcp
-
-3. Console Backend (FastAPI)
+2. Console Backend (FastAPI)
    - 8001: FastAPI管理画面API
    - 用途: 通話ログ管理・ユーザー管理API
    - サービス: liberty_console.service (systemd)
@@ -529,7 +500,7 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 
 5. Gateway (リアルタイム音声処理)
    - 7002: RTP受信ポート（config/gateway.yaml）
-   - 用途: Asteriskからの音声データ受信
+   - 用途: FreeSWITCHからの音声データ受信
    - 9001: WebSocket接続（AI処理連携）
    - 用途: ASR/TTS処理との通信
 
@@ -538,8 +509,7 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
    - 用途: 開発時のホットリロード
 
 ポート競合チェック:
-- MCP (8000) と Console Backend (8001) は別ポートで動作
-- Project State Backend (3000) は独立して動作
+- Console Backend (8001) と Project State Backend (3000) は別ポートで動作
 - Nginxが80/443でリバースプロキシとして動作
 - Gatewayは7002でRTP、9001でWebSocketを使用
 
@@ -561,7 +531,7 @@ LibertyCall は、AIを活用した電話自動応対システムです。24時�
 【主要機能】
 
 1. AI電話自動応対
-   - Asterisk（PBX）と連携したリアルタイム音声処理
+   - FreeSWITCH（PBX）と連携したリアルタイム音声処理
    - ASR（音声認識）: Google Cloud Speech-to-Text（本番使用）
    - WhisperローカルASR（開発/テスト用、本番未使用）
    - TTS（音声合成）: Google Cloud Text-to-Speech
@@ -578,7 +548,6 @@ LibertyCall は、AIを活用した電話自動応対システムです。24時�
 3. プロジェクト状態管理
    - 案件ごとの長期記憶管理
    - タスク・決定事項・問題点・重要ファイルの記録
-   - カスタムGPT/MCPとの連携
 
 4. メール自動送信
    - SendGridを使用した自動メール送信（本番環境）
@@ -631,7 +600,7 @@ LibertyCall は、AIを活用した電話自動応対システムです。24時�
 
 【技術スタック】
 
-- バックエンド: Python 3.11+ (FastAPI, Asterisk ARI)
+- バックエンド: Python 3.11+ (FastAPI, FreeSWITCH ESL)
 - フロントエンド: React 18, Vite
 - 音声処理: Google Cloud Speech-to-Text (本番使用), Google TTS
 - その他: WhisperローカルASR (開発/テスト用、本番未使用)

@@ -36,7 +36,7 @@
 ### 主要機能
 
 1. **AI電話自動応対**
-   - Asterisk（PBX）と連携したリアルタイム音声処理
+   - FreeSWITCH（PBX）と連携したリアルタイム音声処理
    - ASR（音声認識）: Google Cloud Speech-to-Text（本番使用）
    - TTS（音声合成）: Google Cloud Text-to-Speech（非ストリーミング）
    - ルールベースの意図判定（6分類固定）
@@ -85,7 +85,7 @@
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Asterisk (PBX)                                 │
+│              FreeSWITCH (PBX)                               │
 │  SIP着信 → RTP音声ストリーム → Gateway                      │
 └─────────────────────────────────────────────────────────────┘
                           │
@@ -204,7 +204,7 @@
 - バージイン（割り込み）で TTS の停止
 - `ai_core.process_dialogue()` 呼び出し
 - TTS音声 (PCM24k) → u-law8k 変換
-- Asterisk へ RTP 送信
+- FreeSWITCH へ RTP 送信
 - 転送フラグ True のとき、転送指示を ARI に送信
 - クライアントID自動判定（`client_mapper.resolve_client_id()`）
 
@@ -302,7 +302,7 @@
 
 1. **着信**
    - ユーザーが 050 番号に発信
-   - Asterisk が SIP を受け、`UnicastRTP/127.0.0.1:7002/ulaw` で Gateway に RTP をブリッジ
+   - FreeSWITCH が SIP を受け、`rtp_stream` で Gateway に RTP を転送
 
 2. **音声受信・処理**
    - `realtime_gateway.py` が RTP u-law(8k) を受信
@@ -321,7 +321,7 @@
 
 4. **音声送信**
    - AICore から返ってきた TTS 音声（wav）を u-law(8k) に変換
-   - RTP で Asterisk に送り返す
+   - RTP で FreeSWITCH に送り返す
 
 5. **転送判定**
    - 転送フラグが立っていれば、人間の担当者に転送
@@ -410,7 +410,7 @@ ENTRY → QA → AFTER_085 → CLOSING → HANDOFF → HANDOFF_CONFIRM_WAIT → 
   - 24kHz / PCM24 → u-law 8kHz に変換
 
 ### インフラ
-- **Asterisk**（PBX）
+- **FreeSWITCH**（PBX）
 - **Nginx**（リバースプロキシ）
 - **systemd**（サービス管理）
 - **SQLite**（通話ログ）
@@ -419,7 +419,6 @@ ENTRY → QA → AFTER_085 → CLOSING → HANDOFF → HANDOFF_CONFIRM_WAIT → 
 ### その他
 - **Node.js/Express**（プロジェクト状態管理API）
 - **SendGrid**（メール送信）
-- **MCP (Model Context Protocol)**（AI開発アシスタント連携）
 
 ---
 
@@ -522,7 +521,7 @@ ENTRY → QA → AFTER_085 → CLOSING → HANDOFF → HANDOFF_CONFIRM_WAIT → 
 |--------|----------|------|
 | 80 | Nginx | HTTP（HTTPSへのリダイレクト用） |
 | 443 | Nginx | HTTPS（SSL/TLS） |
-| 8000 | MCP HTTPサーバー | AI開発アシスタント連携 |
+| 8000 | （未使用） | - |
 | 8001 | FastAPI | 管理画面API |
 | 3000 | Node.js/Express | プロジェクト状態管理API |
 | 7002 | Gateway | RTP受信ポート |
