@@ -1,0 +1,30 @@
+{
+  "description": "クライアントIDマッピング設定",
+  "version": "1.0",
+  "updated_at": "2025-12-05",
+  
+  "mappings": {
+    "by_caller_number": {
+      "0802415": "000",
+      "0501234": "001"
+    },
+    
+    "by_destination_number": {
+      "58304073": "000",
+      "05012345678": "001"
+    },
+    
+    "by_sip_header": {
+      "X-Liberty-Client": "client_id"
+    }
+  },
+  
+  "default_client_id": "000",
+  
+  "notes": [
+    "by_caller_number: 発信者番号のプレフィックスで判定",
+    "by_destination_number: 着信番号で判定",
+    "by_sip_header: SIPヘッダから取得（将来実装）"
+  ]
+}
+
