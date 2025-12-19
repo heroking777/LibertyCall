@@ -113,6 +113,7 @@
 
 ```
 /opt/libertycall/
+├── gateway_event_listener.py        # FreeSWITCHイベントリスナー（通話検知・Gateway起動）
 ├── gateway/                          # リアルタイム音声処理
 │   ├── realtime_gateway.py          # RTP受信・送信・VAD・AI呼び出し
 │   ├── audio_manager.py             # 音声管理（バッファリング・チャンク処理）
@@ -122,22 +123,28 @@
 │   ├── client_loader.py             # クライアント設定ローダー（唯一の設定入口）
 │   ├── console_bridge.py            # コンソールバックエンド連携
 │   └── gateway/
-│       ├── ai_core.py               # AIコア（ASR→Intent→TTS統合処理）
+│       ├── ai_core.py               # AIコア（ASR→Intent→TTS統合処理・会話フロー管理）
 │       ├── audio_utils.py           # 音声変換ユーティリティ（u-law⇄PCM・RMS計算）
 │       ├── intent_rules.py          # インテント判定ルール（テンプレートID選択）
-│       └── transcript_normalizer.py # トランスクリプト正規化
+│       ├── transcript_normalizer.py # トランスクリプト正規化
+│       └── client_mapper.py         # クライアントID自動判定（発信者番号・宛先番号・SIPヘッダー）
 │
 ├── console_backend/                  # 管理画面API
 │   ├── routers/                     # APIルーター（FastAPI）
 │   │   ├── auth.py                  # 認証API
 │   │   ├── calls.py                 # 通話API
 │   │   ├── dashboard.py             # ダッシュボードAPI
-│   │   └── audio_tests.py           # 音声テストAPI
+│   │   ├── audio_tests.py           # 音声テストAPI
+│   │   └── flow.py                  # 会話フロー管理API（FlowEditor用）
 │   └── services/                    # ビジネスロジック層
 │
 ├── frontend/                         # 管理画面UI（React）
 │   └── src/
 │       ├── pages/                   # ページコンポーネント
+│       │   ├── FileLogsList.jsx     # 通話ログ一覧
+│       │   ├── FileLogDetail.jsx    # 通話ログ詳細
+│       │   ├── AudioTestDashboard.jsx # 音声テストダッシュボード
+│       │   └── FlowEditor.jsx       # 会話フロー編集画面
 │       └── components/              # UIコンポーネント
 │
 ├── clients/                          # クライアント設定
@@ -150,10 +157,24 @@
 │       └── logs/                    # クライアント専用ログ
 │
 ├── config/                           # 設定ファイル
-│   └── gateway.yaml                 # Gateway設定（ポート・クライアント）
+│   ├── gateway.yaml                 # Gateway設定（ポート・クライアント）
+│   ├── client_mapping.json          # クライアントID自動判定ルール
+│   ├── clients/                     # クライアント別会話フロー設定
+│   │   └── {client_id}/
+│   │       ├── flow.json            # 会話フロー定義（phase遷移・テンプレート）
+│   │       ├── keywords.json        # キーワード定義（インテント判定用）
+│   │       └── templates.json       # テンプレート定義（応答メッセージ）
+│   └── system/                      # システムデフォルト設定
+│       ├── default_flow.json        # デフォルト会話フロー
+│       ├── default_keywords.json    # デフォルトキーワード
+│       └── default_templates.json   # デフォルトテンプレート
 │
 ├── key/                              # 認証キー
 │   └── google_tts.json              # Google TTS認証キー
+│
+├── tools/                            # ユーティリティツール
+│   ├── check_rtp_alive.sh           # RTP監視スクリプト（5分ごとに実行）
+│   └── validate_flow.py             # 会話フロー検証ツール（JSON構文チェック）
 │
 ├── logs/                             # ログファイル
 │   ├── calls/                       # 通話ログ
@@ -168,7 +189,16 @@
 
 ## 主要コンポーネント
 
-### 1. Gateway (realtime_gateway.py)
+### 1. Gateway Event Listener (gateway_event_listener.py)
+
+**責務**:
+- FreeSWITCH Event Socket に接続
+- 通話イベント（CHANNEL_CREATE, CHANNEL_ANSWER, CHANNEL_EXECUTE, CHANNEL_PARK, CHANNEL_HANGUP）を監視
+- 通話開始時に `realtime_gateway.py` を起動
+- RTPポート情報を取得して Gateway に渡す
+- systemd サービスとして常時稼働（`libertycall.service`）
+
+### 2. Gateway (realtime_gateway.py)
 
 **責務**:
 - RTP (u-law 8kHz) 受信
@@ -180,6 +210,7 @@
 - TTS音声 (PCM24k) → u-law8k 変換
 - Asterisk へ RTP 送信
 - 転送フラグ True のとき、転送指示を ARI に送信
+- クライアントID自動判定（`client_mapper.resolve_client_id()`）
 
 **絶対にやらないこと**:
 - ASR内部処理
@@ -187,7 +218,7 @@
 - 意図判定
 → すべて `ai_core.py` に委譲
 
-### 2. AI Core (ai_core.py)
+### 3. AI Core (ai_core.py)
 
 **責務**:
 - Google Streaming ASR の管理
@@ -196,13 +227,24 @@
 - Google TTS（非ストリーミング）で wav を生成
 - 会話フロー管理（phase 遷移）
 - ハンドオフ判定と転送フラグ設定
+- クライアント別会話フロー・キーワード・テンプレートの動的読み込み
+- 会話フローのホットリロード（`reload_flow()`）
 
 **会話フロー管理**:
 - `session_states[call_id]` で各通話の状態を管理
-- phase: `ENTRY` → `QA` → `AFTER_085` → `CLOSING` → `HANDOFF` → `END`
+- phase: `ENTRY` → `ENTRY_CONFIRM` → `QA` → `AFTER_085` → `CLOSING` → `HANDOFF` → `HANDOFF_CONFIRM_WAIT` → `HANDOFF_DONE` → `END`
 - 各種フラグ: `last_intent`, `handoff_state`, `transfer_requested` など
+- クライアント別設定: `/config/clients/{client_id}/flow.json`, `keywords.json`, `templates.json`
+- デフォルト設定: `/config/system/default_*.json`（クライアント別設定がない場合のフォールバック）
 
-### 3. Intent Rules (intent_rules.py)
+### 4. Client Mapper (client_mapper.py)
+
+**責務**:
+- 発信者番号・宛先番号・SIPヘッダーから `client_id` を自動判定
+- `config/client_mapping.json` のルールに基づいて判定
+- デフォルトは `client_id="000"`
+
+### 5. Intent Rules (intent_rules.py)
 
 **責務**:
 - テキスト正規化（全角・半角統一・記号除去）
@@ -215,7 +257,7 @@
   6. `UNKNOWN` - 不明
 - テンプレートID選択（応答メッセージの決定）
 
-### 4. Console Backend (console_backend/)
+### 6. Console Backend (console_backend/)
 
 **責務**:
 - 通話ログの CRUD 操作
@@ -229,7 +271,7 @@
 - SQLAlchemy (SQLite)
 - WebSocket
 
-### 5. Frontend (frontend/)
+### 7. Frontend (frontend/)
 
 **責務**:
 - 通話ログ一覧・詳細表示
@@ -243,7 +285,7 @@
 - Tailwind CSS
 - Recharts（グラフ表示）
 
-### 6. Client Loader (client_loader.py)
+### 8. Client Loader (client_loader.py)
 
 **責務**:
 - **設定の唯一の入口**（他のコンポーネントは直接設定ファイルを読まない）
