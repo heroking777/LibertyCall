@@ -2729,15 +2729,8 @@ class RTPProtocol(asyncio.DatagramProtocol):
     def connection_made(self, transport):
         self.transport = transport
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
-        # 受信フレームを必ずログ（長さと送信元を可視化）
-        self.gateway.logger.debug(f"[RTP_RECV_RAW] len={len(data)} from={addr}")
-        # UDP 受信を必ずログに記録（Python 側に UDP が届いているか確認用）
-        self.gateway.logger.info(
-            "RTP_RECV_RAW: from=%s len=%d first_bytes=%s",
-            addr,
-            len(data),
-            data[:4].hex() if len(data) >= 4 else data.hex(),
-        )
+        # RTP受信ログ（軽量版：fromとlenのみ）
+        self.gateway.logger.info(f"[RTP_RECV_RAW] from={addr}, len={len(data)}")
         try:
             task = asyncio.create_task(self.gateway.handle_rtp_packet(data, addr))
             def log_exception(task: asyncio.Task) -> None:
