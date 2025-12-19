@@ -438,12 +438,32 @@ ENTRY → QA → AFTER_085 → CLOSING → HANDOFF → HANDOFF_CONFIRM_WAIT → 
    - 店名
    - 音声定義
 
-2. **rules.json**
+2. **rules.json**（旧形式、非推奨）
    - intentルール／キーワード
    - テンプレートID選択ルール
 
 3. **audio/** ディレクトリ
    - クライアント専用音声ファイル（.wav）
+
+### クライアント別会話フロー設定（新形式）
+
+各クライアントは `/config/clients/{client_id}/` ディレクトリに以下を配置:
+
+1. **flow.json**
+   - 会話フロー定義（phase遷移・テンプレートID・条件分岐）
+   - バージョン管理（`version`, `updated_at`）
+
+2. **keywords.json**
+   - キーワード定義（インテント判定用）
+   - `ENTRY_TRIGGER_KEYWORDS`, `CLOSING_YES_KEYWORDS`, `CLOSING_NO_KEYWORDS` など
+
+3. **templates.json**
+   - テンプレート定義（応答メッセージ）
+   - テンプレートIDとテキストのマッピング
+
+**デフォルト設定**: `/config/system/default_*.json`（クライアント別設定がない場合のフォールバック）
+
+**クライアントID自動判定**: `config/client_mapping.json` のルールに基づいて、発信者番号・宛先番号・SIPヘッダーから自動判定
 
 ### 環境変数（主要）
 
@@ -478,12 +498,17 @@ ENTRY → QA → AFTER_085 → CLOSING → HANDOFF → HANDOFF_CONFIRM_WAIT → 
 - 通話ログの自動記録・保存
 - ログ分析による応答精度の継続的改善
 - クライアントごとの応答ルール・音声のカスタマイズ対応
+- systemd サービス管理（`libertycall.service`）
+- ログローテーション（`/etc/logrotate.d/libertycall`）
+- RTP監視・自動再起動（`check_rtp_alive.timer`）
 
 ### 監視・ログ
 - 会話トレースログ（`logs/conversation_trace.log`）
 - 通話ログ（`logs/calls/{client_id}/*.log`）
 - ASR評価結果（`logs/asr_eval_results.json`）
-- Gatewayログ（`logs/realtime_gateway.log`）
+- Gatewayログ（`/tmp/gateway_*.log`）
+- Event Listenerログ（`/tmp/event_listener.log`）
+- RTP監視ログ（`/tmp/check_rtp_alive.log`）
 
 ### テスト・検証
 - 会話フロー統合テスト（`scripts/test_flow_integration.sh`）
@@ -560,6 +585,7 @@ ENTRY → QA → AFTER_085 → CLOSING → HANDOFF → HANDOFF_CONFIRM_WAIT → 
 ## 更新履歴
 
 - 2025-12-05: 初版作成
+- 2025-12-20: クライアント単位会話フロー分離・FlowEditor・運用安定タスクを追加
 
 ---
 
