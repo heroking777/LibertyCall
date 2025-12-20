@@ -1274,9 +1274,13 @@ class AICore:
         try:
             state = self._get_session_state(call_id)
             phase_at_end = state.phase
+            # 【修正4】state.meta に client_id があればそれを使う（callごとにclientが変わる構成に対応）
+            client_id_from_state = state.meta.get("client_id") if hasattr(state, 'meta') and state.meta else None
         except Exception:
             phase_at_end = "unknown"
-        effective_client_id = self.client_id or "000"
+            client_id_from_state = None
+        # client_id の優先順位: state.meta > self.client_id > "000"
+        effective_client_id = client_id_from_state or self.client_id or "000"
         
         # 【改善2・3】通話終了時のみフラグをクリア（再接続時の誤クリアを防ぐ）
         was_started = call_id in self._call_started_calls
