@@ -1250,6 +1250,8 @@ class AICore:
         if not call_id:
             return
         self.session_states.pop(call_id, None)
+        # 冒頭テンプレート再生済みフラグもクリア
+        self._intro_played_calls.discard(call_id)
 
     def _load_flow(self, client_id: str) -> dict:
         """
