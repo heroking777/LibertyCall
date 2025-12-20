@@ -1,0 +1,41 @@
+項目,ステータス,確認日,備考
+① SPF,未確認/合格/要修正,YYYY-MM-DD,
+② DKIM,未確認/合格/要修正,YYYY-MM-DD,
+③ DMARC,未確認/合格/要修正,YYYY-MM-DD,
+SendGrid認証,未確認/Authenticated/Unverified,YYYY-MM-DD,
+対象ドメイン,,,example.com
+DNSプロバイダ,,,Cloudflare/Xserver/Route53/その他
+,
+SPF設定,
+ホスト名,@
+レコードタイプ,TXT
+現在の値,v=spf1 include:sendgrid.net ~all
+期待される値,v=spf1 include:sendgrid.net ~all
+確認ツール結果,PASS/FAIL,
+,
+DKIM設定,
+SendGridステータス,Authenticated/Unverified,
+s1._domainkey ホスト名,s1._domainkey.example.com,
+s1._domainkey CNAME値,s1.domainkey.u[API_KEY].wl.sendgrid.net,
+s2._domainkey ホスト名,s2._domainkey.example.com,
+s2._domainkey CNAME値,s2.domainkey.u[API_KEY].wl.sendgrid.net,
+テスト送信結果,dkim=pass/dkim=fail,
+,
+DMARC設定,
+ホスト名,_dmarc.example.com
+レコードタイプ,TXT
+現在の値,v=DMARC1; p=none; rua=mailto:dmarc@example.com
+ポリシー,p=none/p=quarantine/p=reject,
+レポート送信先,dmarc@example.com,
+確認ツール結果,PASS/FAIL,
+,
+最終確認,
+SPF PASS,Yes/No,
+DKIM Verified,Yes/No,
+DMARC設定済み,Yes/No,
+テスト送信成功,Yes/No,
+迷惑フォルダ回避,Yes/No,
+,
+次回確認予定日,YYYY-MM-DD,,
+メモ,,
+
