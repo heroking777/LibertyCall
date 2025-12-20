@@ -2063,6 +2063,9 @@ class RealtimeGateway:
             self._silence_warning_sent.pop(call_id_to_cleanup, None)
             if hasattr(self, '_initial_tts_sent'):
                 self._initial_tts_sent.discard(call_id_to_cleanup)
+            # 明示的な通話終了処理（フラグクリア）
+            if hasattr(self.ai_core, 'on_call_end'):
+                self.ai_core.on_call_end(call_id_to_cleanup)
             self.logger.debug(f"[CALL_CLEANUP] Cleared state for call_id={call_id_to_cleanup}")
         
         # Asterisk に hangup を依頼（非同期で実行）
@@ -2183,6 +2186,9 @@ class RealtimeGateway:
         # ストリーミングモード: call_idの状態をリセット
         if self.streaming_enabled:
             self.ai_core.reset_call(call_id_to_complete)
+        # 明示的な通話終了処理（フラグクリア）
+        if hasattr(self.ai_core, 'on_call_end'):
+            self.ai_core.on_call_end(call_id_to_complete)
         # アクティブな通話から削除
         if hasattr(self, '_active_calls'):
             self._active_calls.discard(call_id_to_complete)

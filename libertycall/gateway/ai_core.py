@@ -2041,6 +2041,10 @@ class AICore:
 
         if phase == "END":
             return [], "END_CALL", False
+        if phase == "INTRO":
+            # INTROフェーズ中は何も返さない（intro再生中）
+            self.logger.debug(f"[AICORE] Phase=INTRO, skipping response (intro playing) call_id={call_id}")
+            return [], "UNKNOWN", False
         if phase == "ENTRY":
             intent, template_ids, transfer_requested = self._handle_entry_phase(call_id, raw_text, normalized, state)
         elif phase == "ENTRY_CONFIRM":
