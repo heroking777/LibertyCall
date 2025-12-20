@@ -1024,6 +1024,8 @@ class AICore:
         self.transfer_callback: Optional[Callable[[str], None]] = None
         self.hangup_callback: Optional[Callable[[str], None]] = None
         self._auto_hangup_timers: Dict[str, threading.Timer] = {}
+        # 二重再生防止: 冒頭テンプレート（000-002）を再生済みの通話IDセット
+        self._intro_played_calls: set[str] = set()
         
         # AI_CORE_VERSION ログ（編集した ai_core.py が読まれているか確認用）
         self.logger.info(
@@ -1363,8 +1365,20 @@ class AICore:
         if not self.tts_client or texttospeech is None:
             return None
         
-        cfg = get_template_config(template_id)
+        # まず self.templates（クライアント固有）から読み込む
+        cfg = None
+        if self.templates and template_id in self.templates:
+            cfg = self.templates[template_id]
+            self.logger.debug(f"[TEMPLATE] Loaded {template_id} from client templates (client_id={self.client_id})")
+        
+        # クライアント固有にない場合はグローバル TEMPLATE_CONFIG から読み込む
         if not cfg:
+            cfg = get_template_config(template_id)
+            if cfg:
+                self.logger.debug(f"[TEMPLATE] Loaded {template_id} from global TEMPLATE_CONFIG")
+        
+        if not cfg:
+            self.logger.warning(f"[TEMPLATE] Template {template_id} not found in client templates or global config")
             return None
         
         text = cfg.get("text", "")
@@ -1618,22 +1632,38 @@ class AICore:
         effective_client_id = client_id or self.client_id or "000"
         self.logger.info(f"[AICORE] on_call_start() call_id={call_id} client_id={effective_client_id}")
         
-        # ENTRYフェーズへ遷移
-        state = self._get_session_state(call_id)
-        state.phase = "ENTRY"
+        # 二重再生防止: 既に冒頭テンプレートを再生済みの場合はスキップ
+        if call_id in self._intro_played_calls:
+            self.logger.info(f"[AICORE] intro=skipped call_id={call_id} reason=already_played")
+            return
         
         # クライアント001専用：録音告知＋LibertyCall挨拶を再生
         if effective_client_id == "001":
-            self.logger.info("[AICORE] Playing intro template 000-002 for client 001")
+            # テンプレート000-002が存在するか確認（self.templates から）
+            template_cfg = None
+            if self.templates and "000-002" in self.templates:
+                template_cfg = self.templates["000-002"]
+                self.logger.info(f"[AICORE] intro=queued template_id=000-002 call_id={call_id}")
+            else:
+                self.logger.warning(f"[AICORE] intro=error template_id=000-002 not found in templates (client_id={effective_client_id})")
+                return
+            
             # tts_callback が設定されている場合のみ実行
             if hasattr(self, 'tts_callback') and self.tts_callback:
                 try:
                     self.tts_callback(call_id, None, ["000-002"], False)  # type: ignore[misc, attr-defined]
-                    self.logger.info(f"[AICORE] Template 000-002 sent for call_id={call_id}")
+                    # 再生済みフラグを設定
+                    self._intro_played_calls.add(call_id)
+                    self.logger.info(f"[AICORE] intro=sent template_id=000-002 call_id={call_id}")
                 except Exception as e:
-                    self.logger.exception(f"[AICORE] Failed to send template 000-002: {e}")
+                    self.logger.exception(f"[AICORE] intro=error template_id=000-002 call_id={call_id} error={e}")
             else:
-                self.logger.warning("[AICORE] tts_callback not set, cannot send template 000-002")
+                self.logger.warning("[AICORE] intro=error tts_callback not set, cannot send template 000-002")
+        
+        # ENTRYフェーズへ遷移（既存の動作に任せるため、ENTRYテンプレートは送信しない）
+        state = self._get_session_state(call_id)
+        state.phase = "ENTRY"
+        self.logger.debug(f"[AICORE] Phase set to ENTRY for call_id={call_id}")
 
     def _handle_entry_phase(
         self,
