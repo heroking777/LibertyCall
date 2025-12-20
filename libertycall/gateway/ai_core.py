@@ -1618,6 +1618,10 @@ class AICore:
         effective_client_id = client_id or self.client_id or "000"
         self.logger.info(f"[AICORE] on_call_start() call_id={call_id} client_id={effective_client_id}")
         
+        # ENTRYフェーズへ遷移
+        state = self._get_session_state(call_id)
+        state.phase = "ENTRY"
+        
         # クライアント001専用：録音告知＋LibertyCall挨拶を再生
         if effective_client_id == "001":
             self.logger.info("[AICORE] Playing intro template 000-002 for client 001")
@@ -1630,20 +1634,6 @@ class AICore:
                     self.logger.exception(f"[AICORE] Failed to send template 000-002: {e}")
             else:
                 self.logger.warning("[AICORE] tts_callback not set, cannot send template 000-002")
-        
-        # ENTRYフェーズへ遷移
-        state = self._get_session_state(call_id)
-        state.phase = "ENTRY"
-        
-        # ENTRYテンプレートを取得して送信（既存の動作）
-        entry_phase = self.flow.get("phases", {}).get("ENTRY", {})
-        entry_templates = entry_phase.get("templates", [])
-        if entry_templates and hasattr(self, 'tts_callback') and self.tts_callback:
-            try:
-                self.tts_callback(call_id, None, entry_templates, False)  # type: ignore[misc, attr-defined]
-                self.logger.info(f"[AICORE] Entry templates {entry_templates} sent for call_id={call_id}")
-            except Exception as e:
-                self.logger.exception(f"[AICORE] Failed to send entry templates: {e}")
 
     def _handle_entry_phase(
         self,
