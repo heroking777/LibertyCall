@@ -2230,6 +2230,9 @@ class RealtimeGateway:
         return audioop.lin2ulaw(frames, sample_width)
 
     def _queue_initial_audio_sequence(self, client_id: Optional[str]) -> None:
+        # 【診断用】強制的に可視化（logger設定に依存しない）
+        effective_call_id = self._get_effective_call_id()
+        print(f"[DEBUG_PRINT] _queue_initial_audio_sequence called client_id={client_id} call_id={effective_call_id}", flush=True)
         if self.initial_sequence_played:
             return
 
@@ -2250,12 +2253,18 @@ class RealtimeGateway:
             )
             
             # AICore.on_call_start() を呼び出し（クライアント001専用のテンプレート000-002を再生）
+            print(f"[DEBUG_PRINT] checking on_call_start: hasattr={hasattr(self.ai_core, 'on_call_start')}", flush=True)
             if hasattr(self.ai_core, 'on_call_start'):
                 try:
+                    print(f"[DEBUG_PRINT] calling on_call_start call_id={effective_call_id} client_id={effective_client_id}", flush=True)
                     self.ai_core.on_call_start(effective_call_id, client_id=effective_client_id)
+                    print(f"[DEBUG_PRINT] on_call_start returned successfully", flush=True)
                     self.logger.info(f"[CALL_START] on_call_start() called for call_id={effective_call_id} client_id={effective_client_id}")
                 except Exception as e:
+                    print(f"[DEBUG_PRINT] on_call_start exception: {e}", flush=True)
                     self.logger.exception(f"[CALL_START] Error calling on_call_start(): {e}")
+            else:
+                print(f"[DEBUG_PRINT] on_call_start method not found in ai_core", flush=True)
 
         try:
             audio_paths = self.audio_manager.play_incoming_sequence(effective_client_id)
