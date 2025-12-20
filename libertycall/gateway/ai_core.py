@@ -1270,6 +1270,14 @@ class AICore:
         if not call_id:
             return
         
+        # 終了時点の状態を取得（ログ用）
+        try:
+            state = self._get_session_state(call_id)
+            phase_at_end = state.phase
+        except Exception:
+            phase_at_end = "unknown"
+        effective_client_id = self.client_id or "000"
+        
         # 【改善2・3】通話終了時のみフラグをクリア（再接続時の誤クリアを防ぐ）
         was_started = call_id in self._call_started_calls
         was_intro_played = call_id in self._intro_played_calls
@@ -1277,8 +1285,10 @@ class AICore:
         self._call_started_calls.discard(call_id)
         self._intro_played_calls.discard(call_id)
         
+        # ログ出力（デバッグ強化）
         self.logger.info(
-            f"[AICORE] on_call_end() call_id={call_id} source={source} "
+            f"[AICORE] on_call_end() call_id={call_id} source={source} client_id={effective_client_id} "
+            f"phase={phase_at_end} "
             f"_call_started_calls={was_started} _intro_played_calls={was_intro_played} -> cleared"
         )
 
@@ -2681,11 +2691,6 @@ class AICore:
         
         # 会話フロー処理（intent判定、テンプレート選択など）（merged_text を使用）
         state = self._get_session_state(call_id)
-        
-        # 【改善1】INTROフェーズ中はENTRYテンプレート送信を抑制（intro再生中の被り防止）
-        if state.phase == "INTRO":
-            self.logger.debug(f"[AICORE] Phase=INTRO, skipping ENTRY template (intro playing) call_id={call_id}")
-            return None
         phase_before = state.phase
         
         # 空のテキスト（無音検出時）の場合は、no_input_streakに基づいてテンプレートを選択
@@ -2755,6 +2760,22 @@ class AICore:
             if transfer_requested:
                 self._trigger_transfer_if_needed(call_id, state)
             return None
+        
+        # 【改善1】INTROフェーズ中はENTRYテンプレート送信を抑制（intro再生中の被り防止）
+        # 注意: ログ、state更新、会話フロー処理は通常通り実行し、TTS送信だけを抑制
+        # 【修正1】state.phase を直接参照（phase_after はフロー処理後に更新されている可能性があるため）
+        current_phase = state.phase
+        if current_phase == "INTRO":
+            self.logger.debug(
+                f"[AICORE] Phase=INTRO, skipping TTS (intro playing) call_id={call_id} "
+                f"templates={template_ids} (other processing completed)"
+            )
+            # TTS送信は抑制するが、転送処理は実行（転送要求がある場合）
+            # 【修正3】_trigger_transfer_if_needed() は転送処理のみ（TTS送信はしない）前提
+            if transfer_requested:
+                self._trigger_transfer_if_needed(call_id, state)
+            # 【修正2】返り値はログ用のみ（呼び出し側で別チャネル送信はしない前提）
+            return reply_text  # ログ記録などのために返答テキストは返す
         
         # TTS コールバック（転送要求フラグも渡す）
         # 注意: transfer_requested=True の場合、_send_tts 内でTTS送信完了後に転送処理が開始される
