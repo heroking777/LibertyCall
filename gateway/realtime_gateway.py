@@ -2242,6 +2242,14 @@ class RealtimeGateway:
             self.logger.debug(
                 f"[CALL_START] Initialized silence monitoring timestamps for call_id={effective_call_id}"
             )
+            
+            # AICore.on_call_start() を呼び出し（クライアント001専用のテンプレート000-002を再生）
+            if hasattr(self.ai_core, 'on_call_start'):
+                try:
+                    self.ai_core.on_call_start(effective_call_id, client_id=effective_client_id)
+                    self.logger.info(f"[CALL_START] on_call_start() called for call_id={effective_call_id} client_id={effective_client_id}")
+                except Exception as e:
+                    self.logger.exception(f"[CALL_START] Error calling on_call_start(): {e}")
 
         try:
             audio_paths = self.audio_manager.play_incoming_sequence(effective_client_id)

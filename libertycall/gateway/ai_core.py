@@ -1607,6 +1607,44 @@ class AICore:
             delay_sec,
         )
 
+    def on_call_start(self, call_id: str, client_id: str = None, **kwargs) -> None:
+        """
+        通話開始時の処理
+        
+        :param call_id: 通話ID
+        :param client_id: クライアントID（省略時は self.client_id を使用）
+        :param kwargs: その他の引数
+        """
+        effective_client_id = client_id or self.client_id or "000"
+        self.logger.info(f"[AICORE] on_call_start() call_id={call_id} client_id={effective_client_id}")
+        
+        # クライアント001専用：録音告知＋LibertyCall挨拶を再生
+        if effective_client_id == "001":
+            self.logger.info("[AICORE] Playing intro template 000-002 for client 001")
+            # tts_callback が設定されている場合のみ実行
+            if hasattr(self, 'tts_callback') and self.tts_callback:
+                try:
+                    self.tts_callback(call_id, None, ["000-002"], False)  # type: ignore[misc, attr-defined]
+                    self.logger.info(f"[AICORE] Template 000-002 sent for call_id={call_id}")
+                except Exception as e:
+                    self.logger.exception(f"[AICORE] Failed to send template 000-002: {e}")
+            else:
+                self.logger.warning("[AICORE] tts_callback not set, cannot send template 000-002")
+        
+        # ENTRYフェーズへ遷移
+        state = self._get_session_state(call_id)
+        state.phase = "ENTRY"
+        
+        # ENTRYテンプレートを取得して送信（既存の動作）
+        entry_phase = self.flow.get("phases", {}).get("ENTRY", {})
+        entry_templates = entry_phase.get("templates", [])
+        if entry_templates and hasattr(self, 'tts_callback') and self.tts_callback:
+            try:
+                self.tts_callback(call_id, None, entry_templates, False)  # type: ignore[misc, attr-defined]
+                self.logger.info(f"[AICORE] Entry templates {entry_templates} sent for call_id={call_id}")
+            except Exception as e:
+                self.logger.exception(f"[AICORE] Failed to send entry templates: {e}")
+
     def _handle_entry_phase(
         self,
         call_id: str,
