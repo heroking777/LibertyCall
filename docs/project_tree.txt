@@ -183,7 +183,8 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │       ├── README.md                            # 使用方法・セットアップ
 │       ├── README_PROD.md                       # 本番環境用README
 │       ├── data/                                # データディレクトリ
-│       │   └── master_leads.csv                 # 本リスト（メアド・会社名・住所・ステージ）
+│       │   ├── master_leads.csv                   # 本リスト（メアド・会社名・住所・ステージ）
+│       │   └── sendgrid_auth_checklist.csv      # SendGrid認証チェックシート（CSV版）
 │       └── templates/                           # メールテンプレート
 │           ├── initial_email.txt                # 初回メール
 │           ├── followup_1.txt                   # フォローメール1

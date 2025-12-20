@@ -75,6 +75,7 @@
       "CHECK_VPS_FIREWALL.md": "VPSファイアウォール確認",
       "QUICK_START.md": "クイックスタートガイド",
       "TROUBLESHOOTING.md": "トラブルシューティング",
+      "SENDGRID_AUTH_CHECKLIST.md": "SendGrid SPF/DKIM/DMARC認証チェックシート",
       "ANNOUNCEMENT_FLOW_FIX.md": "アナウンスフロー修正",
       "ANNOUNCEMENT_FLOW_VERIFICATION.md": "アナウンスフロー検証",
       "API接続設定ガイド.md": "API接続設定ガイド",
@@ -315,6 +316,6 @@
       "_archive_20251113": "2025年11月13日アーカイブ",
       "LibertyCall": "旧バージョンコード"
     },
-    "updatedAt": "2025-12-19T17:00:01.327604Z"
+    "updatedAt": "2025-12-20T03:40:01.244851Z"
   }
 }
