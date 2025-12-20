@@ -1260,19 +1260,27 @@ class AICore:
         self.session_states.pop(call_id, None)
         # セッション状態のみクリア（フラグは on_call_end() でクリア）
     
-    def on_call_end(self, call_id: Optional[str]) -> None:
+    def on_call_end(self, call_id: Optional[str], source: str = "unknown") -> None:
         """
         通話終了時の処理（明示的なクリーンアップ）
         
         :param call_id: 通話ID
+        :param source: 呼び出し元（デバッグ用: "_complete_console_call" / "_handle_hangup" など）
         """
         if not call_id:
             return
         
         # 【改善2・3】通話終了時のみフラグをクリア（再接続時の誤クリアを防ぐ）
+        was_started = call_id in self._call_started_calls
+        was_intro_played = call_id in self._intro_played_calls
+        
         self._call_started_calls.discard(call_id)
         self._intro_played_calls.discard(call_id)
-        self.logger.debug(f"[AICORE] on_call_end() call_id={call_id} flags cleared")
+        
+        self.logger.info(
+            f"[AICORE] on_call_end() call_id={call_id} source={source} "
+            f"_call_started_calls={was_started} _intro_played_calls={was_intro_played} -> cleared"
+        )
 
     def _load_flow(self, client_id: str) -> dict:
         """
@@ -2673,6 +2681,11 @@ class AICore:
         
         # 会話フロー処理（intent判定、テンプレート選択など）（merged_text を使用）
         state = self._get_session_state(call_id)
+        
+        # 【改善1】INTROフェーズ中はENTRYテンプレート送信を抑制（intro再生中の被り防止）
+        if state.phase == "INTRO":
+            self.logger.debug(f"[AICORE] Phase=INTRO, skipping ENTRY template (intro playing) call_id={call_id}")
+            return None
         phase_before = state.phase
         
         # 空のテキスト（無音検出時）の場合は、no_input_streakに基づいてテンプレートを選択
