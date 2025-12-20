@@ -1024,7 +1024,9 @@ class AICore:
         self.transfer_callback: Optional[Callable[[str], None]] = None
         self.hangup_callback: Optional[Callable[[str], None]] = None
         self._auto_hangup_timers: Dict[str, threading.Timer] = {}
-        # 二重再生防止: 冒頭テンプレート（000-002）を再生済みの通話IDセット
+        # 二重再生防止: on_call_start() を呼び出し済みの通話IDセット（全クライアント共通）
+        self._call_started_calls: set[str] = set()
+        # 二重再生防止: 冒頭テンプレート（000-002）を再生済みの通話IDセット（001専用）
         self._intro_played_calls: set[str] = set()
         
         # AI_CORE_VERSION ログ（編集した ai_core.py が読まれているか確認用）
@@ -1247,11 +1249,30 @@ class AICore:
         return ConversationState(self.session_states[key])
 
     def _reset_session_state(self, call_id: Optional[str]) -> None:
+        """
+        セッション状態をリセット（通話終了時など）
+        
+        注意: reset_call() から呼ばれるため、基本的には通話終了時のみ呼ばれる。
+        ただし、再接続時に call_id が変わらない場合は、on_call_end() で明示的にクリアすることを推奨。
+        """
         if not call_id:
             return
         self.session_states.pop(call_id, None)
-        # 冒頭テンプレート再生済みフラグもクリア
+        # セッション状態のみクリア（フラグは on_call_end() でクリア）
+    
+    def on_call_end(self, call_id: Optional[str]) -> None:
+        """
+        通話終了時の処理（明示的なクリーンアップ）
+        
+        :param call_id: 通話ID
+        """
+        if not call_id:
+            return
+        
+        # 【改善2・3】通話終了時のみフラグをクリア（再接続時の誤クリアを防ぐ）
+        self._call_started_calls.discard(call_id)
         self._intro_played_calls.discard(call_id)
+        self.logger.debug(f"[AICORE] on_call_end() call_id={call_id} flags cleared")
 
     def _load_flow(self, client_id: str) -> dict:
         """
@@ -1632,40 +1653,57 @@ class AICore:
         :param kwargs: その他の引数
         """
         effective_client_id = client_id or self.client_id or "000"
-        self.logger.info(f"[AICORE] on_call_start() call_id={call_id} client_id={effective_client_id}")
         
-        # 二重再生防止: 既に冒頭テンプレートを再生済みの場合はスキップ
-        if call_id in self._intro_played_calls:
-            self.logger.info(f"[AICORE] intro=skipped call_id={call_id} reason=already_played")
+        # 【改善1】on_call_start() 自体の重複呼び出し防止（全クライアント共通）
+        if call_id in self._call_started_calls:
+            self.logger.info(f"[AICORE] on_call_start=skipped call_id={call_id} reason=already_called")
             return
+        
+        self.logger.info(f"[AICORE] on_call_start() call_id={call_id} client_id={effective_client_id}")
+        # 呼び出し済みフラグを設定（001以外でも設定）
+        self._call_started_calls.add(call_id)
         
         # クライアント001専用：録音告知＋LibertyCall挨拶を再生
         if effective_client_id == "001":
-            # テンプレート000-002が存在するか確認（self.templates から）
-            template_cfg = None
-            if self.templates and "000-002" in self.templates:
-                template_cfg = self.templates["000-002"]
-                self.logger.info(f"[AICORE] intro=queued template_id=000-002 call_id={call_id}")
-            else:
-                self.logger.warning(f"[AICORE] intro=error template_id=000-002 not found in templates (client_id={effective_client_id})")
-                return
-            
+            # 【改善1】001の場合だけ、phase を一旦 "INTRO" にしておく
+            state = self._get_session_state(call_id)
+            state.phase = "INTRO"
+            self.logger.debug(f"[AICORE] Phase set to INTRO for call_id={call_id} (client_id=001, will change to ENTRY after intro)")
+            # 【改善3】テンプレート存在チェックを緩和（解決は下層に任せる）
             # tts_callback が設定されている場合のみ実行
             if hasattr(self, 'tts_callback') and self.tts_callback:
                 try:
+                    self.logger.info(f"[AICORE] intro=queued template_id=000-002 call_id={call_id}")
                     self.tts_callback(call_id, None, ["000-002"], False)  # type: ignore[misc, attr-defined]
                     # 再生済みフラグを設定
                     self._intro_played_calls.add(call_id)
                     self.logger.info(f"[AICORE] intro=sent template_id=000-002 call_id={call_id}")
+                    
+                    # 【改善1】intro送信完了後、ENTRYフェーズへ遷移
+                    state = self._get_session_state(call_id)
+                    state.phase = "ENTRY"
+                    self.logger.debug(f"[AICORE] Phase changed from INTRO to ENTRY for call_id={call_id} (after intro sent)")
+                    
+                    # 【改善2】intro送信完了
+                    # 注意: ENTRYテンプレート（004/005）は既存の動作（on_transcript() でユーザー発話を受けた時）に任せる
+                    # これにより、introが再生中にENTRYテンプレートが被ることを防ぐ
+                    self.logger.debug(f"[AICORE] intro_sent entry_templates=deferred (will be sent by on_transcript when user speaks) call_id={call_id}")
+                    
                 except Exception as e:
                     self.logger.exception(f"[AICORE] intro=error template_id=000-002 call_id={call_id} error={e}")
+                    # エラー時もENTRYフェーズへ遷移
+                    state = self._get_session_state(call_id)
+                    state.phase = "ENTRY"
             else:
                 self.logger.warning("[AICORE] intro=error tts_callback not set, cannot send template 000-002")
-        
-        # ENTRYフェーズへ遷移（既存の動作に任せるため、ENTRYテンプレートは送信しない）
-        state = self._get_session_state(call_id)
-        state.phase = "ENTRY"
-        self.logger.debug(f"[AICORE] Phase set to ENTRY for call_id={call_id}")
+                # tts_callback未設定でもENTRYフェーズへ遷移
+                state = self._get_session_state(call_id)
+                state.phase = "ENTRY"
+        else:
+            # 001以外は即座にENTRYフェーズへ遷移（既存の動作）
+            state = self._get_session_state(call_id)
+            state.phase = "ENTRY"
+            self.logger.debug(f"[AICORE] Phase set to ENTRY for call_id={call_id} (client_id={effective_client_id})")
 
     def _handle_entry_phase(
         self,
