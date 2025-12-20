@@ -1685,6 +1685,12 @@ class AICore:
         # 呼び出し済みフラグを設定（001以外でも設定）
         self._call_started_calls.add(call_id)
         
+        # 【最終チェック1】state.meta["client_id"] をセット（ログ用の一貫性確保）
+        state = self._get_session_state(call_id)
+        if not hasattr(state, 'meta') or state.meta is None:
+            state.meta = {}
+        state.meta["client_id"] = effective_client_id
+        
         # クライアント001専用：録音告知＋LibertyCall挨拶を再生
         if effective_client_id == "001":
             # 【改善1】001の場合だけ、phase を一旦 "INTRO" にしておく
