@@ -194,11 +194,11 @@ class RealtimeGateway:
         self.MAX_SEGMENT_SEC = 2.3      # ★ 最大セグメント長
         self.MIN_AUDIO_LEN = 16000
         self.MIN_RMS_FOR_ASR = 80      # ★ RMS閾値（これ以下のセグメントはASRに送らない）
-        self.NO_INPUT_TIMEOUT = 5.0     # 無音5秒で再促し
+        self.NO_INPUT_TIMEOUT = 10.0    # 無音10秒で再促し
         self.NO_INPUT_STREAK_LIMIT = 4  # 無音ストリーク上限
         self.MAX_NO_INPUT_TIME = 60.0   # 無音の累積上限（秒）※1分で強制切断を検討
-        self.SILENCE_WARNING_INTERVALS = [5.0, 10.0, 15.0]  # 無音警告を送る秒数（5秒、10秒、15秒）
-        self.SILENCE_HANGUP_TIME = 20.0  # 無音20秒で自動切断
+        self.SILENCE_WARNING_INTERVALS = [5.0, 15.0, 25.0]  # 無音警告を送る秒数（5秒、15秒、25秒）
+        self.SILENCE_HANGUP_TIME = 60.0  # 無音60秒で自動切断
         self.NO_INPUT_SILENT_PHRASES = {"すみません", "ええと", "あの"}  # 無音扱いでリセットするフィラー
         
         # ============================================================
@@ -2705,19 +2705,19 @@ class RealtimeGateway:
                         
                         warnings = self._silence_warning_sent[call_id]
                         
-                        # 段階的な無音警告（5秒、10秒、15秒）とアナウンス再生
+                        # 段階的な無音警告（5秒、15秒、25秒）とアナウンス再生
                         if elapsed >= 5.0 and 5.0 not in warnings:
                             warnings.add(5.0)
                             self.logger.warning(f"[SILENCE DETECTED] {elapsed:.1f}s of silence for call_id={call_id}")
                             await self._play_silence_warning(call_id, 5.0)
-                        elif elapsed >= 10.0 and 10.0 not in warnings:
-                            warnings.add(10.0)
-                            self.logger.warning(f"[SILENCE DETECTED] {elapsed:.1f}s of silence for call_id={call_id}")
-                            await self._play_silence_warning(call_id, 10.0)
                         elif elapsed >= 15.0 and 15.0 not in warnings:
                             warnings.add(15.0)
                             self.logger.warning(f"[SILENCE DETECTED] {elapsed:.1f}s of silence for call_id={call_id}")
                             await self._play_silence_warning(call_id, 15.0)
+                        elif elapsed >= 25.0 and 25.0 not in warnings:
+                            warnings.add(25.0)
+                            self.logger.warning(f"[SILENCE DETECTED] {elapsed:.1f}s of silence for call_id={call_id}")
+                            await self._play_silence_warning(call_id, 25.0)
                         
                         # 無音が規定時間を超えたら強制切断
                         max_silence_time = getattr(self, "SILENCE_HANGUP_TIME", 20.0)
@@ -2788,9 +2788,9 @@ class RealtimeGateway:
         try:
             # 警告間隔に応じてメッセージを変更
             text_map = {
-                5.0: "もしもし？お聞き取りできていますか？",
-                10.0: "もしもし？お聞き取りできていますか？",
-                15.0: "お話がない場合は、まもなく通話を終了します。"
+                5.0: "もしもし、ご用件をお伺いします",
+                15.0: "聞こえてますか？",
+                25.0: "音声が認識できないため、切らせていただきます"
             }
             text = text_map.get(warning_interval, "もしもし？お話がない場合は通話を終了します。")
             
