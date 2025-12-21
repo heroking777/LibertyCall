@@ -133,11 +133,14 @@ def generate_audio(voice_id: str, voice_config: dict, client: texttospeech.TextT
             name=voice_name,
         )
         
-        # 音声設定
+        # 音声設定（クライアント000の現在の設定: pitch=0.0, speed=1.2）
+        # voice_lines_000.jsonのrateを1.2に調整（現在のTTS設定に合わせる）
+        adjusted_rate = 1.2  # クライアント000の現在の設定
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.LINEAR16,  # WAV PCM16
             sample_rate_hertz=SAMPLE_RATE,
-            speaking_rate=speaking_rate,
+            speaking_rate=adjusted_rate,
+            pitch=0.0,  # クライアント000の現在の設定
         )
         
         # 音声合成実行
@@ -154,7 +157,7 @@ def generate_audio(voice_id: str, voice_config: dict, client: texttospeech.TextT
             wf.setframerate(SAMPLE_RATE)
             wf.writeframes(response.audio_content)
         
-        print(f"  ✓ {voice_id}.wav 生成完了 (voice={voice_name}, rate={speaking_rate})")
+        print(f"  ✓ {voice_id}.wav 生成完了 (voice={voice_name}, rate=1.2, pitch=0.0)")
         return True
         
     except Exception as e:
@@ -228,6 +231,11 @@ def main():
             return (1, x[0])
     
     for voice_id, voice_config in sorted(VOICE_LINES.items(), key=sort_key):
+        # 000.wavは触らない（スキップ）
+        if voice_id == "000":
+            print(f"  ⏭ {voice_id}.wav: スキップ（保持）")
+            skipped_count += 1
+            continue
         if generate_audio(voice_id, voice_config, client):
             success_count += 1
         else:

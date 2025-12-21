@@ -1157,7 +1157,7 @@ class AICore:
             "000": {
                 "voice": "ja-JP-Neural2-B",
                 "pitch": 0.0,
-                "speaking_rate": 1.05
+                "speaking_rate": 1.2
             },
             "001": {
                 "voice": "ja-JP-Neural2-B",
