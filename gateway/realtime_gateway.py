@@ -178,10 +178,20 @@ class FreeswitchRTPMonitor:
     
     async def _check_asr_enable_flag(self):
         """002.wav完了フラグファイルを監視してASRを有効化"""
+        check_count = 0
         while self.gateway.running:
             try:
+                check_count += 1
                 # UUIDベースのフラグファイルを検索（複数の通話に対応）
                 flag_files = list(Path("/tmp").glob("asr_enable_*.flag"))
+                
+                # デバッグログ（20回に1回、またはフラグファイルが見つかった時）
+                if check_count % 20 == 0 or flag_files:
+                    self.logger.debug(
+                        f"[FS_RTP_MONITOR] Checking ASR enable flag (check #{check_count}, "
+                        f"found {len(flag_files)} flag file(s), asr_active={self.asr_active})"
+                    )
+                
                 if flag_files:
                     # 最初に見つかったフラグファイルでASRを有効化
                     flag_file = flag_files[0]
@@ -191,6 +201,13 @@ class FreeswitchRTPMonitor:
                         try:
                             flag_file.unlink()
                             self.logger.info(f"[FS_RTP_MONITOR] Removed ASR enable flag: {flag_file}")
+                        except Exception as e:
+                            self.logger.warning(f"[FS_RTP_MONITOR] Failed to remove flag file: {e}")
+                    else:
+                        # 既に有効化済みの場合はフラグファイルだけ削除
+                        try:
+                            flag_file.unlink()
+                            self.logger.debug(f"[FS_RTP_MONITOR] Removed ASR enable flag (already active): {flag_file}")
                         except Exception as e:
                             self.logger.warning(f"[FS_RTP_MONITOR] Failed to remove flag file: {e}")
             except Exception as e:
@@ -500,6 +517,15 @@ class RealtimeGateway:
             
             # FreeSWITCH送信RTPポート監視を開始（pull型ASR用）
             asyncio.create_task(self.fs_rtp_monitor.start_monitoring())
+            
+            # ★ 一時テスト: 通話開始から8秒後にASRを強制有効化（デバッグ用）
+            # TODO: 動作確認後、この行を削除してgateway_event_listener.py連携に切り替える
+            async def force_enable_asr_after_delay():
+                await asyncio.sleep(8.0)
+                if not self.fs_rtp_monitor.asr_active:
+                    self.logger.info("[FS_RTP_MONITOR] DEBUG: Force-enabling ASR after 8 seconds (temporary test)")
+                    self.fs_rtp_monitor.enable_asr()
+            asyncio.create_task(force_enable_asr_after_delay())
 
             # サービスを維持（停止イベントを待つ）
             await self.shutdown_event.wait()
