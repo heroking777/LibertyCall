@@ -385,6 +385,8 @@ class GoogleASR:
                             "GoogleASR: ASR_GOOGLE_FINAL: conf=%.3f text=%s",
                             confidence, transcript,
                         )
+                        # デバッグログ拡張: ASR_RESULT
+                        self.logger.info(f"[ASR_RESULT] \"{transcript}\"")
         except Exception as e:
             # まずログ
             self.logger.exception("GoogleASR._stream_worker: unexpected error: %s", e)
@@ -1132,7 +1134,7 @@ class AICore:
     
     def _init_tts(self):
         """
-        Google TTS の初期化（別メソッドに分離）
+        Google TTS の初期化（クライアント別設定対応）
         """
         if texttospeech is None:
             self.logger.debug("google-cloud-texttospeech 未導入のため TTS 初期化をスキップします。")
@@ -1149,6 +1151,29 @@ class AICore:
         self._wav_saved = False  # 1通話あたり最初の1回だけ保存
         self._wav_chunk_counter = 0
         
+        # クライアント別TTS設定辞書
+        # クライアント001はテンポ早め設定、002はゆっくりで穏やか
+        TTS_CONFIGS = {
+            "000": {
+                "voice": "ja-JP-Neural2-B",
+                "pitch": 0.0,
+                "speaking_rate": 1.05
+            },
+            "001": {
+                "voice": "ja-JP-Neural2-B",
+                "pitch": 2.0,
+                "speaking_rate": 1.2
+            },
+            "002": {
+                "voice": "ja-JP-Wavenet-C",
+                "pitch": 0.5,
+                "speaking_rate": 1.0
+            }
+        }
+        
+        # クライアントIDに基づいてTTS設定を取得（fallback: 000）
+        tts_conf = TTS_CONFIGS.get(self.client_id, TTS_CONFIGS["000"])
+        
         # Google TTS設定
         self.tts_client = None
         self.voice_params = None
@@ -1162,11 +1187,19 @@ class AICore:
             )
         if self.tts_client:
             self.voice_params = texttospeech.VoiceSelectionParams(
-                language_code="ja-JP", name="ja-JP-Neural2-B"
+                language_code="ja-JP",
+                name=tts_conf["voice"]
             )
             self.audio_config = texttospeech.AudioConfig(
                 audio_encoding=texttospeech.AudioEncoding.LINEAR16,
-                sample_rate_hertz=24000
+                sample_rate_hertz=24000,
+                speaking_rate=tts_conf["speaking_rate"],
+                pitch=tts_conf["pitch"]
+            )
+            # TTS設定ログ出力
+            self.logger.info(
+                f"[TTS_PROFILE] client={self.client_id} voice={tts_conf['voice']} "
+                f"speed={tts_conf['speaking_rate']} pitch={tts_conf['pitch']}"
             )
     
     def set_call_id(self, call_id: str):
@@ -2713,6 +2746,14 @@ class AICore:
         state = self._get_session_state(call_id)
         phase_before = state.phase
         
+        # Intent判定（デバッグログ拡張: INTENT）
+        intent = None
+        if merged_text:
+            # 正規化されたテキストでintent判定
+            normalized = normalize_text(merged_text)
+            intent = classify_intent(normalized)
+            self.logger.info(f"[INTENT] {intent}")
+        
         # 空のテキスト（無音検出時）の場合は、no_input_streakに基づいてテンプレートを選択
         if not merged_text or len(merged_text.strip()) == 0:
             # 無音検出時の処理
@@ -2754,6 +2795,7 @@ class AICore:
         else:
             # 通常の処理（ユーザー発話あり）
             reply_text, template_ids, intent, transfer_requested = self._generate_reply(call_id, merged_text)
+            # Intentログは既に上で出力済み（merged_textがある場合）
         
         # 状態取得（一度だけ）
         phase_after = state.phase

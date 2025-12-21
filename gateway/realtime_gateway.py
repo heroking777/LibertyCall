@@ -461,6 +461,9 @@ class RealtimeGateway:
             loop = None
         
         if template_ids and self.ai_core.tts_client:
+            # デバッグログ拡張: TTS_REPLY
+            template_text = self.ai_core._render_templates(template_ids)
+            self.logger.info(f"[TTS_REPLY] \"{template_text}\"")
             # template_ids ベースで TTS 合成（非同期タスクで実行）
             if loop:
                 loop.create_task(self._send_tts_async(call_id, template_ids=template_ids, transfer_requested=transfer_requested))
@@ -476,6 +479,8 @@ class RealtimeGateway:
                     self._tts_sender_wakeup.set()
             return
         elif reply_text and self.ai_core.tts_client and self.ai_core.voice_params and self.ai_core.audio_config:
+            # デバッグログ拡張: TTS_REPLY
+            self.logger.info(f"[TTS_REPLY] \"{reply_text}\"")
             # 文節単位再生が有効な場合は非同期タスクで処理
             if use_segmented_playback:
                 # 非同期タスクで文節単位再生を実行
@@ -844,6 +849,10 @@ class RealtimeGateway:
                     # 実際に送信したタイミングでログ出力（運用ログ整備）
                     payload_type = packet[1] & 0x7F
                     self.logger.debug(f"[TTS_QUEUE_SEND] sent RTP packet to {rtp_dest}, queue_len={len(self.tts_queue)}, payload_type={payload_type}")
+                    # デバッグログ拡張: RTP_SENT（最初のパケットのみ）
+                    if not hasattr(self, '_rtp_sent_logged'):
+                        self.logger.info(f"[RTP_SENT] {rtp_dest}")
+                        self._rtp_sent_logged = True
                     consecutive_skips = 0  # リセット
                 except Exception as e:
                     self.logger.error(f"TTS sender failed: {e}", exc_info=True)
