@@ -114,17 +114,23 @@ class FreeswitchRTPMonitor:
             )
             if result.returncode != 0:
                 self.logger.warning(f"[FS_RTP_MONITOR] fs_cli failed: {result.stderr}")
+                if result.stdout:
+                    self.logger.debug(f"[FS_RTP_MONITOR] fs_cli stdout: {result.stdout[:200]}")
                 return None
             
-            # local_media_port を検索
+            # local_media_port を検索（複数チャンネルがある場合は最初のものを取得）
             import re
-            match = re.search(r"local_media_port:\s+(\d+)", result.stdout)
-            if match:
-                port = int(match.group(1))
-                self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH RTP port: {port}")
+            matches = re.findall(r"local_media_port:\s+(\d+)", result.stdout)
+            if matches:
+                port = int(matches[0])  # 最初のチャンネルのポートを使用
+                self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH RTP port: {port} (from {len(matches)} channel(s))")
+                if len(matches) > 1:
+                    self.logger.warning(f"[FS_RTP_MONITOR] Multiple channels detected, using first port: {port}")
                 return port
             else:
                 self.logger.warning("[FS_RTP_MONITOR] local_media_port not found in show channels output")
+                if result.stdout:
+                    self.logger.debug(f"[FS_RTP_MONITOR] show channels output: {result.stdout[:500]}")
                 return None
         except Exception as e:
             self.logger.error(f"[FS_RTP_MONITOR] Error getting RTP port: {e}", exc_info=True)
@@ -150,8 +156,9 @@ class FreeswitchRTPMonitor:
             self.monitor_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            # 注意: FreeSWITCHの送信ポートは127.0.0.1にバインドされている可能性が高い
-            self.monitor_sock.bind(("127.0.0.1", self.freeswitch_rtp_port))
+            # 0.0.0.0でバインドすることで、FreeSWITCHが外部IP（160.251.170.253）から送信するRTPも受信可能
+            # FreeSWITCHのexternalプロファイルは外部IPにRTPを送信するため、127.0.0.1では受信できない
+            self.monitor_sock.bind(("0.0.0.0", self.freeswitch_rtp_port))
             self.monitor_sock.setblocking(False)
             
             # asyncioにソケットを渡す（既存のRTPProtocolを再利用）
