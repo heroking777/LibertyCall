@@ -1410,6 +1410,37 @@ class RealtimeGateway:
             if addr:
                 self._call_addr_map[addr] = effective_call_id
                 self.logger.debug(f"[RTP_ADDR_MAP] Mapped {addr} -> {effective_call_id}")
+        
+        # フォールバック: _active_calls が空で、effective_call_id が取得できない場合でも強制登録
+        # FreeSWITCH の rtp_stream 経由では session_id が渡らないため、この処理が必要
+        if not self._active_calls:
+            # effective_call_id が取得できなかった場合は、アドレスベースで仮の通話IDを生成
+            if not effective_call_id:
+                # アドレスから一意の通話IDを生成（例: "rtp_127.0.0.1_7002"）
+                fallback_call_id = f"rtp_{addr[0]}_{addr[1]}"
+                effective_call_id = fallback_call_id
+                self.logger.info(
+                    f"[RTP_ACTIVE] Force-register call_id={fallback_call_id} "
+                    f"(no existing session detected, addr={addr})"
+                )
+            else:
+                self.logger.info(
+                    f"[RTP_ACTIVE] Force-register call_id={effective_call_id} "
+                    f"(_active_calls was empty, addr={addr})"
+                )
+            
+            # 強制登録
+            self._active_calls.add(effective_call_id)
+            # アドレスとcall_idのマッピングを保存
+            if addr:
+                self._call_addr_map[addr] = effective_call_id
+                self.logger.debug(f"[RTP_ADDR_MAP] Mapped {addr} -> {effective_call_id}")
+            
+            # 無音監視用の初期値を設定
+            if effective_call_id not in self._last_voice_time:
+                self._last_voice_time[effective_call_id] = time.monotonic()
+            if effective_call_id not in self._last_tts_end_time:
+                self._last_tts_end_time[effective_call_id] = time.monotonic()
             
         # RTPパケット受信ログ（Google使用時は毎回INFO、それ以外は50パケットに1回）
         self.rtp_packet_count += 1
