@@ -2780,22 +2780,66 @@ class RealtimeGateway:
     
     async def _play_silence_warning(self, call_id: str, warning_interval: float):
         """
-        無音時に流すアナウンス
+        無音時に流すアナウンス（音源ファイルから再生）
         
         :param call_id: 通話ID
-        :param warning_interval: 警告間隔（5.0, 10.0, 15.0）
+        :param warning_interval: 警告間隔（5.0, 15.0, 25.0）
         """
         try:
-            # 警告間隔に応じてメッセージを変更
-            text_map = {
-                5.0: "もしもし、ご用件をお伺いします",
-                15.0: "聞こえてますか？",
-                25.0: "音声が認識できないため、切らせていただきます"
-            }
-            text = text_map.get(warning_interval, "もしもし？お話がない場合は通話を終了します。")
+            # クライアントIDを取得（未設定の場合はデフォルト値を使用）
+            effective_client_id = self.client_id or self.default_client_id or "000"
             
-            self.logger.info(f"[SILENCE_WARNING] call_id={call_id} interval={warning_interval:.0f}s text={text!r}")
-            await self._play_tts(call_id, text)
+            # 警告間隔に応じて音源ファイル名を決定
+            audio_file_map = {
+                5.0: "000-004.wav",
+                15.0: "000-005.wav",
+                25.0: "000-006.wav"
+            }
+            audio_filename = audio_file_map.get(warning_interval)
+            
+            if not audio_filename:
+                self.logger.warning(f"[SILENCE_WARNING] Unknown warning_interval={warning_interval}, skipping")
+                return
+            
+            # クライアントごとの音声ディレクトリパスを構築
+            audio_dir = Path(_PROJECT_ROOT) / "clients" / effective_client_id / "audio"
+            audio_path = audio_dir / audio_filename
+            
+            # ファイル存在確認
+            if not audio_path.exists():
+                self.logger.warning(
+                    f"[SILENCE_WARNING] Audio file not found: {audio_path} "
+                    f"(client_id={effective_client_id}, interval={warning_interval:.0f}s)"
+                )
+                return
+            
+            self.logger.info(
+                f"[SILENCE_WARNING] call_id={call_id} interval={warning_interval:.0f}s "
+                f"audio_file={audio_path} client_id={effective_client_id}"
+            )
+            
+            # 音源ファイルを読み込んでキューに追加
+            try:
+                ulaw_payload = self._load_wav_as_ulaw8k(audio_path)
+                chunk_size = 160  # 20ms @ 8kHz
+                
+                # TTSキューに追加
+                for i in range(0, len(ulaw_payload), chunk_size):
+                    self.tts_queue.append(ulaw_payload[i : i + chunk_size])
+                
+                # TTS送信フラグを立てる
+                self.is_speaking_tts = True
+                self._tts_sender_wakeup.set()
+                
+                self.logger.debug(
+                    f"[SILENCE_WARNING] Enqueued {len(ulaw_payload) // chunk_size} chunks "
+                    f"from {audio_path}"
+                )
+            except Exception as e:
+                self.logger.error(
+                    f"[SILENCE_WARNING] Failed to load audio file {audio_path}: {e}",
+                    exc_info=True
+                )
         except Exception as e:
             self.logger.error(f"Silence warning playback failed for call_id={call_id}: {e}", exc_info=True)
     
