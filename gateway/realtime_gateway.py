@@ -92,6 +92,126 @@ class RTPPacketBuilder:
         self.timestamp = (self.timestamp + samples) & 0xFFFFFFFF
         return bytes(header) + payload
 
+class FreeswitchRTPMonitor:
+    """FreeSWITCHの送信RTPポートを監視してASR処理に流し込む（Pull型）"""
+    
+    def __init__(self, gateway: 'RealtimeGateway'):
+        self.gateway = gateway
+        self.logger = gateway.logger
+        self.freeswitch_rtp_port: Optional[int] = None
+        self.monitor_sock: Optional[socket.socket] = None
+        self.monitor_transport = None
+        self.asr_active = False  # 002.wav再生完了後にTrueになる
+        
+    def get_rtp_port_from_freeswitch(self) -> Optional[int]:
+        """FreeSWITCHから現在の送信RTPポートを取得"""
+        try:
+            result = subprocess.run(
+                ["fs_cli", "-x", "show", "channels"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode != 0:
+                self.logger.warning(f"[FS_RTP_MONITOR] fs_cli failed: {result.stderr}")
+                return None
+            
+            # local_media_port を検索
+            import re
+            match = re.search(r"local_media_port:\s+(\d+)", result.stdout)
+            if match:
+                port = int(match.group(1))
+                self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH RTP port: {port}")
+                return port
+            else:
+                self.logger.warning("[FS_RTP_MONITOR] local_media_port not found in show channels output")
+                return None
+        except Exception as e:
+            self.logger.error(f"[FS_RTP_MONITOR] Error getting RTP port: {e}", exc_info=True)
+            return None
+    
+    async def start_monitoring(self):
+        """FreeSWITCH送信RTPポートの監視を開始"""
+        # ポート取得をリトライ（最大5回、1秒間隔）
+        for retry in range(5):
+            self.freeswitch_rtp_port = self.get_rtp_port_from_freeswitch()
+            if self.freeswitch_rtp_port:
+                break
+            await asyncio.sleep(1.0)
+            self.logger.debug(f"[FS_RTP_MONITOR] Retry {retry + 1}/5: waiting for FreeSWITCH channel...")
+        
+        if not self.freeswitch_rtp_port:
+            self.logger.error("[FS_RTP_MONITOR] Could not get FreeSWITCH RTP port, monitoring disabled")
+            return
+        
+        try:
+            loop = asyncio.get_running_loop()
+            # FreeSWITCH送信RTPポート用のソケットを作成
+            self.monitor_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            # 注意: FreeSWITCHの送信ポートは127.0.0.1にバインドされている可能性が高い
+            self.monitor_sock.bind(("127.0.0.1", self.freeswitch_rtp_port))
+            self.monitor_sock.setblocking(False)
+            
+            # asyncioにソケットを渡す（既存のRTPProtocolを再利用）
+            self.monitor_transport, _ = await loop.create_datagram_endpoint(
+                lambda: RTPProtocol(self.gateway),
+                sock=self.monitor_sock
+            )
+            self.logger.info(
+                f"[FS_RTP_MONITOR] Started monitoring FreeSWITCH RTP port {self.freeswitch_rtp_port}"
+            )
+            
+            # 002.wav完了フラグファイルを監視するタスクを開始
+            asyncio.create_task(self._check_asr_enable_flag())
+        except OSError as e:
+            if e.errno == 98:  # Address already in use
+                self.logger.warning(
+                    f"[FS_RTP_MONITOR] Port {self.freeswitch_rtp_port} already in use, "
+                    "monitoring may be disabled or another instance is running"
+                )
+            else:
+                self.logger.error(f"[FS_RTP_MONITOR] Failed to bind to port {self.freeswitch_rtp_port}: {e}", exc_info=True)
+        except Exception as e:
+            self.logger.error(f"[FS_RTP_MONITOR] Failed to start monitoring: {e}", exc_info=True)
+    
+    async def _check_asr_enable_flag(self):
+        """002.wav完了フラグファイルを監視してASRを有効化"""
+        while self.gateway.running:
+            try:
+                # UUIDベースのフラグファイルを検索（複数の通話に対応）
+                flag_files = list(Path("/tmp").glob("asr_enable_*.flag"))
+                if flag_files:
+                    # 最初に見つかったフラグファイルでASRを有効化
+                    flag_file = flag_files[0]
+                    if not self.asr_active:
+                        self.enable_asr()
+                        # フラグファイルを削除（処理済み）
+                        try:
+                            flag_file.unlink()
+                            self.logger.info(f"[FS_RTP_MONITOR] Removed ASR enable flag: {flag_file}")
+                        except Exception as e:
+                            self.logger.warning(f"[FS_RTP_MONITOR] Failed to remove flag file: {e}")
+            except Exception as e:
+                self.logger.error(f"[FS_RTP_MONITOR] Error checking ASR enable flag: {e}", exc_info=True)
+            
+            await asyncio.sleep(0.5)  # 0.5秒間隔でチェック
+    
+    def enable_asr(self):
+        """002.wav再生完了後にASRを有効化"""
+        if not self.asr_active:
+            self.asr_active = True
+            self.logger.info("[FS_RTP_MONITOR] ASR enabled after 002.wav playback completion")
+    
+    async def stop_monitoring(self):
+        """監視を停止"""
+        if self.monitor_transport:
+            self.monitor_transport.close()
+        if self.monitor_sock:
+            self.monitor_sock.close()
+        self.logger.info("[FS_RTP_MONITOR] Stopped monitoring FreeSWITCH RTP port")
+
 class RealtimeGateway:
     def __init__(self, config: dict, rtp_port_override: Optional[int] = None):
         self.config = config
@@ -377,6 +497,9 @@ class RealtimeGateway:
                         asyncio.create_task(self._wait_for_tts_and_transfer(call_id))
             
             asyncio.create_task(process_queued_transfers())
+            
+            # FreeSWITCH送信RTPポート監視を開始（pull型ASR用）
+            asyncio.create_task(self.fs_rtp_monitor.start_monitoring())
 
             # サービスを維持（停止イベントを待つ）
             await self.shutdown_event.wait()
@@ -1592,6 +1715,20 @@ class RealtimeGateway:
             # 初回シーケンス終了後はログフラグをリセット
             if hasattr(self, '_asr_skip_logged'):
                 delattr(self, '_asr_skip_logged')
+            
+            # --- Pull型ASR: 002.wav再生完了までASRをスキップ ---
+            if not self.fs_rtp_monitor.asr_active:
+                # 録音は続けるが、ASRには一切送らない
+                # ログは最初の1回だけ出力（スパム防止）
+                if not hasattr(self, '_asr_wait_logged'):
+                    self.logger.info(
+                        "[FS_RTP_MONITOR] ASR_WAIT: Waiting for 002.wav playback completion (asr_active=False)"
+                    )
+                    self._asr_wait_logged = True
+                return
+            # ASR有効化後はログフラグをリセット
+            if hasattr(self, '_asr_wait_logged'):
+                delattr(self, '_asr_wait_logged')
             
             # --- ストリーミングモード: チャンクごとにfeed ---
             # Google使用時は全チャンクを無条件で送信（VAD/バッファリングなし）

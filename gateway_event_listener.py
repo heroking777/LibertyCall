@@ -213,8 +213,20 @@ def main():
                             logger.debug(f"[重複防止] UUID={uuid} は既に処理中です")
                 elif event_name == "CHANNEL_EXECUTE_COMPLETE":
                     application = e.getHeader("Application")
-                    logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}, Application={application}")
+                    application_data = e.getHeader("Application-Data") or ""
+                    logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}, Application={application}, Data={application_data}")
                     if application == "playback":
+                        # 002.wav再生完了時にASRを有効化（Pull型ASR用）
+                        if "002.wav" in application_data or "/002.wav" in application_data:
+                            logger.info(f"[EVENT] 002.wav playback completed, enabling ASR for UUID={uuid}")
+                            # フラグファイルを作成してGatewayに通知
+                            flag_file = Path(f"/tmp/asr_enable_{uuid}.flag")
+                            try:
+                                flag_file.touch()
+                                logger.info(f"[EVENT] Created ASR enable flag: {flag_file}")
+                            except Exception as ex:
+                                logger.error(f"[EVENT] Failed to create ASR enable flag: {ex}", exc_info=True)
+                        
                         if uuid in active_calls:
                             logger.info(f"[CHANNEL_EXECUTE_COMPLETE] playback完了を検出 → 既に処理済みUUID={uuid}（完全スキップ）")
                             continue
