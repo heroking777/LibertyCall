@@ -1310,6 +1310,8 @@ class AICore:
         """
         FreeSWITCHで再生中の音声を中断する（uuid_break）
         
+        非同期実行で応答速度を最適化
+        
         :param call_id: 通話UUID
         """
         if not self.esl_connection:
@@ -1320,24 +1322,31 @@ class AICore:
             self.logger.warning(f"[BREAK_PLAYBACK] ESL not connected: call_id={call_id}")
             return
         
-        try:
-            # ESLを使ってuuid_breakを実行
-            # FreeSWITCHのuuid_breakは、api uuid_break <uuid> コマンドで実行
-            result = self.esl_connection.api("uuid_break", call_id)
-            
-            if result:
-                reply_text = result.getHeader('Reply-Text') if hasattr(result, 'getHeader') else None
-                if reply_text and '+OK' in reply_text:
-                    self.logger.info(f"[BREAK_PLAYBACK] Playback interrupted: call_id={call_id}")
+        # 非同期実行で応答速度を最適化（bgapiを使用）
+        def _break_playback_async():
+            try:
+                # bgapiを使って非同期実行（応答を待たない）
+                result = self.esl_connection.bgapi("uuid_break", call_id)
+                
+                if result:
+                    reply_text = result.getHeader('Reply-Text') if hasattr(result, 'getHeader') else None
+                    if reply_text and '+OK' in reply_text:
+                        self.logger.info(f"[BREAK_PLAYBACK] Playback interrupted: call_id={call_id}")
+                    else:
+                        self.logger.debug(
+                            f"[BREAK_PLAYBACK] Break command sent (async): call_id={call_id} "
+                            f"reply={reply_text}"
+                        )
                 else:
-                    self.logger.warning(
-                        f"[BREAK_PLAYBACK] Break command may have failed: call_id={call_id} "
-                        f"reply={reply_text}"
-                    )
-            else:
-                self.logger.warning(f"[BREAK_PLAYBACK] No response from ESL: call_id={call_id}")
-        except Exception as e:
-            self.logger.exception(f"[BREAK_PLAYBACK] Failed to break playback: call_id={call_id} error={e}")
+                    self.logger.debug(f"[BREAK_PLAYBACK] Break command sent (async): call_id={call_id}")
+            except Exception as e:
+                self.logger.exception(f"[BREAK_PLAYBACK] Failed to break playback: call_id={call_id} error={e}")
+        
+        # スレッドで非同期実行（メイン処理をブロックしない）
+        import threading
+        thread = threading.Thread(target=_break_playback_async, daemon=True)
+        thread.start()
+        self.logger.debug(f"[BREAK_PLAYBACK] Break command queued (async): call_id={call_id}")
     
     def _play_audio_response(self, call_id: str, intent: str) -> None:
         """
@@ -1517,6 +1526,9 @@ class AICore:
         """
         テンプレートIDのシーケンスをFreeSWITCHで再生
         
+        応答速度最適化: 再生完了を待たずに即座にすべてのテンプレートを再生開始
+        FreeSWITCHは自動的に順番に再生するため、待機は不要
+        
         :param call_id: 通話UUID
         :param template_ids: テンプレートIDのリスト（例: ["006", "085"]）
         :param client_id: クライアントID（指定されない場合はself.client_idを使用）
@@ -1527,6 +1539,8 @@ class AICore:
         # クライアントIDの決定
         effective_client_id = client_id or self.call_client_map.get(call_id) or self.client_id or "000"
         
+        # 応答速度最適化: すべてのテンプレートを即座に再生開始（待機なし）
+        # FreeSWITCHは自動的に順番に再生するため、各再生の完了を待つ必要はない
         for template_id in template_ids:
             # テンプレートIDから音声ファイルパスを生成（クライアント別ディレクトリ）
             audio_file = f"/opt/libertycall/clients/{effective_client_id}/audio/{template_id}_8k.wav"
@@ -1539,12 +1553,12 @@ class AICore:
                 )
                 continue
             
-            # FreeSWITCHへの音声再生リクエストを送信
+            # FreeSWITCHへの音声再生リクエストを送信（即時発火、待機なし）
             if hasattr(self, 'playback_callback') and self.playback_callback:
                 try:
                     self.playback_callback(call_id, audio_file)
                     self.logger.info(
-                        f"[PLAY_TEMPLATE] Sent playback request: "
+                        f"[PLAY_TEMPLATE] Sent playback request (immediate): "
                         f"call_id={call_id} template_id={template_id} file={audio_file}"
                     )
                 except Exception as e:
@@ -3308,8 +3322,9 @@ class AICore:
                     f"templates={template_ids} transfer={transfer_requested}"
                 )
                 
-                # テンプレート再生処理
+                # テンプレート再生処理（即時発火、待機なし）
                 if template_ids:
+                    # 応答速度最適化: 再生完了を待たずに即座に再生を開始
                     self._play_template_sequence(call_id, template_ids, client_id)
                 
                 # 転送処理

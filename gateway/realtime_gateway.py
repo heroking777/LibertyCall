@@ -2334,10 +2334,11 @@ class RealtimeGateway:
                 self.ai_core.is_playing[call_id] = True
                 self.logger.info(f"[PLAYBACK] is_playing[{call_id}] = True")
             
-            # ESLを使ってuuid_playbackを実行
+            # ESLを使ってuuid_playbackを実行（非同期実行で応答速度を最適化）
             # 注意: FreeSWITCHのuuid_playbackは、再生完了までブロックするため、
             # 非同期で実行するか、bgapiを使用する必要がある
-            # ここでは、execute()を使用して非同期実行
+            # ここでは、execute()を使用して非同期実行（force_async=True）
+            # 応答速度最適化: 再生完了を待たずに即座に次の処理に進む
             result = self.esl_connection.execute("playback", audio_file, uuid=call_id, force_async=True)
             
             if result:
