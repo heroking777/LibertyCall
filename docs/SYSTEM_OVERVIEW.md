@@ -143,6 +143,20 @@
 │       │   └── FlowEditor.jsx       # 会話フロー編集画面
 │       └── components/              # UIコンポーネント
 │
+├── freeswitch/                       # FreeSWITCH Dialplan設定
+│   ├── README.md                    # FreeSWITCH Dialplan説明書
+│   ├── dialplan/                    # Dialplan設定ファイル
+│   │   ├── default.xml              # 段階アナウンス（sleep+transfer）設定
+│   │   └── public.xml               # 外線経由の入口（FORCE_PUBLICエントリ）
+│   └── audio/                       # 8kHz音声ファイル
+│       ├── 000_8k.wav               # 初期アナウンス音声
+│       ├── 001_8k.wav               # 初期アナウンス音声
+│       ├── 002_8k.wav               # 初期アナウンス音声
+│       ├── 000-004_8k.wav           # 段階アナウンス音声
+│       ├── 000-005_8k.wav           # 段階アナウンス音声
+│       ├── 000-006_8k.wav           # 段階アナウンス音声
+│       └── combined_intro_8k.wav    # 000+001+002統合ファイル
+│
 ├── clients/                          # クライアント設定
 │   ├── _TEMPLATE/                   # 新規クライアント作成用テンプレート
 │   └── {client_id}/                 # クライアントID（電話番号）

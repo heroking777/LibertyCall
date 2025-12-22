@@ -35,7 +35,7 @@
       }
     ],
     "structure": {
-      "README.md": "使用方法・セットアップ",
+      "README.md": "FreeSWITCH Dialplan説明書",
       "requirements.txt": "Python依存パッケージ一覧",
       "package.json": "Node.js依存パッケージ（recharts, tailwindcss追加）",
       "package-lock.json": "依存パッケージロック",
@@ -215,12 +215,22 @@
       "build": "ビルド成果物",
       "css": "CSSファイル",
       "js": "JavaScriptファイル",
+      "dialplan": "Dialplan設定ファイル",
+      "default.xml": "段階アナウンス（sleep+transfer）設定",
+      "public.xml": "外線経由の入口（FORCE_PUBLICエントリ）",
+      "audio": "クライアント専用音声ファイル",
+      "000_8k.wav": "初期アナウンス音声",
+      "001_8k.wav": "初期アナウンス音声",
+      "002_8k.wav": "初期アナウンス音声",
+      "000-004_8k.wav": "段階アナウンス音声",
+      "000-005_8k.wav": "段階アナウンス音声",
+      "000-006_8k.wav": "段階アナウンス音声",
+      "combined_intro_8k.wav": "000+001+002統合ファイル",
       "_TEMPLATE": "新規クライアント作成用テンプレート",
       "incoming_sequence.json": "着信シーケンス設定",
       "logs": "クライアント専用ログ",
       "{client_id}": "クライアントID（電話番号）",
       "voice_lines_{id}.json": "音声ライン設定",
-      "audio": "クライアント専用音声ファイル",
       "*.wav": "音声ファイル",
       "gateway.yaml": "Gateway設定（ポート・クライアント）",
       "client_mapping.json": "クライアントID自動判定ルール（発信者番号・宛先番号・SIPヘッダー）",
@@ -317,6 +327,6 @@
       "_archive_20251113": "2025年11月13日アーカイブ",
       "LibertyCall": "旧バージョンコード"
     },
-    "updatedAt": "2025-12-20T03:40:58.024981Z"
+    "updatedAt": "2025-12-22T12:14:06.545724Z"
   }
 }

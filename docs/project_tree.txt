@@ -457,6 +457,13 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
    - RTP受信・送信、VAD（音声区間検出）、AI呼び出し
    - FreeSWITCHと連携して通話を処理
 
+1-1. FreeSWITCH Dialplan (freeswitch/)
+   - 段階的アナウンスシステム（sleep+transfer方式）
+   - loopback経由でも安定動作するタイマー制御
+   - 音声ファイル: 8kHz μ-law形式（PCMU/8000）
+   - 動作フロー: combined_intro_8k.wav → 000-004_8k.wav → 000-005_8k.wav → 000-006_8k.wav → 切断
+   - デプロイ先: /usr/local/freeswitch/conf/dialplan/
+
 2. Console Backend (console_backend/)
    - 管理画面用REST API
    - 通話履歴・ユーザー管理・統計情報を提供
