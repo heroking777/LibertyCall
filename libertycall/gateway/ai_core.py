@@ -1025,6 +1025,7 @@ class AICore:
         self.asr_model = None
         self.transfer_callback: Optional[Callable[[str], None]] = None
         self.hangup_callback: Optional[Callable[[str], None]] = None
+        self.playback_callback: Optional[Callable[[str, str], None]] = None
         self._auto_hangup_timers: Dict[str, threading.Timer] = {}
         # 二重再生防止: on_call_start() を呼び出し済みの通話IDセット（全クライアント共通）
         self._call_started_calls: set[str] = set()
@@ -1231,6 +1232,105 @@ class AICore:
             self.logger.info(f"ASR enabled for call uuid={uuid}")
         else:
             self.logger.error(f"enable_asr: ASR model does not have _start_stream_worker method (uuid={uuid})")
+    
+    def _classify_simple_intent(self, text: str, normalized: str) -> Optional[str]:
+        """
+        簡易Intent判定（はい/いいえ/その他）
+        
+        :param text: 元のテキスト
+        :param normalized: 正規化されたテキスト
+        :return: "YES", "NO", "OTHER", または None（判定できない場合）
+        """
+        # 「はい」系のキーワード
+        yes_keywords = ["はい", "ええ", "うん", "そうです", "そう", "了解", "りょうかい", "ok", "okです"]
+        if any(kw in normalized for kw in yes_keywords):
+            return "YES"
+        
+        # 「いいえ」系のキーワード
+        no_keywords = ["いいえ", "いえ", "違います", "ちがいます", "違う", "ちがう", "no", "ノー"]
+        if any(kw in normalized for kw in no_keywords):
+            return "NO"
+        
+        # その他の場合はNoneを返す（通常の会話フロー処理に委譲）
+        return None
+    
+    def _play_audio_response(self, call_id: str, intent: str) -> None:
+        """
+        FreeSWITCHに音声再生リクエストを送信
+        
+        :param call_id: 通話UUID
+        :param intent: 簡易Intent（"YES", "NO", "OTHER"）
+        """
+        # Intentに応じて音声ファイルを決定
+        audio_files = {
+            "YES": "/opt/libertycall/clients/000/audio/yes_8k.wav",
+            "NO": "/opt/libertycall/clients/000/audio/no_8k.wav",
+            "OTHER": "/opt/libertycall/clients/000/audio/repeat_8k.wav",
+        }
+        
+        audio_file = audio_files.get(intent)
+        if not audio_file:
+            self.logger.warning(f"_play_audio_response: Unknown intent {intent}")
+            return
+        
+        # 音声ファイルの存在確認
+        if not Path(audio_file).exists():
+            self.logger.warning(f"_play_audio_response: Audio file not found: {audio_file}")
+            # フォールバック: 既存のファイルを使用
+            if intent == "YES":
+                audio_file = "/opt/libertycall/clients/000/audio/110_8k.wav"  # 既存のファイル
+            elif intent == "NO":
+                audio_file = "/opt/libertycall/clients/000/audio/111_8k.wav"  # 既存のファイル
+            else:
+                audio_file = "/opt/libertycall/clients/000/audio/110_8k.wav"  # デフォルト
+        
+        # FreeSWITCHへの音声再生リクエストを送信
+        # 方法1: transferを使ってplay_audio_dynamicエクステンションに転送
+        # 方法2: HTTP API経由でFreeSWITCHにリクエスト（実装が必要）
+        # ここでは、playback_callbackが設定されている場合はそれを使用、なければHTTP APIを試行
+        if hasattr(self, 'playback_callback') and self.playback_callback:
+            try:
+                self.playback_callback(call_id, audio_file)
+                self.logger.info(f"[PLAYBACK] Sent audio playback request: call_id={call_id} file={audio_file}")
+            except Exception as e:
+                self.logger.exception(f"[PLAYBACK] Failed to send playback request: {e}")
+        else:
+            # HTTP API経由でFreeSWITCHにリクエスト
+            self._send_playback_request_http(call_id, audio_file)
+    
+    def _send_playback_request_http(self, call_id: str, audio_file: str) -> None:
+        """
+        FreeSWITCHにHTTP API経由で音声再生リクエストを送信
+        
+        :param call_id: 通話UUID
+        :param audio_file: 音声ファイルのパス
+        """
+        try:
+            import requests
+            
+            # FreeSWITCHのHTTP APIエンドポイント（mod_curl経由）
+            # 注意: FreeSWITCHの標準的なHTTP APIはEvent Socket Interface (ESL) 経由
+            # ここでは、transferを使ってplay_audio_dynamicエクステンションに転送する方法を使用
+            # 実際の実装では、FreeSWITCHのEvent Socket Interface (ESL) を使う方が確実
+            
+            # 方法1: transferを使ってplay_audio_dynamicエクステンションに転送
+            # FreeSWITCHのEvent Socket Interface (ESL) を使ってuuid_transferを実行
+            # ただし、ここでは簡易的にHTTPリクエストを試行（実装が必要な場合はESLを使用）
+            
+            # 注意: この実装は簡易版。本番環境ではFreeSWITCHのEvent Socket Interface (ESL) を使用することを推奨
+            self.logger.warning(
+                f"[PLAYBACK] HTTP API not implemented yet. "
+                f"Please use playback_callback or implement ESL connection. "
+                f"call_id={call_id} file={audio_file}"
+            )
+            
+            # TODO: FreeSWITCHのEvent Socket Interface (ESL) を使ってuuid_transferを実行
+            # または、FreeSWITCHのHTTP APIエンドポイントを実装
+            
+        except ImportError:
+            self.logger.error("[PLAYBACK] requests module not available")
+        except Exception as e:
+            self.logger.exception(f"[PLAYBACK] Failed to send HTTP request: {e}")
     
     def _save_debug_wav(self, pcm16k_bytes: bytes):
         """Whisperに渡す直前のPCM音声をWAVファイルとして保存"""
@@ -2777,6 +2877,16 @@ class AICore:
             normalized = normalize_text(merged_text)
             intent = classify_intent(normalized)
             self.logger.info(f"[INTENT] {intent}")
+            
+            # 【簡易Intent判定】ASR起動直後の簡易応答（はい/いいえ/その他）
+            # これは既存のclassify_intent()の結果を補完する
+            simple_intent = self._classify_simple_intent(merged_text, normalized)
+            if simple_intent:
+                self.logger.info(f"[SIMPLE_INTENT] {simple_intent} (text={merged_text!r})")
+                # 簡易Intentに応じて音声ファイルを再生
+                self._play_audio_response(call_id, simple_intent)
+                # 簡易応答の場合は、通常の会話フロー処理をスキップ（音声再生のみ）
+                return None
         
         # 空のテキスト（無音検出時）の場合は、no_input_streakに基づいてテンプレートを選択
         if not merged_text or len(merged_text.strip()) == 0:

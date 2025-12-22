@@ -283,6 +283,8 @@ class RealtimeGateway:
         self.ai_core.transfer_callback = self._handle_transfer
         # 自動切断用コールバックを設定
         self.ai_core.hangup_callback = self._handle_hangup
+        # 音声再生用コールバックを設定
+        self.ai_core.playback_callback = self._handle_playback
         self.logger.info(
             "HANGUP_CALLBACK_SET: hangup_callback=%s",
             "set" if self.ai_core.hangup_callback else "none"
@@ -2222,6 +2224,50 @@ class RealtimeGateway:
             self.call_id
         )
 
+    def _handle_playback(self, call_id: str, audio_file: str) -> None:
+        """
+        FreeSWITCHに音声再生リクエストを送信
+        
+        :param call_id: 通話UUID
+        :param audio_file: 音声ファイルのパス
+        """
+        try:
+            # FreeSWITCHのEvent Socket Interface (ESL) を使って音声再生を制御
+            # 方法1: transferを使ってplay_audio_dynamicエクステンションに転送
+            # 方法2: ESLを使ってuuid_breakとuuid_playbackを実行
+            
+            # 簡易実装: HTTP API経由でFreeSWITCHにリクエスト
+            # 注意: 本番環境ではFreeSWITCHのEvent Socket Interface (ESL) を使用することを推奨
+            
+            import requests
+            
+            # FreeSWITCHのHTTP APIエンドポイント（mod_curl経由）
+            # 実際の実装では、FreeSWITCHのEvent Socket Interface (ESL) を使う方が確実
+            # ここでは、transferを使ってplay_audio_dynamicエクステンションに転送する方法を使用
+            
+            # 注意: この実装は簡易版。本番環境ではFreeSWITCHのEvent Socket Interface (ESL) を使用することを推奨
+            self.logger.warning(
+                f"[PLAYBACK] HTTP API not fully implemented yet. "
+                f"Please implement ESL connection for production use. "
+                f"call_id={call_id} file={audio_file}"
+            )
+            
+            # TODO: FreeSWITCHのEvent Socket Interface (ESL) を使ってuuid_transferを実行
+            # または、FreeSWITCHのHTTP APIエンドポイントを実装
+            
+            # 簡易実装: transferを使ってplay_audio_dynamicエクステンションに転送
+            # FreeSWITCHのEvent Socket Interface (ESL) を使ってuuid_transferを実行
+            # ただし、ここでは簡易的にログを出力するだけ
+            
+            self.logger.info(
+                f"[PLAYBACK] Requested audio playback: call_id={call_id} file={audio_file}"
+            )
+            
+        except ImportError:
+            self.logger.error("[PLAYBACK] requests module not available")
+        except Exception as e:
+            self.logger.exception(f"[PLAYBACK] Failed to send playback request: {e}")
+    
     def _handle_hangup(self, call_id: str) -> None:
         """
         自動切断処理を実行

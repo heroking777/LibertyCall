@@ -47,6 +47,14 @@
 	<action application="hangup" data="NORMAL_CLEARING"/>
       </condition>
     </extension>
+
+    <!-- 動的音声再生（Gatewayからのリクエスト用） -->
+    <extension name="play_audio_dynamic">
+      <condition field="destination_number" expression="^play_audio_dynamic$">
+	<action application="answer"/>
+	<action application="playback" data="${file}"/>
+      </condition>
+    </extension>
     <extension name="force_public_entry">
       <condition field="destination_number" expression=".*">
 	<action application="log" data="INFO FORCE_PUBLIC context=${context} dest=${destination_number}"/>
