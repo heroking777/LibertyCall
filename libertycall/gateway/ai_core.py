@@ -1009,13 +1009,16 @@ class AICore:
         )
         
         # FlowEngineを初期化（JSON定義ベースのフェーズ遷移エンジン）
-        flow_json_path = f"/opt/libertycall/config/clients/{client_id}/flow.json"
-        default_flow_json_path = "/opt/libertycall/config/system/default_flow.json"
-        if Path(flow_json_path).exists():
-            self.flow_engine = FlowEngine(flow_json_path)
-        else:
-            self.flow_engine = FlowEngine(default_flow_json_path)
-        self.logger.info(f"FlowEngine initialized for client: {client_id}")
+        # デフォルトクライアント用のFlowEngineを初期化（後でUUIDごとに追加される）
+        self.flow_engine = FlowEngine(client_id=client_id)
+        
+        # UUIDごとのFlowEngineを管理する辞書（クライアント別フロー対応）
+        self.flow_engines: Dict[str, FlowEngine] = {}
+        
+        # UUIDごとのclient_idを管理する辞書（call_id -> client_id）
+        self.call_client_map: Dict[str, str] = {}
+        
+        self.logger.info(f"FlowEngine initialized for default client: {client_id}")
         
         # キーワードをインスタンス変数として設定（後方互換性のため）
         self._load_keywords_from_config()
@@ -1219,11 +1222,12 @@ class AICore:
         self._wav_saved = False
         self._wav_chunk_counter = 0
     
-    def enable_asr(self, uuid: str) -> None:
+    def enable_asr(self, uuid: str, client_id: Optional[str] = None) -> None:
         """
         FreeSWITCHからの通知を受けてASRストリーミングを開始する
         
         :param uuid: 通話UUID（FreeSWITCHのcall UUID）
+        :param client_id: クライアントID（指定されない場合はデフォルトまたは自動判定）
         """
         if not self.asr_model:
             self.logger.warning(f"enable_asr: ASR model not initialized (uuid={uuid})")
@@ -1233,13 +1237,37 @@ class AICore:
             self.logger.warning(f"enable_asr: streaming not enabled (uuid={uuid})")
             return
         
+        # クライアントIDの決定（優先順位: 引数 > 既存のマッピング > デフォルト）
+        if not client_id:
+            client_id = self.call_client_map.get(uuid) or self.client_id or "000"
+        
+        # call_idとclient_idのマッピングを保存
+        self.call_client_map[uuid] = client_id
+        
+        # このUUID用のFlowEngineが存在しない場合は作成
+        if uuid not in self.flow_engines:
+            try:
+                self.flow_engines[uuid] = FlowEngine(client_id=client_id)
+                self.logger.info(f"FlowEngine created for call: uuid={uuid} client_id={client_id}")
+            except Exception as e:
+                self.logger.error(f"Failed to create FlowEngine for uuid={uuid} client_id={client_id}: {e}")
+                # エラー時はデフォルトのFlowEngineを使用
+                self.flow_engines[uuid] = self.flow_engine
+        
+        # セッション状態を初期化（フェーズをENTRYに設定）
+        state = self._get_session_state(uuid)
+        if state.phase == "ENTRY" or not state.phase:
+            state.phase = "ENTRY"
+            state.meta["client_id"] = client_id
+            self.logger.info(f"Session state initialized: uuid={uuid} phase=ENTRY client_id={client_id}")
+        
         # call_idを設定（ASR結果の処理で使用される）
         self.set_call_id(uuid)
         
         # GoogleASRのストリーミングを開始
         if hasattr(self.asr_model, '_start_stream_worker'):
             self.asr_model._start_stream_worker(uuid)
-            self.logger.info(f"ASR enabled for call uuid={uuid}")
+            self.logger.info(f"ASR enabled for call uuid={uuid} client_id={client_id}")
         else:
             self.logger.error(f"enable_asr: ASR model does not have _start_stream_worker method (uuid={uuid})")
     
@@ -1314,7 +1342,9 @@ class AICore:
         text: str,
         normalized_text: str,
         intent: str,
-        state: ConversationState
+        state: ConversationState,
+        flow_engine: FlowEngine,
+        client_id: str
     ) -> Tuple[str, List[str], str, bool]:
         """
         FlowEngineを使ってフェーズ遷移とテンプレート選択を行う
@@ -1341,22 +1371,22 @@ class AICore:
         }
         
         # FlowEngineでフェーズ遷移を決定
-        next_phase = self.flow_engine.transition(current_phase, context)
+        next_phase = flow_engine.transition(current_phase, context)
         
         # フェーズを更新
         if next_phase != current_phase:
             state.phase = next_phase
             self.logger.info(
                 f"[FLOW_ENGINE] Phase transition: {current_phase} -> {next_phase} "
-                f"(call_id={call_id}, intent={intent})"
+                f"(call_id={call_id}, client_id={client_id}, intent={intent})"
             )
         
         # 次のフェーズのテンプレートを取得
-        template_ids = self.flow_engine.get_templates(next_phase)
+        template_ids = flow_engine.get_templates(next_phase)
         
         # テンプレートが空の場合は、現在のフェーズのテンプレートを使用
         if not template_ids:
-            template_ids = self.flow_engine.get_templates(current_phase)
+            template_ids = flow_engine.get_templates(current_phase)
         
         # テンプレートIDリストから実際に使用するテンプレートを選択
         # 複数のテンプレートIDがある場合は、Intentやテキストに基づいて選択
@@ -1381,25 +1411,45 @@ class AICore:
             # テンプレートIDがない場合は、フォールバック（110を使用）
             template_ids = ["110"]
         
-        # テンプレートから返答テキストを生成
-        reply_text = self._render_templates_from_ids(template_ids) if template_ids else ""
+        # テンプレートから返答テキストを生成（クライアント別templates.jsonを使用）
+        reply_text = self._render_templates_from_ids(template_ids, client_id=client_id) if template_ids else ""
         
         # 転送要求の判定（HANDOFF_DONEフェーズの場合）
         transfer_requested = (next_phase == "HANDOFF_DONE")
         
         return reply_text, template_ids, intent, transfer_requested
     
-    def _render_templates_from_ids(self, template_ids: List[str]) -> str:
+    def _render_templates_from_ids(self, template_ids: List[str], client_id: Optional[str] = None) -> str:
         """
         テンプレートIDのリストから返答テキストを生成
         
         :param template_ids: テンプレートIDのリスト
+        :param client_id: クライアントID（指定されない場合はself.client_idを使用）
         :return: 結合された返答テキスト
         """
+        effective_client_id = client_id or self.client_id or "000"
         texts = []
+        
         for template_id in template_ids:
-            # templates.jsonからテキストを取得
-            template_config = self.templates.get(template_id)
+            # クライアント別のtemplates.jsonからテキストを取得
+            template_config = None
+            
+            # まず、指定されたクライアントIDのtemplates.jsonを読み込む
+            if client_id and client_id != self.client_id:
+                try:
+                    client_templates_path = f"/opt/libertycall/config/clients/{client_id}/templates.json"
+                    if Path(client_templates_path).exists():
+                        with open(client_templates_path, 'r', encoding='utf-8') as f:
+                            import json
+                            client_templates = json.load(f)
+                            template_config = client_templates.get(template_id)
+                except Exception as e:
+                    self.logger.debug(f"Failed to load client templates for {client_id}: {e}")
+            
+            # クライアント別のtemplates.jsonが見つからない場合は、self.templatesを使用
+            if not template_config:
+                template_config = self.templates.get(template_id)
+            
             if template_config and isinstance(template_config, dict):
                 text = template_config.get("text", "")
                 if text:
@@ -1416,19 +1466,23 @@ class AICore:
         
         return " ".join(texts) if texts else ""
     
-    def _play_template_sequence(self, call_id: str, template_ids: List[str]) -> None:
+    def _play_template_sequence(self, call_id: str, template_ids: List[str], client_id: Optional[str] = None) -> None:
         """
         テンプレートIDのシーケンスをFreeSWITCHで再生
         
         :param call_id: 通話UUID
         :param template_ids: テンプレートIDのリスト（例: ["006", "085"]）
+        :param client_id: クライアントID（指定されない場合はself.client_idを使用）
         """
         if not template_ids:
             return
         
+        # クライアントIDの決定
+        effective_client_id = client_id or self.call_client_map.get(call_id) or self.client_id or "000"
+        
         for template_id in template_ids:
-            # テンプレートIDから音声ファイルパスを生成
-            audio_file = f"/opt/libertycall/clients/{self.client_id}/audio/{template_id}_8k.wav"
+            # テンプレートIDから音声ファイルパスを生成（クライアント別ディレクトリ）
+            audio_file = f"/opt/libertycall/clients/{effective_client_id}/audio/{template_id}_8k.wav"
             
             # 音声ファイルの存在確認
             if not Path(audio_file).exists():
@@ -1545,6 +1599,9 @@ class AICore:
     def _get_session_state(self, call_id: str) -> ConversationState:
         key = call_id or "GLOBAL_CALL"
         if key not in self.session_states:
+            # クライアントIDを取得（既存のマッピングから）
+            client_id = self.call_client_map.get(call_id) or self.client_id or "000"
+            
             self.session_states[key] = {
                 "phase": "ENTRY",
                 "last_intent": None,
@@ -1557,7 +1614,7 @@ class AICore:
                 "unclear_streak": 0,  # AI がよくわからない状態で返答した回数
                 "handoff_completed": False,
                 "last_ai_templates": [],
-                "meta": {},
+                "meta": {"client_id": client_id},  # クライアントIDをmetaに保存
             }
         return ConversationState(self.session_states[key])
 
@@ -3046,22 +3103,28 @@ class AICore:
                 return None
         
         # 【FlowEngine統合】JSON定義ベースのフェーズ遷移処理
-        if hasattr(self, 'flow_engine') and self.flow_engine:
+        # call_idに対応するFlowEngineを取得（クライアント別フロー対応）
+        flow_engine = self.flow_engines.get(call_id) or self.flow_engine
+        
+        if flow_engine:
             try:
+                # クライアントIDを取得（テンプレート再生時に使用）
+                client_id = self.call_client_map.get(call_id) or state.meta.get("client_id") or self.client_id or "000"
+                
                 reply_text, template_ids, intent, transfer_requested = self._handle_flow_engine_transition(
-                    call_id, merged_text, normalized, intent, state
+                    call_id, merged_text, normalized, intent, state, flow_engine, client_id
                 )
                 phase_after = state.phase
                 
                 self.logger.info(
-                    f"FLOW_ENGINE: call_id={call_id} "
+                    f"FLOW_ENGINE: call_id={call_id} client_id={client_id} "
                     f"phase={phase_before}->{phase_after} intent={intent} "
                     f"templates={template_ids} transfer={transfer_requested}"
                 )
                 
                 # テンプレート再生処理
                 if template_ids:
-                    self._play_template_sequence(call_id, template_ids)
+                    self._play_template_sequence(call_id, template_ids, client_id)
                 
                 # 転送処理
                 if transfer_requested:

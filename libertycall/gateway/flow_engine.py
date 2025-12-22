@@ -20,15 +20,35 @@ class FlowEngine:
     そのフェーズのtemplatesを返す
     """
     
-    def __init__(self, flow_json_path: str):
+    def __init__(self, client_id: str = "000", flow_json_path: Optional[str] = None):
         """
         FlowEngineを初期化
         
-        :param flow_json_path: flow.jsonのパス
+        :param client_id: クライアントID（例: "000", "001"）
+        :param flow_json_path: flow.jsonのパス（指定された場合は優先、未指定の場合はclient_idから自動決定）
         """
         self.logger = logging.getLogger(__name__)
+        self.client_id = client_id
+        
+        # flow_json_pathが指定されていない場合は、client_idから自動決定
+        if not flow_json_path:
+            # クライアント別のflow.jsonを優先（複数のパスをチェック）
+            # 1. /opt/libertycall/clients/{client_id}/flow.json（新形式）
+            # 2. /opt/libertycall/config/clients/{client_id}/flow.json（既存形式）
+            # 3. /opt/libertycall/config/system/default_flow.json（デフォルト）
+            client_flow_path = f"/opt/libertycall/clients/{client_id}/flow.json"
+            config_flow_path = f"/opt/libertycall/config/clients/{client_id}/flow.json"
+            system_default_path = "/opt/libertycall/config/system/default_flow.json"
+            
+            if Path(client_flow_path).exists():
+                flow_json_path = client_flow_path
+            elif Path(config_flow_path).exists():
+                flow_json_path = config_flow_path
+            else:
+                flow_json_path = system_default_path
+        
         self.flow = self._load_flow(flow_json_path)
-        self.logger.info(f"FlowEngine initialized: {flow_json_path}")
+        self.logger.info(f"FlowEngine initialized: client_id={client_id} flow_path={flow_json_path}")
     
     def _load_flow(self, flow_json_path: str) -> Dict[str, Any]:
         """flow.jsonをロード"""

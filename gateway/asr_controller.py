@@ -31,11 +31,12 @@ app = FastAPI(
 
 
 @app.post("/asr/start/{uuid}")
-async def start_asr(uuid: str):
+async def start_asr(uuid: str, client_id: Optional[str] = None):
     """
     ASRストリーミングを開始する
     
     :param uuid: 通話UUID（FreeSWITCHのcall UUID）
+    :param client_id: クライアントID（オプション、指定されない場合は自動判定）
     :return: ステータスレスポンス
     """
     if not _gateway_instance:
@@ -55,13 +56,24 @@ async def start_asr(uuid: str):
                 detail="AI Core not available"
             )
         
-        # ASRを有効化
-        ai_core.enable_asr(uuid)
+        # client_idが指定されていない場合は、Gateway側で既に保持しているclient_idを使用
+        if not client_id:
+            gateway_client_id = getattr(_gateway_instance, 'client_id', None)
+            if gateway_client_id:
+                client_id = gateway_client_id
+                logger.debug(f"start_asr: Using gateway client_id: {client_id}")
+            else:
+                # デフォルトクライアントIDを使用
+                client_id = getattr(ai_core, 'client_id', '000')
+                logger.debug(f"start_asr: Using default client_id: {client_id}")
         
-        logger.info(f"ASR_START_API: uuid={uuid} status=ok")
+        # ASRを有効化（クライアントIDを渡す）
+        ai_core.enable_asr(uuid, client_id=client_id)
+        
+        logger.info(f"ASR_START_API: uuid={uuid} client_id={client_id} status=ok")
         return JSONResponse(
             status_code=200,
-            content={"status": "ok", "uuid": uuid}
+            content={"status": "ok", "uuid": uuid, "client_id": client_id}
         )
     except HTTPException:
         raise
