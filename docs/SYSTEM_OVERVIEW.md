@@ -411,6 +411,9 @@ ENTRY → QA → AFTER_085 → CLOSING → HANDOFF → HANDOFF_CONFIRM_WAIT → 
 
 ### インフラ
 - **FreeSWITCH**（PBX）
+  - Dialplan設定: `/usr/local/freeswitch/conf/dialplan/`
+  - 段階的アナウンス: `sleep` + `transfer`（タイマー制御）
+  - 音声ファイル: 8kHz μ-law形式（PCMU/8000）
 - **Nginx**（リバースプロキシ）
 - **systemd**（サービス管理）
 - **SQLite**（通話ログ）
