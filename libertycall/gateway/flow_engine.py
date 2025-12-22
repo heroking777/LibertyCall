@@ -64,6 +64,7 @@ class FlowEngine:
     def get_templates(self, phase_name: str) -> List[str]:
         """
         指定されたフェーズのテンプレートIDリストを取得（エラーフォールバック対応）
+        テンプレートIDの存在チェックも実行
         
         :param phase_name: フェーズ名（例: "ENTRY", "QA"）
         :return: テンプレートIDのリスト
@@ -85,6 +86,27 @@ class FlowEngine:
             if not templates:
                 self.logger.warning(f"No templates found for phase: {phase_name}, using fallback")
                 return ["110"]
+            
+            # テンプレートIDの存在チェック
+            missing_templates = []
+            for template_id in templates:
+                audio_dir = Path(f"/opt/libertycall/clients/{self.client_id}/audio")
+                audio_file_norm = audio_dir / f"{template_id}_8k_norm.wav"
+                audio_file_regular = audio_dir / f"{template_id}_8k.wav"
+                
+                if not audio_file_norm.exists() and not audio_file_regular.exists():
+                    missing_templates.append(template_id)
+            
+            # 欠落テンプレートがあれば警告を出力
+            if missing_templates:
+                self.logger.warning(
+                    f"Missing template audio files for phase {phase_name}: {missing_templates}"
+                )
+                # runtime.logにも警告を出力
+                runtime_logger = logging.getLogger("runtime")
+                runtime_logger.warning(
+                    f"[FLOW] Missing template audio: phase={phase_name} templates={missing_templates}"
+                )
             
             return templates
         except Exception as e:
@@ -138,11 +160,22 @@ class FlowEngine:
                     continue
             
             # 条件にマッチしない場合は現在のフェーズを維持
+            # ただし、UNKNOWN intentの場合はQAフェーズへ復帰
+            intent = context.get("intent", "")
+            if intent == "UNKNOWN" and current_phase != "QA":
+                self.logger.info(f"UNKNOWN intent detected, transitioning to QA: phase={current_phase}")
+                return "QA"
+            
             self.logger.debug(f"No transition matched for phase: {current_phase}, staying in current phase")
             return current_phase
         except Exception as e:
             self.logger.exception(f"Error in FlowEngine.transition: {e}")
             # エラー時は安全なフェーズ（NOT_HEARD）にフォールバック（通話が止まらないように）
+            # ただし、UNKNOWN intentの場合はQAフェーズへ復帰
+            intent = context.get("intent", "") if isinstance(context, dict) else ""
+            if intent == "UNKNOWN":
+                self.logger.warning(f"Exception with UNKNOWN intent, transitioning to QA: {e}")
+                return "QA"
             return "NOT_HEARD"
     
     def _eval_condition(self, condition: str, context: Dict[str, Any]) -> bool:

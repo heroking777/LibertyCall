@@ -1327,9 +1327,9 @@ class AICore:
         if hasattr(self.asr_model, '_start_stream_worker'):
             self.asr_model._start_stream_worker(uuid)
             self.logger.info(f"ASR enabled for call uuid={uuid} client_id={client_id}")
-            # runtime.logへの主要イベント出力
+            # runtime.logへの主要イベント出力（詳細フォーマット）
             runtime_logger = logging.getLogger("runtime")
-            runtime_logger.info(f"ASR_START call_id={uuid} client_id={client_id}")
+            runtime_logger.info(f"[ASR] start uuid={uuid} client_id={client_id}")
         else:
             self.logger.error(f"enable_asr: ASR model does not have _start_stream_worker method (uuid={uuid})")
     
@@ -1591,14 +1591,25 @@ class AICore:
         # FreeSWITCHは自動的に順番に再生するため、各再生の完了を待つ必要はない
         for template_id in template_ids:
             # テンプレートIDから音声ファイルパスを生成（クライアント別ディレクトリ）
-            audio_file = f"/opt/libertycall/clients/{effective_client_id}/audio/{template_id}_8k.wav"
+            # _norm.wavが存在すれば優先使用（音声品質向上）
+            audio_dir = Path(f"/opt/libertycall/clients/{effective_client_id}/audio")
+            audio_file_norm = audio_dir / f"{template_id}_8k_norm.wav"
+            audio_file_regular = audio_dir / f"{template_id}_8k.wav"
             
-            # 音声ファイルの存在確認
-            if not Path(audio_file).exists():
+            # _norm.wavが存在すれば優先使用
+            if audio_file_norm.exists():
+                audio_file = str(audio_file_norm)
+            elif audio_file_regular.exists():
+                audio_file = str(audio_file_regular)
+            else:
+                # 音声ファイルが存在しない場合は警告を出力
                 self.logger.warning(
-                    f"[PLAY_TEMPLATE] Audio file not found: {audio_file} "
-                    f"(template_id={template_id})"
+                    f"[PLAY_TEMPLATE] Audio file not found: template_id={template_id} "
+                    f"(checked: {audio_file_norm}, {audio_file_regular})"
                 )
+                # runtime.logにも警告を出力
+                runtime_logger = logging.getLogger("runtime")
+                runtime_logger.warning(f"[FLOW] Missing template audio: call_id={call_id} template_id={template_id}")
                 continue
             
             # FreeSWITCHへの音声再生リクエストを送信（即時発火、待機なし）
@@ -1807,6 +1818,17 @@ class AICore:
                                     template_ids = flow_engine.get_templates(next_phase)
                                     if template_ids:
                                         self._play_template_sequence(call_id, template_ids, client_id)
+                                        
+                                        # NOT_HEARD (110) 再提示後、QAフェーズへ復帰を保証
+                                        if next_phase == "NOT_HEARD" and "110" in template_ids:
+                                            # 110再生後、自動的にQAフェーズへ遷移
+                                            state.phase = "QA"
+                                            self.logger.info(
+                                                f"[ACTIVITY_MONITOR] NOT_HEARD (110) played, transitioning to QA: call_id={call_id}"
+                                            )
+                                            # runtime.logに出力
+                                            runtime_logger = logging.getLogger("runtime")
+                                            runtime_logger.info(f"[FLOW] call_id={call_id} phase=NOT_HEARD→QA intent=NOT_HEARD template=110 (timeout recovery)")
                                     
                                     # 最終活動時刻を更新（再タイムアウトを防ぐ）
                                     self.last_activity[call_id] = current_time
@@ -3525,9 +3547,10 @@ class AICore:
                     f"phase={phase_before}->{phase_after} intent={intent} "
                     f"templates={template_ids} transfer={transfer_requested}"
                 )
-                # runtime.logへの主要イベント出力
+                # runtime.logへの主要イベント出力（詳細フォーマット）
                 runtime_logger = logging.getLogger("runtime")
-                runtime_logger.info(f"FLOW_PHASE call_id={call_id} phase={phase_before}->{phase_after} intent={intent} templates={template_ids}")
+                template_str = ",".join(template_ids) if template_ids else "none"
+                runtime_logger.info(f"[FLOW] call_id={call_id} phase={phase_before}→{phase_after} intent={intent} template={template_str}")
                 
                 # テンプレート再生処理（即時発火、待機なし）
                 if template_ids:
