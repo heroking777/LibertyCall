@@ -34,7 +34,8 @@
 	<action application="record_session" data="${record_session}"/>
 	<action application="sleep" data="1000"/>
 
-	<!-- 必ず再生するアナウンス -->
+	<!-- 必ず再生するアナウンス（無音削減: silence_threshold=0.1でテンプレート間の無音を削減） -->
+	<action application="set" data="silence_threshold=0.1"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/000_8k.wav"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/001_8k.wav"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/002_8k.wav"/>

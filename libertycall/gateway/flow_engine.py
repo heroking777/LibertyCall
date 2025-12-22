@@ -142,8 +142,8 @@ class FlowEngine:
             return current_phase
         except Exception as e:
             self.logger.exception(f"Error in FlowEngine.transition: {e}")
-            # エラー時は安全なフェーズ（QA）にフォールバック
-            return "QA"
+            # エラー時は安全なフェーズ（NOT_HEARD）にフォールバック（通話が止まらないように）
+            return "NOT_HEARD"
     
     def _eval_condition(self, condition: str, context: Dict[str, Any]) -> bool:
         """

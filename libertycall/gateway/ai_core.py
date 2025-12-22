@@ -205,6 +205,24 @@ class GoogleASR:
         )
         self._stream_thread.start()
         self.logger.info(f"GoogleASR: STREAM_WORKER_START call_id={call_id}")
+    
+    def restart_stream(self, call_id: str) -> None:
+        """
+        ASRストリームを強制的に再起動する（例外発生時などに使用）
+        
+        :param call_id: 通話ID
+        """
+        self.logger.warning(f"[ASR_RESTART] Forcing stream restart for call_id={call_id}")
+        # 既存のストリームを停止
+        if self._stream_thread is not None:
+            self.end_stream(call_id)
+            # スレッドの終了を待つ（最大2秒）
+            if self._stream_thread.is_alive():
+                self._stream_thread.join(timeout=2.0)
+        
+        # 新しいストリームを起動
+        self._start_stream_worker(call_id)
+        self.logger.info(f"[ASR_RESTART] Stream restarted for call_id={call_id}")
         
         # ChatGPT音声風: 通話開始時に200ms無音フレームを送信してウォームアップ
         # 16kHz * 2バイト * 0.2秒 = 6400バイト
@@ -1309,6 +1327,9 @@ class AICore:
         if hasattr(self.asr_model, '_start_stream_worker'):
             self.asr_model._start_stream_worker(uuid)
             self.logger.info(f"ASR enabled for call uuid={uuid} client_id={client_id}")
+            # runtime.logへの主要イベント出力
+            runtime_logger = logging.getLogger("runtime")
+            runtime_logger.info(f"ASR_START call_id={uuid} client_id={client_id}")
         else:
             self.logger.error(f"enable_asr: ASR model does not have _start_stream_worker method (uuid={uuid})")
     
@@ -1973,6 +1994,7 @@ class AICore:
     def _save_transcript_event(self, call_id: str, text: str, is_final: bool, kwargs: dict) -> None:
         """
         on_transcriptイベントをtranscript.jsonlに保存（JSONL形式で逐次追記）
+        ログエラー発生時でも音声再生を継続するように保護
         
         :param call_id: 通話UUID
         :param text: 認識されたテキスト
@@ -3374,6 +3396,9 @@ class AICore:
             self._break_playback(call_id)  # 非同期実行（ブロックしない）
             # 割り込み後はis_playingをFalseに設定（即座に次の再生を可能にする）
             self.is_playing[call_id] = False
+            # runtime.logへの主要イベント出力
+            runtime_logger = logging.getLogger("runtime")
+            runtime_logger.info(f"UUID_BREAK call_id={call_id} text={text[:50]}")
             # 応答速度最適化: 軽い呼吸時間を確保（0.05秒）してから次の処理に進む
             # これにより「割り込んだ瞬間に返す」自然な会話感を実現
             time.sleep(0.05)  # 50msの軽い待機（割り込み処理の完了を待つ）
@@ -3467,6 +3492,9 @@ class AICore:
             normalized = normalize_text(merged_text)
             intent = classify_intent(normalized)
             self.logger.info(f"[INTENT] {intent}")
+            # runtime.logへの主要イベント出力
+            runtime_logger = logging.getLogger("runtime")
+            runtime_logger.info(f"INTENT call_id={call_id} intent={intent} text={merged_text[:50]}")
             
             # 【簡易Intent判定】ASR起動直後の簡易応答（はい/いいえ/その他）
             # これは既存のclassify_intent()の結果を補完する
@@ -3497,6 +3525,9 @@ class AICore:
                     f"phase={phase_before}->{phase_after} intent={intent} "
                     f"templates={template_ids} transfer={transfer_requested}"
                 )
+                # runtime.logへの主要イベント出力
+                runtime_logger = logging.getLogger("runtime")
+                runtime_logger.info(f"FLOW_PHASE call_id={call_id} phase={phase_before}->{phase_after} intent={intent} templates={template_ids}")
                 
                 # テンプレート再生処理（即時発火、待機なし）
                 if template_ids:

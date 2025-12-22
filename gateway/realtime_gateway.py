@@ -2257,30 +2257,37 @@ class RealtimeGateway:
             self.logger.exception(f"[ESL] Failed to initialize ESL connection: {e}")
             self.esl_connection = None
     
-    def _recover_esl_connection(self) -> None:
+    def _recover_esl_connection(self, max_retries: int = 3) -> bool:
         """
-        FreeSWITCH ESL接続を自動リカバリ（接続が切れた場合に再接続を試みる）
+        FreeSWITCH ESL接続を自動リカバリ（接続が切れた場合に再接続を試みる、最大3回リトライ）
         
-        :return: None
+        :param max_retries: 最大リトライ回数（デフォルト: 3）
+        :return: 再接続に成功したかどうか
         """
         if self.esl_connection and self.esl_connection.connected():
-            return  # 既に接続されている場合は何もしない
+            return True  # 既に接続されている場合は成功として返す
         
-        self.logger.warning("[ESL_RECOVERY] ESL connection lost, attempting to reconnect...")
+        self.logger.warning(f"[ESL_RECOVERY] ESL connection lost, attempting to reconnect (max_retries={max_retries})...")
         import time
-        time.sleep(3)  # 3秒待機してから再接続
         
-        try:
-            self._init_esl_connection()
-            if self.esl_connection and self.esl_connection.connected():
-                self.logger.info("[ESL_RECOVERY] ESL connection recovered successfully")
-                # イベントリスナーも再起動
-                if hasattr(self, 'esl_listener_thread') and self.esl_listener_thread and not self.esl_listener_thread.is_alive():
-                    self._start_esl_event_listener()
-            else:
-                self.logger.warning("[ESL_RECOVERY] ESL reconnection failed, will retry on next attempt")
-        except Exception as e:
-            self.logger.exception(f"[ESL_RECOVERY] Failed to recover ESL connection: {e}")
+        for attempt in range(1, max_retries + 1):
+            try:
+                time.sleep(3)  # 3秒待機してから再接続
+                self._init_esl_connection()
+                
+                if self.esl_connection and self.esl_connection.connected():
+                    self.logger.info(f"[ESL_RECOVERY] ESL connection recovered successfully (attempt {attempt}/{max_retries})")
+                    # イベントリスナーも再起動
+                    if hasattr(self, 'esl_listener_thread') and self.esl_listener_thread and not self.esl_listener_thread.is_alive():
+                        self._start_esl_event_listener()
+                    return True
+                else:
+                    self.logger.warning(f"[ESL_RECOVERY] ESL reconnection failed (attempt {attempt}/{max_retries})")
+            except Exception as e:
+                self.logger.exception(f"[ESL_RECOVERY] Failed to recover ESL connection (attempt {attempt}/{max_retries}): {e}")
+        
+        self.logger.error(f"[ESL_RECOVERY] ESL reconnection failed after {max_retries} attempts")
+        return False
     
     def _start_esl_event_listener(self) -> None:
         """
