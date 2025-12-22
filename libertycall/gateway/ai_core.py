@@ -1024,6 +1024,9 @@ class AICore:
         # UUIDごとの最終活動時刻を管理する辞書（call_id -> last_activity_timestamp）
         self.last_activity: Dict[str, float] = {}
         
+        # セッション情報を管理する辞書（call_id -> session_info）
+        self.session_info: Dict[str, Dict[str, Any]] = {}
+        
         # FreeSWITCH ESL接続への参照（uuid_break用）
         self.esl_connection = None
         
