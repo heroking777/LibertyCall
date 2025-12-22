@@ -1,0 +1,216 @@
+<!--
+    NOTICE:
+
+    This context is usually accessed via the external sip profile listening on port 5080.
+    
+    It is recommended to have separate inbound and outbound contexts.  Not only for security
+    but clearing up why you would need to do such a thing.  You don't want outside un-authenticated
+    callers hitting your default context which allows dialing calls thru your providers and results 
+    in Toll Fraud.
+-->
+
+<!-- http://wiki.freeswitch.org/wiki/Dialplan_XML -->
+<include>
+  <context name="public">
+    <!-- 外線呼び出し用：loopback self-bridge構成（A-leg: RTP tap, B-leg: playback） -->
+    <!-- シンプル構成：音声再生を優先、RTP tapは最小限の設定 -->
+    <extension name="force_public_entry">
+      <condition field="destination_number" expression="^.*$">
+	<action application="log" data="INFO FORCE_PUBLIC context=${context} dest=${destination_number}"/>
+	<action application="set" data="proxy_media=false"/>
+	<action application="set" data="bypass_media=false"/>
+	<action application="set" data="disable_transcoding=false"/>
+	<!-- RTPフラッシュを強制（ループバック経由でも外線へRTPを送信） -->
+	<action application="set" data="rtp-autoflush-during-bridge=true"/>
+	<action application="set" data="rtp-rewrite-timestamps=true"/>
+	<action application="set" data="rtp-autoflush=true"/>
+	<!-- A-legのみで再生（both→aに変更：ダブル再生を防止） -->
+	<action application="bridge" data="loopback/play_audio_sequence a/default/XML"/>
+      </condition>
+    </extension>
+
+    <!-- B-leg側定義：音声再生シーケンス（再生保証あり） -->
+    <!-- 注意: loopbackでdefault contextを指定しているため、このextensionは使用されない -->
+    <!-- default context内のplay_audio_sequence extensionを使用するため、こちらはコメントアウト -->
+    <!--
+    <extension name="play_audio_sequence" continue="false">
+      <condition field="destination_number" expression="^play_audio_sequence$">
+	<action application="answer"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/000_8k.wav"/>
+	<action application="sleep" data="1000"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/001_8k.wav"/>
+	<action application="sleep" data="1000"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/000-004_8k.wav"/>
+	<action application="sleep" data="1000"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/000-005_8k.wav"/>
+	<action application="sleep" data="1000"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/000-006_8k.wav"/>
+	<action application="sleep" data="2000"/>
+	<action application="hangup" data="NORMAL_CLEARING"/>
+      </condition>
+    </extension>
+    -->
+    <!-- RTP転送専用拡張：GatewayへのRTPストリーミング -->
+    <extension name="rtp_forward" continue="false">
+      <condition field="destination_number" expression="^rtp_forward$">
+	<action application="log" data="INFO RTP_FORWARD: Streaming RTP to 127.0.0.1:7002"/>
+	<action application="rtp_stream" data="remote=127.0.0.1:7002,codec=PCMU"/>
+	<action application="sleep" data="60000"/>
+	<action application="hangup" data="NORMAL_CLEARING"/>
+      </condition>
+    </extension>
+    <!-- 最終版：全音声再生 + RTP転送（000→001→002→004→005→006） -->
+    <extension name="rtp_test_final" continue="false">
+      <condition field="destination_number" expression="^rtp_test$">
+	<action application="log" data="INFO RTP_TEST: Sequence 000→001→002→004→005→006 then hangup"/>
+	<action application="set" data="playback_terminators=none"/>
+	<action application="set" data="ignore_early_media=true"/>
+	<action application="answer"/>
+	<action application="sleep" data="500"/>
+	<action application="export" data="execute_on_answer="/> <!-- 二重発火防止 -->
+	<action application="export" data="execute_on_media="/> <!-- 二重発火防止 -->
+	<!-- ★ GatewayへRTP転送開始 ★ -->
+	<action application="record_session" data="udp://127.0.0.1:7002"/>
+
+	<!-- 初回アナウンス -->
+	<action application="playback" data="/opt/libertycall/clients/000/audio/000_8k.wav"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/001_8k.wav"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/combined_8k.wav"/>
+	<action application="sleep" data="10000"/> <!-- 無音10秒（一呼吸＋ユーザー思考の時間） -->
+
+	<!-- 催促アナウンス 3回 -->
+	<action application="playback" data="/opt/libertycall/clients/000/audio/000-004_8k.wav"/>
+	<action application="sleep" data="10000"/> <!-- 無音10秒（「聞き逃したかな？」程度の余裕） -->
+
+	<action application="playback" data="/opt/libertycall/clients/000/audio/000-005_8k.wav"/>
+	<action application="sleep" data="10000"/> <!-- 無音10秒（最終確認として自然な間隔） -->
+
+	<action application="playback" data="/opt/libertycall/clients/000/audio/000-006_8k.wav"/>
+	<action application="sleep" data="3000"/> <!-- 無音3秒（終了余韻・安全切断） -->
+
+	<!-- 自動切断 -->
+	<action application="hangup" data="NORMAL_CLEARING"/>
+      </condition>
+    </extension>
+    <extension name="force_catch_all">
+      <condition field="destination_number" expression=".*">
+	<action application="log" data="INFO Force catch-all context=${context} dest=${destination_number} uuid=${uuid}"/>
+	<action application="answer"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/combined_8k.wav"/>
+	<action application="sleep" data="30000"/>
+      </condition>
+    </extension>
+    <extension name="__catch_all_answer_debug__">
+      <condition field="destination_number" expression=".*">
+	<action application="log" data="WARNING CATCH_ALL context=${context} dest=${destination_number} uuid=${uuid}"/>
+	<action application="answer"/>
+	<action application="sleep" data="500"/>
+	<action application="set" data="hangup_after_bridge=false"/>
+	<action application="set" data="continue_on_fail=true"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/combined_8k.wav"/>
+	<action application="playback" data="silence_stream://30000"/>
+      </condition>
+    </extension>
+
+    <extension name="unloop">
+      <condition field="${unroll_loops}" expression="^true$"/>
+      <condition field="${sip_looped_call}" expression="^true$">
+	<action application="deflect" data="${destination_number}"/>
+      </condition>
+    </extension>
+    <!--
+	Tag anything pass thru here as an outside_call so you can make sure not
+	to create any routing loops based on the conditions that it came from 
+	the outside of the switch.  
+    -->
+    <extension name="outside_call" continue="true">
+      <condition>
+	<action application="set" data="outside_call=true"/>
+	<action application="export" data="RFC2822_DATE=${strftime(%a, %d %b %Y %T %z)}"/>
+      </condition>
+    </extension>
+
+    <extension name="call_debug" continue="true">
+      <condition field="${call_debug}" expression="^true$" break="never">
+	<action application="info"/>
+      </condition>
+    </extension>
+
+    <extension name="public_extensions">
+      <condition field="destination_number" expression="^(10[01][0-9])$">
+	<action application="transfer" data="$1 XML default"/>
+      </condition>
+    </extension>
+
+    <extension name="public_conference_extensions">
+      <condition field="destination_number" expression="^(3[5-8][01][0-9])$">
+	<action application="transfer" data="$1 XML default"/>
+      </condition>
+    </extension>
+
+    <!-- Rakuten inbound routing: 58304073番号にマッチ -->
+    <extension name="rakuten-inbound">
+      <condition field="destination_number" expression="^58304073$">
+	<action application="answer"/>
+	<action application="set" data="bypass_media=false"/>
+	<action application="set" data="proxy_media=false"/>
+	<action application="bridge" data="loopback/7003/default/XML"/>
+      </condition>
+    </extension>
+
+    <!-- LibertyCall Gateway routing: external SIP calls to 7002 or 58304073 -->
+    <extension name="libertycall">
+      <condition field="destination_number" expression="^(7002|58304073)$">
+	<!-- answer を明示的に実行 -->
+	<action application="answer"/>
+	<!-- loopback.conf.xml の auto-context=default, auto-dialplan=XML により自動設定される -->
+	<action application="bridge" data="loopback/7002"/>
+      </condition>
+    </extension>
+
+    <!-- LibertyCall client001 (7003) -->
+    <extension name="client001">
+      <condition field="destination_number" expression="^7003$">
+	<!-- answer を明示的に実行 -->
+	<action application="answer"/>
+	<!-- loopback宛先のダイヤルプラン/コンテキストを明示 -->
+	<action application="set" data="loopback_dialplan=XML"/>
+	<action application="set" data="loopback_context=default"/>
+	<!-- loopbackのコンテキスト/ダイヤルプランを明示 -->
+	<action application="bridge" data="loopback/7003/default/XML"/>
+      </condition>
+    </extension>
+    
+    <!-- Fallback: 全ての外部着信をLibertyCall Gateway (7003) にルーティング -->
+    <extension name="fallback-libertycall">
+      <condition field="destination_number" expression=".*">
+	<action application="answer"/>
+	<action application="set" data="bypass_media=false"/>
+	<action application="set" data="proxy_media=false"/>
+	<action application="bridge" data="loopback/7003/default/XML"/>
+      </condition>
+    </extension>
+    
+    <!--
+	You can place files in the public directory to get included.
+    -->
+    <X-PRE-PROCESS cmd="include" data="public/*.xml"/>
+    <!--
+	If you have made it this far lets challenge the caller and if they authenticate
+	lets try what they dialed in the default context. (commented out by default)
+    -->
+    <!--
+    <extension name="check_auth" continue="true">
+      <condition field="${sip_authorized}" expression="^true$" break="never">
+	<anti-action application="respond" data="407"/>
+      </condition>
+    </extension>
+    
+    <extension name="transfer_to_default">
+      <condition>
+	<action application="transfer" data="${destination_number} XML default"/>
+      </condition>
+    </extension>
+    -->
+  </context>
+</include>
