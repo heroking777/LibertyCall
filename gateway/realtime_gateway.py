@@ -2257,6 +2257,64 @@ class RealtimeGateway:
             self.logger.exception(f"[ESL] Failed to initialize ESL connection: {e}")
             self.esl_connection = None
     
+    def _start_esl_event_listener(self) -> None:
+        """
+        FreeSWITCH ESLイベントリスナーを開始（CHANNEL_EXECUTE_COMPLETE監視）
+        
+        :return: None
+        """
+        if not self.esl_connection or not self.esl_connection.connected():
+            self.logger.warning("[ESL_LISTENER] ESL not available, event listener not started")
+            return
+        
+        def _esl_event_listener_worker():
+            """ESLイベントリスナーのワーカースレッド"""
+            try:
+                from libs.esl.ESL import ESLevent
+                
+                # CHANNEL_EXECUTE_COMPLETEイベントを購読
+                self.esl_connection.events("plain", "CHANNEL_EXECUTE_COMPLETE")
+                self.logger.info("[ESL_LISTENER] Started listening for CHANNEL_EXECUTE_COMPLETE events")
+                
+                while self.running:
+                    try:
+                        # イベントを受信（タイムアウト: 1秒）
+                        event = self.esl_connection.recvEventTimed(1000)
+                        
+                        if not event:
+                            continue
+                        
+                        event_name = event.getHeader('Event-Name')
+                        if event_name != 'CHANNEL_EXECUTE_COMPLETE':
+                            continue
+                        
+                        application = event.getHeader('Application')
+                        if application != 'playback':
+                            continue
+                        
+                        uuid = event.getHeader('Unique-ID') or event.getHeader('Channel-Call-UUID')
+                        if not uuid:
+                            continue
+                        
+                        # 再生完了を検知: is_playing[uuid] = False に更新
+                        if hasattr(self.ai_core, 'is_playing'):
+                            if self.ai_core.is_playing.get(uuid, False):
+                                self.ai_core.is_playing[uuid] = False
+                                self.logger.info(f"[ESL_LISTENER] Playback completed: uuid={uuid} is_playing[{uuid}] = False")
+                        
+                    except Exception as e:
+                        if self.running:
+                            self.logger.exception(f"[ESL_LISTENER] Error processing event: {e}")
+                        time.sleep(0.1)
+            except Exception as e:
+                self.logger.exception(f"[ESL_LISTENER] Event listener thread error: {e}")
+        
+        # イベントリスナースレッドを開始
+        import threading
+        self.esl_listener_thread = threading.Thread(target=_esl_event_listener_worker, daemon=True)
+        self.esl_listener_thread.start()
+        self.logger.info("[ESL_LISTENER] ESL event listener thread started")
+    
     def _handle_playback(self, call_id: str, audio_file: str) -> None:
         """
         FreeSWITCHに音声再生リクエストを送信（ESL使用）

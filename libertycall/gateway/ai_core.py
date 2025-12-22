@@ -1021,8 +1021,16 @@ class AICore:
         # UUIDごとの再生状態を管理する辞書（call_id -> is_playing）
         self.is_playing: Dict[str, bool] = {}
         
+        # UUIDごとの最終活動時刻を管理する辞書（call_id -> last_activity_timestamp）
+        self.last_activity: Dict[str, float] = {}
+        
         # FreeSWITCH ESL接続への参照（uuid_break用）
         self.esl_connection = None
+        
+        # 無音タイムアウト監視スレッド
+        self._activity_monitor_thread = None
+        self._activity_monitor_running = False
+        self._start_activity_monitor()
         
         self.logger.info(f"FlowEngine initialized for default client: {client_id}")
         
@@ -1770,6 +1778,49 @@ class AICore:
             f"CLOSING_YES={len(self.CLOSING_YES_KEYWORDS)}, CLOSING_NO={len(self.CLOSING_NO_KEYWORDS)}, "
             f"AFTER_085_NEGATIVE={len(self.AFTER_085_NEGATIVE_KEYWORDS)}"
         )
+    
+    def _save_transcript_event(self, call_id: str, text: str, is_final: bool, kwargs: dict) -> None:
+        """
+        on_transcriptイベントを/var/log/libertycall/sessions/{uuid}.jsonに保存
+        
+        :param call_id: 通話UUID
+        :param text: 認識されたテキスト
+        :param is_final: 確定した発話かどうか
+        :param kwargs: 追加パラメータ
+        """
+        try:
+            session_log_dir = Path("/var/log/libertycall/sessions")
+            session_log_dir.mkdir(parents=True, exist_ok=True)
+            
+            session_log_file = session_log_dir / f"{call_id}.json"
+            
+            # 既存のセッションデータを読み込む（存在する場合）
+            session_data = []
+            if session_log_file.exists():
+                try:
+                    with open(session_log_file, 'r', encoding='utf-8') as f:
+                        session_data = json.load(f)
+                except Exception as e:
+                    self.logger.warning(f"[SESSION_LOG] Failed to load existing session data: {e}")
+                    session_data = []
+            
+            # 新しいイベントを追加
+            event = {
+                "timestamp": datetime.now().isoformat(),
+                "type": "on_transcript",
+                "text": text,
+                "is_final": is_final,
+                "kwargs": kwargs,
+            }
+            session_data.append(event)
+            
+            # セッションデータを保存
+            with open(session_log_file, 'w', encoding='utf-8') as f:
+                json.dump(session_data, f, ensure_ascii=False, indent=2)
+            
+            self.logger.debug(f"[SESSION_LOG] Saved transcript event: call_id={call_id} is_final={is_final}")
+        except Exception as e:
+            self.logger.exception(f"[SESSION_LOG] Failed to save transcript event: {e}")
     
     def reload_flow(self) -> None:
         """
@@ -3040,6 +3091,9 @@ class AICore:
         # ============================================================
         # ここから下は final（is_final=True）のときだけ実行される
         # ============================================================
+        
+        # 【最終活動時刻を更新】
+        self.last_activity[call_id] = time.time()
         
         # 【再生中割り込み処理】再生中にASR入力があった場合はuuid_breakを実行
         if self.is_playing.get(call_id, False):
