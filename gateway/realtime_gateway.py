@@ -3328,13 +3328,34 @@ def load_config(path: str) -> dict:
         return yaml.safe_load(f)
 
 def setup_logging(level: str = "DEBUG"):
-    """Send all logs to stdout (for systemd journal integration)."""
-    handler = logging.StreamHandler(sys.stdout)
+    """Send all logs to stdout (for systemd journal integration) and file."""
+    # ログディレクトリを確認・作成
+    log_dir = Path("/opt/libertycall/logs")
+    log_file = log_dir / "realtime_gateway.log"
+    
+    # ログディレクトリが存在しない場合は作成
+    if not log_dir.exists():
+        log_dir.mkdir(parents=True, exist_ok=True)
+        logging.info(f"[LOG_SETUP] Created log directory: {log_dir}")
+    
+    # ログファイルが存在しない場合は作成（空ファイル）
+    if not log_file.exists():
+        log_file.touch()
+        logging.info(f"[LOG_SETUP] Created log file: {log_file}")
+    
+    # フォーマッター設定
     formatter = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    handler.setFormatter(formatter)
+    
+    # stdout ハンドラー（systemd journal 統合用）
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setFormatter(formatter)
+    
+    # ファイルハンドラー（ログファイル出力用）
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setFormatter(formatter)
     
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
@@ -3343,12 +3364,14 @@ def setup_logging(level: str = "DEBUG"):
     for h in root_logger.handlers[:]:
         root_logger.removeHandler(h)
     
-    root_logger.addHandler(handler)
+    # 両方のハンドラーを追加
+    root_logger.addHandler(stdout_handler)
+    root_logger.addHandler(file_handler)
     
     # Reduce asyncio log noise
     logging.getLogger("asyncio").setLevel(logging.WARNING)
     
-    logging.debug("[LOG_SETUP] Configured to output logs to stdout (journalctl integration enabled)")
+    logging.debug(f"[LOG_SETUP] Configured to output logs to stdout and {log_file}")
 
 async def main():
     import argparse
