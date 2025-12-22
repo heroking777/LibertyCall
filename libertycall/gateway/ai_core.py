@@ -1018,6 +1018,12 @@ class AICore:
         # UUIDごとのclient_idを管理する辞書（call_id -> client_id）
         self.call_client_map: Dict[str, str] = {}
         
+        # UUIDごとの再生状態を管理する辞書（call_id -> is_playing）
+        self.is_playing: Dict[str, bool] = {}
+        
+        # FreeSWITCH ESL接続への参照（uuid_break用）
+        self.esl_connection = None
+        
         self.logger.info(f"FlowEngine initialized for default client: {client_id}")
         
         # キーワードをインスタンス変数として設定（後方互換性のため）
@@ -1291,6 +1297,39 @@ class AICore:
         
         # その他の場合はNoneを返す（通常の会話フロー処理に委譲）
         return None
+    
+    def _break_playback(self, call_id: str) -> None:
+        """
+        FreeSWITCHで再生中の音声を中断する（uuid_break）
+        
+        :param call_id: 通話UUID
+        """
+        if not self.esl_connection:
+            self.logger.warning(f"[BREAK_PLAYBACK] ESL not available: call_id={call_id}")
+            return
+        
+        if not self.esl_connection.connected():
+            self.logger.warning(f"[BREAK_PLAYBACK] ESL not connected: call_id={call_id}")
+            return
+        
+        try:
+            # ESLを使ってuuid_breakを実行
+            # FreeSWITCHのuuid_breakは、api uuid_break <uuid> コマンドで実行
+            result = self.esl_connection.api("uuid_break", call_id)
+            
+            if result:
+                reply_text = result.getHeader('Reply-Text') if hasattr(result, 'getHeader') else None
+                if reply_text and '+OK' in reply_text:
+                    self.logger.info(f"[BREAK_PLAYBACK] Playback interrupted: call_id={call_id}")
+                else:
+                    self.logger.warning(
+                        f"[BREAK_PLAYBACK] Break command may have failed: call_id={call_id} "
+                        f"reply={reply_text}"
+                    )
+            else:
+                self.logger.warning(f"[BREAK_PLAYBACK] No response from ESL: call_id={call_id}")
+        except Exception as e:
+            self.logger.exception(f"[BREAK_PLAYBACK] Failed to break playback: call_id={call_id} error={e}")
     
     def _play_audio_response(self, call_id: str, intent: str) -> None:
         """
@@ -3001,6 +3040,13 @@ class AICore:
         # ============================================================
         # ここから下は final（is_final=True）のときだけ実行される
         # ============================================================
+        
+        # 【再生中割り込み処理】再生中にASR入力があった場合はuuid_breakを実行
+        if self.is_playing.get(call_id, False):
+            self.logger.info(f"[PLAYBACK_INTERRUPT] call_id={call_id} text={text!r} -> executing uuid_break")
+            self._break_playback(call_id)
+            # 割り込み後はis_playingをFalseに設定
+            self.is_playing[call_id] = False
         
         # 過去の partial を取り出す
         partial_text = ""

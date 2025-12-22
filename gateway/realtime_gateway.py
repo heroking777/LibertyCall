@@ -285,6 +285,10 @@ class RealtimeGateway:
         self.ai_core.hangup_callback = self._handle_hangup
         # 音声再生用コールバックを設定
         self.ai_core.playback_callback = self._handle_playback
+        
+        # FreeSWITCH ESL接続を初期化（再生制御・割り込み用）
+        self.esl_connection = None
+        self._init_esl_connection()
         self.logger.info(
             "HANGUP_CALLBACK_SET: hangup_callback=%s",
             "set" if self.ai_core.hangup_callback else "none"
@@ -2224,49 +2228,116 @@ class RealtimeGateway:
             self.call_id
         )
 
+    def _init_esl_connection(self) -> None:
+        """
+        FreeSWITCH Event Socket Interface (ESL) に接続
+        
+        :return: None
+        """
+        try:
+            from libs.esl.ESL import ESLconnection
+            
+            esl_host = os.getenv("LC_FREESWITCH_ESL_HOST", "127.0.0.1")
+            esl_port = os.getenv("LC_FREESWITCH_ESL_PORT", "8021")
+            esl_password = os.getenv("LC_FREESWITCH_ESL_PASSWORD", "ClueCon")
+            
+            self.logger.info(f"[ESL] Connecting to FreeSWITCH ESL: {esl_host}:{esl_port}")
+            self.esl_connection = ESLconnection(esl_host, esl_port, esl_password)
+            
+            if not self.esl_connection.connected():
+                self.logger.error("[ESL] Failed to connect to FreeSWITCH ESL")
+                self.esl_connection = None
+                return
+            
+            self.logger.info("[ESL] Connected to FreeSWITCH ESL successfully")
+        except ImportError:
+            self.logger.warning("[ESL] ESL module not available, playback interruption will be disabled")
+            self.esl_connection = None
+        except Exception as e:
+            self.logger.exception(f"[ESL] Failed to initialize ESL connection: {e}")
+            self.esl_connection = None
+    
     def _handle_playback(self, call_id: str, audio_file: str) -> None:
         """
-        FreeSWITCHに音声再生リクエストを送信
+        FreeSWITCHに音声再生リクエストを送信（ESL使用）
         
         :param call_id: 通話UUID
         :param audio_file: 音声ファイルのパス
         """
         try:
-            # FreeSWITCHのEvent Socket Interface (ESL) を使って音声再生を制御
-            # 方法1: transferを使ってplay_audio_dynamicエクステンションに転送
-            # 方法2: ESLを使ってuuid_breakとuuid_playbackを実行
+            if not self.esl_connection or not self.esl_connection.connected():
+                self.logger.warning(
+                    f"[PLAYBACK] ESL not available, skipping playback: call_id={call_id} file={audio_file}"
+                )
+                return
             
-            # 簡易実装: HTTP API経由でFreeSWITCHにリクエスト
-            # 注意: 本番環境ではFreeSWITCHのEvent Socket Interface (ESL) を使用することを推奨
+            # 再生開始: is_playing[uuid] = True を設定
+            if hasattr(self.ai_core, 'is_playing'):
+                self.ai_core.is_playing[call_id] = True
+                self.logger.info(f"[PLAYBACK] is_playing[{call_id}] = True")
             
-            import requests
+            # ESLを使ってuuid_playbackを実行
+            # 注意: FreeSWITCHのuuid_playbackは、再生完了までブロックするため、
+            # 非同期で実行するか、bgapiを使用する必要がある
+            # ここでは、execute()を使用して非同期実行
+            result = self.esl_connection.execute("playback", audio_file, uuid=call_id, force_async=True)
             
-            # FreeSWITCHのHTTP APIエンドポイント（mod_curl経由）
-            # 実際の実装では、FreeSWITCHのEvent Socket Interface (ESL) を使う方が確実
-            # ここでは、transferを使ってplay_audio_dynamicエクステンションに転送する方法を使用
+            if result:
+                reply_text = result.getHeader('Reply-Text') if hasattr(result, 'getHeader') else None
+                if reply_text and '+OK' in reply_text:
+                    self.logger.info(
+                        f"[PLAYBACK] Playback started: call_id={call_id} file={audio_file}"
+                    )
+                else:
+                    self.logger.warning(
+                        f"[PLAYBACK] Playback command may have failed: call_id={call_id} "
+                        f"reply={reply_text}"
+                    )
+            else:
+                self.logger.warning(f"[PLAYBACK] No response from ESL: call_id={call_id}")
             
-            # 注意: この実装は簡易版。本番環境ではFreeSWITCHのEvent Socket Interface (ESL) を使用することを推奨
-            self.logger.warning(
-                f"[PLAYBACK] HTTP API not fully implemented yet. "
-                f"Please implement ESL connection for production use. "
-                f"call_id={call_id} file={audio_file}"
-            )
+            # 注意: 再生完了の検知は、FreeSWITCHのイベント（CHANNEL_EXECUTE_COMPLETE）で行う必要がある
+            # ここでは、簡易的に一定時間後にis_playingをFalseにする（実際の実装ではイベントリスナーを使用）
+            # TODO: FreeSWITCHのイベントリスナーで再生完了を検知してis_playingをFalseにする
             
-            # TODO: FreeSWITCHのEvent Socket Interface (ESL) を使ってuuid_transferを実行
-            # または、FreeSWITCHのHTTP APIエンドポイントを実装
+            # 簡易実装: 音声ファイルの長さを推定して、その時間後にis_playingをFalseにする
+            # 注意: これは簡易実装であり、実際の再生完了を検知するものではない
+            # 本番環境では、FreeSWITCHのイベントリスナーでCHANNEL_EXECUTE_COMPLETEを検知する必要がある
+            try:
+                import wave
+                with wave.open(audio_file, 'rb') as wf:
+                    frames = wf.getnframes()
+                    sample_rate = wf.getframerate()
+                    duration_sec = frames / float(sample_rate)
+                
+                # 再生時間を推定して、その時間後にis_playingをFalseにする
+                # 注意: これは非同期処理なので、実際の再生完了を検知するものではない
+                async def _reset_playing_flag_after_duration(call_id: str, duration: float):
+                    await asyncio.sleep(duration + 0.5)  # バッファ時間を追加
+                    if hasattr(self.ai_core, 'is_playing'):
+                        if self.ai_core.is_playing.get(call_id, False):
+                            self.ai_core.is_playing[call_id] = False
+                            self.logger.info(f"[PLAYBACK] is_playing[{call_id}] = False (estimated completion)")
+                
+                # 非同期タスクとして実行
+                asyncio.create_task(_reset_playing_flag_after_duration(call_id, duration_sec))
+            except Exception as e:
+                self.logger.debug(f"[PLAYBACK] Failed to estimate audio duration: {e}, using default timeout")
+                # エラー時はデフォルトタイムアウト（10秒）を使用
+                async def _reset_playing_flag_default(call_id: str):
+                    await asyncio.sleep(10.0)
+                    if hasattr(self.ai_core, 'is_playing'):
+                        if self.ai_core.is_playing.get(call_id, False):
+                            self.ai_core.is_playing[call_id] = False
+                            self.logger.info(f"[PLAYBACK] is_playing[{call_id}] = False (default timeout)")
+                
+                asyncio.create_task(_reset_playing_flag_default(call_id))
             
-            # 簡易実装: transferを使ってplay_audio_dynamicエクステンションに転送
-            # FreeSWITCHのEvent Socket Interface (ESL) を使ってuuid_transferを実行
-            # ただし、ここでは簡易的にログを出力するだけ
-            
-            self.logger.info(
-                f"[PLAYBACK] Requested audio playback: call_id={call_id} file={audio_file}"
-            )
-            
-        except ImportError:
-            self.logger.error("[PLAYBACK] requests module not available")
         except Exception as e:
             self.logger.exception(f"[PLAYBACK] Failed to send playback request: {e}")
+            # エラー時はis_playingをFalseにする
+            if hasattr(self.ai_core, 'is_playing'):
+                self.ai_core.is_playing[call_id] = False
     
     def _handle_hangup(self, call_id: str) -> None:
         """
