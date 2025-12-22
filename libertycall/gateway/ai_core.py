@@ -26,6 +26,7 @@ from .intent_rules import (
     normalize_text,
     select_template_ids,
 )
+from .flow_engine import FlowEngine
 
 # WhisperLocalASR は whisper プロバイダ使用時のみインポート（google 使用時は絶対にインポートしない）
 
@@ -1006,6 +1007,15 @@ class AICore:
             f"/opt/libertycall/config/clients/{client_id}/keywords.json",
             default="/opt/libertycall/config/system/default_keywords.json"
         )
+        
+        # FlowEngineを初期化（JSON定義ベースのフェーズ遷移エンジン）
+        flow_json_path = f"/opt/libertycall/config/clients/{client_id}/flow.json"
+        default_flow_json_path = "/opt/libertycall/config/system/default_flow.json"
+        if Path(flow_json_path).exists():
+            self.flow_engine = FlowEngine(flow_json_path)
+        else:
+            self.flow_engine = FlowEngine(default_flow_json_path)
+        self.logger.info(f"FlowEngine initialized for client: {client_id}")
         
         # キーワードをインスタンス変数として設定（後方互換性のため）
         self._load_keywords_from_config()
@@ -2872,6 +2882,7 @@ class AICore:
         
         # Intent判定（デバッグログ拡張: INTENT）
         intent = None
+        normalized = ""
         if merged_text:
             # 正規化されたテキストでintent判定
             normalized = normalize_text(merged_text)
@@ -2887,6 +2898,33 @@ class AICore:
                 self._play_audio_response(call_id, simple_intent)
                 # 簡易応答の場合は、通常の会話フロー処理をスキップ（音声再生のみ）
                 return None
+        
+        # 【FlowEngine統合】JSON定義ベースのフェーズ遷移処理
+        if hasattr(self, 'flow_engine') and self.flow_engine:
+            try:
+                reply_text, template_ids, intent, transfer_requested = self._handle_flow_engine_transition(
+                    call_id, merged_text, normalized, intent, state
+                )
+                phase_after = state.phase
+                
+                self.logger.info(
+                    f"FLOW_ENGINE: call_id={call_id} "
+                    f"phase={phase_before}->{phase_after} intent={intent} "
+                    f"templates={template_ids} transfer={transfer_requested}"
+                )
+                
+                # テンプレート再生処理
+                if template_ids:
+                    self._play_template_sequence(call_id, template_ids)
+                
+                # 転送処理
+                if transfer_requested:
+                    self._trigger_transfer_if_needed(call_id, state)
+                
+                return reply_text
+            except Exception as e:
+                self.logger.exception(f"[FLOW_ENGINE] Error in flow engine transition: {e}")
+                # エラー時は既存の処理にフォールバック
         
         # 空のテキスト（無音検出時）の場合は、no_input_streakに基づいてテンプレートを選択
         if not merged_text or len(merged_text.strip()) == 0:
