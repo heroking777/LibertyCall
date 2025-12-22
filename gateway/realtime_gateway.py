@@ -1750,18 +1750,23 @@ class RealtimeGateway:
                 delattr(self, '_asr_skip_logged')
             
             # --- Pull型ASR: 002.wav再生完了までASRをスキップ ---
-            if not self.fs_rtp_monitor.asr_active:
-                # 録音は続けるが、ASRには一切送らない
-                # ログは最初の1回だけ出力（スパム防止）
-                if not hasattr(self, '_asr_wait_logged'):
-                    self.logger.info(
-                        "[FS_RTP_MONITOR] ASR_WAIT: Waiting for 002.wav playback completion (asr_active=False)"
-                    )
-                    self._asr_wait_logged = True
-                return
-            # ASR有効化後はログフラグをリセット
-            if hasattr(self, '_asr_wait_logged'):
-                delattr(self, '_asr_wait_logged')
+            # TODO: テスト完了後、このチェックを有効化して本番構成に戻す
+            # if not self.fs_rtp_monitor.asr_active:
+            #     # 録音は続けるが、ASRには一切送らない
+            #     # ログは最初の1回だけ出力（スパム防止）
+            #     if not hasattr(self, '_asr_wait_logged'):
+            #         self.logger.info(
+            #             "[FS_RTP_MONITOR] ASR_WAIT: Waiting for 002.wav playback completion (asr_active=False)"
+            #         )
+            #         self._asr_wait_logged = True
+            #     return
+            # # ASR有効化後はログフラグをリセット
+            # if hasattr(self, '_asr_wait_logged'):
+            #     delattr(self, '_asr_wait_logged')
+            
+            # 一時的にASR常時ON（テスト用）
+            # ログに [RTP_RECV] が出てもASR反応しない場合の診断用
+            # テスト完了後、上記のコメントアウトを解除して本番構成に戻す
             
             # --- ストリーミングモード: チャンクごとにfeed ---
             # Google使用時は全チャンクを無条件で送信（VAD/バッファリングなし）
@@ -3289,6 +3294,9 @@ class RTPProtocol(asyncio.DatagramProtocol):
     def connection_made(self, transport):
         self.transport = transport
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
+        # 受信確認ログ（UDPパケットが実際に届いているか確認用）
+        self.gateway.logger.debug(f"[RTP_RECV] Received {len(data)} bytes from {addr}")
+        
         # RTP受信ログ（軽量版：fromとlenのみ）
         self.gateway.logger.info(f"[RTP_RECV_RAW] from={addr}, len={len(data)}")
         
