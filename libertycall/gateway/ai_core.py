@@ -1308,6 +1308,102 @@ class AICore:
             # HTTP API経由でFreeSWITCHにリクエスト
             self._send_playback_request_http(call_id, audio_file)
     
+    def _handle_flow_engine_transition(
+        self,
+        call_id: str,
+        text: str,
+        normalized_text: str,
+        intent: str,
+        state: Any
+    ) -> Tuple[str, List[str], str, bool]:
+        """
+        FlowEngineを使ってフェーズ遷移とテンプレート選択を行う
+        
+        :param call_id: 通話ID
+        :param text: 元のテキスト
+        :param normalized_text: 正規化されたテキスト
+        :param intent: 判定されたIntent
+        :param state: セッション状態
+        :return: (reply_text, template_ids, intent, transfer_requested)
+        """
+        current_phase = state.phase or "ENTRY"
+        
+        # コンテキスト情報を構築
+        context = {
+            "intent": intent or "UNKNOWN",
+            "text": text,
+            "normalized_text": normalized_text,
+            "keywords": self.keywords,
+            "user_reply_received": bool(text and len(text.strip()) > 0),
+            "user_voice_detected": bool(text and len(text.strip()) > 0),
+            "timeout": False,
+            "is_first_sales_call": getattr(state, "is_first_sales_call", False),
+        }
+        
+        # FlowEngineでフェーズ遷移を決定
+        next_phase = self.flow_engine.transition(current_phase, context)
+        
+        # フェーズを更新
+        if next_phase != current_phase:
+            state.phase = next_phase
+            self.logger.info(
+                f"[FLOW_ENGINE] Phase transition: {current_phase} -> {next_phase} "
+                f"(call_id={call_id}, intent={intent})"
+            )
+        
+        # 次のフェーズのテンプレートを取得
+        template_ids = self.flow_engine.get_templates(next_phase)
+        
+        # テンプレートが空の場合は、現在のフェーズのテンプレートを使用
+        if not template_ids:
+            template_ids = self.flow_engine.get_templates(current_phase)
+        
+        # テンプレートから返答テキストを生成
+        reply_text = self._render_templates(template_ids) if template_ids else ""
+        
+        # 転送要求の判定（HANDOFF_DONEフェーズの場合）
+        transfer_requested = (next_phase == "HANDOFF_DONE")
+        
+        return reply_text, template_ids, intent, transfer_requested
+    
+    def _play_template_sequence(self, call_id: str, template_ids: List[str]) -> None:
+        """
+        テンプレートIDのシーケンスをFreeSWITCHで再生
+        
+        :param call_id: 通話UUID
+        :param template_ids: テンプレートIDのリスト（例: ["006", "085"]）
+        """
+        if not template_ids:
+            return
+        
+        for template_id in template_ids:
+            # テンプレートIDから音声ファイルパスを生成
+            audio_file = f"/opt/libertycall/clients/{self.client_id}/audio/{template_id}_8k.wav"
+            
+            # 音声ファイルの存在確認
+            if not Path(audio_file).exists():
+                self.logger.warning(
+                    f"[PLAY_TEMPLATE] Audio file not found: {audio_file} "
+                    f"(template_id={template_id})"
+                )
+                continue
+            
+            # FreeSWITCHへの音声再生リクエストを送信
+            if hasattr(self, 'playback_callback') and self.playback_callback:
+                try:
+                    self.playback_callback(call_id, audio_file)
+                    self.logger.info(
+                        f"[PLAY_TEMPLATE] Sent playback request: "
+                        f"call_id={call_id} template_id={template_id} file={audio_file}"
+                    )
+                except Exception as e:
+                    self.logger.exception(
+                        f"[PLAY_TEMPLATE] Failed to send playback request: {e}"
+                    )
+            else:
+                # フォールバック: HTTP API経由
+                self._send_playback_request_http(call_id, audio_file)
+    
     def _send_playback_request_http(self, call_id: str, audio_file: str) -> None:
         """
         FreeSWITCHにHTTP API経由で音声再生リクエストを送信
