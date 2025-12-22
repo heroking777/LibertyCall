@@ -1208,6 +1208,30 @@ class AICore:
         self._wav_saved = False
         self._wav_chunk_counter = 0
     
+    def enable_asr(self, uuid: str) -> None:
+        """
+        FreeSWITCHからの通知を受けてASRストリーミングを開始する
+        
+        :param uuid: 通話UUID（FreeSWITCHのcall UUID）
+        """
+        if not self.asr_model:
+            self.logger.warning(f"enable_asr: ASR model not initialized (uuid={uuid})")
+            return
+        
+        if not self.streaming_enabled:
+            self.logger.warning(f"enable_asr: streaming not enabled (uuid={uuid})")
+            return
+        
+        # call_idを設定（ASR結果の処理で使用される）
+        self.set_call_id(uuid)
+        
+        # GoogleASRのストリーミングを開始
+        if hasattr(self.asr_model, '_start_stream_worker'):
+            self.asr_model._start_stream_worker(uuid)
+            self.logger.info(f"ASR enabled for call uuid={uuid}")
+        else:
+            self.logger.error(f"enable_asr: ASR model does not have _start_stream_worker method (uuid={uuid})")
+    
     def _save_debug_wav(self, pcm16k_bytes: bytes):
         """Whisperに渡す直前のPCM音声をWAVファイルとして保存"""
         if not self.debug_save_wav:

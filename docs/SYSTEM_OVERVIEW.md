@@ -222,6 +222,11 @@
 - 転送フラグ True のとき、転送指示を ARI に送信
 - クライアントID自動判定（`client_mapper.resolve_client_id()`）
 
+**ASR Controller API (asr_controller.py)**:
+- FastAPIサーバー（ポート8000）をバックグラウンドで起動
+- `/asr/start/{uuid}` エンドポイントでFreeSWITCHからのASR起動通知を受信
+- `AICore.enable_asr(uuid)` を呼び出してGoogleASRストリーミングを開始
+
 **絶対にやらないこと**:
 - ASR内部処理
 - TTS生成
@@ -538,7 +543,7 @@ ENTRY → QA → AFTER_085 → CLOSING → HANDOFF → HANDOFF_CONFIRM_WAIT → 
 |--------|----------|------|
 | 80 | Nginx | HTTP（HTTPSへのリダイレクト用） |
 | 443 | Nginx | HTTPS（SSL/TLS） |
-| 8000 | （未使用） | - |
+| 8000 | Gateway ASR Controller | FreeSWITCHからのASR起動通知受信（FastAPI） |
 | 8001 | FastAPI | 管理画面API |
 | 3000 | Node.js/Express | プロジェクト状態管理API |
 | 7002 | Gateway | RTP受信ポート |

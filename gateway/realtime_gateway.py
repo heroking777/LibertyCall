@@ -3407,6 +3407,39 @@ async def main():
 
     gateway = RealtimeGateway(config, rtp_port_override=rtp_port_override)
 
+    # ASR制御用FastAPIサーバーをバックグラウンドで起動
+    try:
+        # 相対インポート（gatewayディレクトリ内のasr_controller.py）
+        import importlib.util
+        asr_controller_path = Path(__file__).parent / "asr_controller.py"
+        spec = importlib.util.spec_from_file_location("asr_controller", asr_controller_path)
+        asr_controller = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(asr_controller)
+        
+        app = asr_controller.app
+        set_gateway_instance = asr_controller.set_gateway_instance
+        import uvicorn
+        
+        # GatewayインスタンスをASR Controllerに設定
+        set_gateway_instance(gateway)
+        
+        # FastAPIサーバーをバックグラウンドで起動
+        config_uvicorn = uvicorn.Config(
+            app=app,
+            host="127.0.0.1",
+            port=8000,
+            log_level="info",
+            access_log=False,  # アクセスログは無効化（Gatewayログと混在しないように）
+        )
+        server = uvicorn.Server(config_uvicorn)
+        
+        # バックグラウンドタスクとして起動
+        asr_server_task = asyncio.create_task(server.serve())
+        logging.info("[MAIN] ASR Controller API server started on http://127.0.0.1:8000")
+    except Exception as e:
+        logging.error(f"[MAIN] Failed to start ASR Controller API server: {e}", exc_info=True)
+        # ASR Controllerが起動しなくてもGatewayは動作する（警告のみ）
+
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(gateway.shutdown()))

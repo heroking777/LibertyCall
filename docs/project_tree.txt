@@ -525,6 +525,8 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 5. Gateway (リアルタイム音声処理)
    - 7002: RTP受信ポート（config/gateway.yaml）
    - 用途: FreeSWITCHからの音声データ受信
+   - 8000: ASR Controller API（FastAPI）
+   - 用途: FreeSWITCHからのASR起動通知受信（/asr/start/{uuid}）
    - 9001: WebSocket接続（AI処理連携）
    - 用途: ASR/TTS処理との通信
 
@@ -541,8 +543,9 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 
 ポート競合チェック:
 - Console Backend (8001) と Project State Backend (3000) は別ポートで動作
+- Gateway ASR Controller (8000) はFreeSWITCHからの通知専用（localhostのみ）
 - Nginxが80/443でリバースプロキシとして動作
-- Gatewayは7002でRTP、9001でWebSocketを使用
+- Gatewayは7002でRTP、8000でASR制御API、9001でWebSocketを使用
 
 Nginx設定:
 - console.libcall.com:
