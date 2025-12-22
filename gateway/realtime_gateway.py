@@ -3576,10 +3576,11 @@ def load_config(path: str) -> dict:
         return yaml.safe_load(f)
 
 def setup_logging(level: str = "DEBUG"):
-    """Send all logs to stdout (for systemd journal integration) and file."""
+    """Send all logs to stdout (for systemd journal integration), file, and runtime.log."""
     # ログディレクトリを確認・作成
     log_dir = Path("/opt/libertycall/logs")
     log_file = log_dir / "realtime_gateway.log"
+    runtime_log_file = log_dir / "runtime.log"
     
     # ログディレクトリが存在しない場合は作成
     if not log_dir.exists():
@@ -3590,6 +3591,10 @@ def setup_logging(level: str = "DEBUG"):
     if not log_file.exists():
         log_file.touch()
         logging.info(f"[LOG_SETUP] Created log file: {log_file}")
+    
+    if not runtime_log_file.exists():
+        runtime_log_file.touch()
+        logging.info(f"[LOG_SETUP] Created runtime log file: {runtime_log_file}")
     
     # フォーマッター設定
     formatter = logging.Formatter(
@@ -3605,6 +3610,11 @@ def setup_logging(level: str = "DEBUG"):
     file_handler = logging.FileHandler(log_file, encoding="utf-8")
     file_handler.setFormatter(formatter)
     
+    # runtime.logハンドラー（実行時ログ出力用、INFO以上のみ）
+    runtime_handler = logging.FileHandler(runtime_log_file, encoding="utf-8")
+    runtime_handler.setFormatter(formatter)
+    runtime_handler.setLevel(logging.INFO)  # INFO以上のみ出力
+    
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
     
@@ -3612,8 +3622,10 @@ def setup_logging(level: str = "DEBUG"):
     for h in root_logger.handlers[:]:
         root_logger.removeHandler(h)
     
-    # 両方のハンドラーを追加
+    # すべてのハンドラーを追加
     root_logger.addHandler(stdout_handler)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(runtime_handler)
     root_logger.addHandler(file_handler)
     
     # Reduce asyncio log noise

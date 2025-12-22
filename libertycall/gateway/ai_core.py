@@ -3510,7 +3510,14 @@ class AICore:
                 return reply_text
             except Exception as e:
                 self.logger.exception(f"[FLOW_ENGINE] Error in flow engine transition: {e}")
-                # エラー時は既存の処理にフォールバック
+                # エラー時はフォールバックテンプレート（110: 聞き取れませんでした）を再生
+                self.logger.warning(f"[FLOW_ENGINE] Using fallback template due to error: call_id={call_id}")
+                try:
+                    fallback_template_ids = ["110"]
+                    client_id = self.call_client_map.get(call_id) or state.meta.get("client_id") or self.client_id or "000"
+                    self._play_template_sequence(call_id, fallback_template_ids, client_id)
+                except Exception as fallback_err:
+                    self.logger.exception(f"[FLOW_ENGINE] Failed to play fallback template: {fallback_err}")
         
         # 空のテキスト（無音検出時）の場合は、no_input_streakに基づいてテンプレートを選択
         if not merged_text or len(merged_text.strip()) == 0:
