@@ -332,6 +332,9 @@ class RealtimeGateway:
         self._pending_transfer_call_id: Optional[str] = None  # 転送待ちのcall_id
         self._transfer_task_queue = collections.deque()  # イベントループが起動する前の転送タスクキュー 
         
+        # FreeSWITCH送信RTPポート監視（pull型ASR用）
+        self.fs_rtp_monitor = FreeswitchRTPMonitor(self)
+        
         # 調整パラメータ
         self.BARGE_IN_THRESHOLD = 1000 
         self.SILENCE_DURATION = 0.9     # 無音判定 (0.8 -> 0.9)
@@ -523,16 +526,18 @@ class RealtimeGateway:
             asyncio.create_task(process_queued_transfers())
             
             # FreeSWITCH送信RTPポート監視を開始（pull型ASR用）
-            asyncio.create_task(self.fs_rtp_monitor.start_monitoring())
-            
-            # ★ 一時テスト: 通話開始から8秒後にASRを強制有効化（デバッグ用）
-            # TODO: 動作確認後、この行を削除してgateway_event_listener.py連携に切り替える
-            async def force_enable_asr_after_delay():
-                await asyncio.sleep(8.0)
-                if not self.fs_rtp_monitor.asr_active:
-                    self.logger.info("[FS_RTP_MONITOR] DEBUG: Force-enabling ASR after 8 seconds (temporary test)")
-                    self.fs_rtp_monitor.enable_asr()
-            asyncio.create_task(force_enable_asr_after_delay())
+            # record_session方式では不要なため、条件付きで実行
+            if hasattr(self, 'fs_rtp_monitor') and self.fs_rtp_monitor:
+                asyncio.create_task(self.fs_rtp_monitor.start_monitoring())
+                
+                # ★ 一時テスト: 通話開始から8秒後にASRを強制有効化（デバッグ用）
+                # TODO: 動作確認後、この行を削除してgateway_event_listener.py連携に切り替える
+                async def force_enable_asr_after_delay():
+                    await asyncio.sleep(8.0)
+                    if not self.fs_rtp_monitor.asr_active:
+                        self.logger.info("[FS_RTP_MONITOR] DEBUG: Force-enabling ASR after 8 seconds (temporary test)")
+                        self.fs_rtp_monitor.enable_asr()
+                asyncio.create_task(force_enable_asr_after_delay())
 
             # サービスを維持（停止イベントを待つ）
             await self.shutdown_event.wait()
