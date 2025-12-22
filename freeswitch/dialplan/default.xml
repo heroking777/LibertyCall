@@ -15,8 +15,8 @@
     <!-- LibertyCall: B-leg側定義：音声再生シーケンス（再生保証あり） -->
     <!-- 重要: force_public_entryより前に配置して、優先度を上げる -->
     <!-- ================================
-      FreeSWITCH Dialplan: 段階アナウンス（タイマー制御版）
-      loopback経由では無音検出が機能しないため、sleep+transferで段階遷移
+      FreeSWITCH Dialplan: 000-002再生後にASR起動
+      000-002を再生し終わった瞬間に、GatewayのREST APIにASR起動を通知
     ================================ -->
     <extension name="play_audio_sequence">
       <!-- "play_audio_sequence a" にもマッチさせる -->
@@ -25,42 +25,23 @@
 	<action application="set" data="rtp-autoflush-during-bridge=true"/>
 	<action application="set" data="rtp-rewrite-timestamps=true"/>
 	<action application="set" data="rtp-autoflush=true"/>
+	<action application="sleep" data="1000"/>
 
-	<!-- STEP 1: 初期案内 -->
-	<action application="playback" data="/opt/libertycall/clients/000/audio/combined_intro_8k.wav"/>
-	<action application="sleep" data="5000"/>
-	<action application="transfer" data="next_announce"/>
-      </condition>
-    </extension>
+	<!-- 必ず再生するアナウンス -->
+	<action application="playback" data="/opt/libertycall/clients/000/audio/000_8k.wav"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/001_8k.wav"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/002_8k.wav"/>
 
-    <!-- 5秒後: 次の案内 -->
-    <extension name="next_announce">
-      <condition field="destination_number" expression="^next_announce$">
-	<action application="playback" data="/opt/libertycall/clients/000/audio/000-004_8k.wav"/>
-	<action application="sleep" data="10000"/>
-	<action application="transfer" data="warn_announce"/>
-      </condition>
-    </extension>
+	<!-- すべて再生後、ASR開始をGatewayに通知 -->
+	<action application="curl" data="http://127.0.0.1:8000/asr/start/${uuid}"/>
 
-    <!-- 10秒後: 次の案内 -->
-    <extension name="warn_announce">
-      <condition field="destination_number" expression="^warn_announce$">
-	<action application="playback" data="/opt/libertycall/clients/000/audio/000-005_8k.wav"/>
-	<action application="sleep" data="10000"/>
-	<action application="transfer" data="final_announce"/>
-      </condition>
-    </extension>
-
-    <!-- 10秒後: 最終案内 -->
-    <extension name="final_announce">
-      <condition field="destination_number" expression="^final_announce$">
-	<action application="playback" data="/opt/libertycall/clients/000/audio/000-006_8k.wav"/>
+	<!-- 10秒間ユーザー入力待機（無音フォールバック） -->
 	<action application="sleep" data="10000"/>
 	<action application="transfer" data="hangup_call"/>
       </condition>
     </extension>
 
-    <!-- 10秒後: 切断 -->
+    <!-- 切断処理 -->
     <extension name="hangup_call">
       <condition field="destination_number" expression="^hangup_call$">
 	<action application="hangup" data="NORMAL_CLEARING"/>
