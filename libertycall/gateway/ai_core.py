@@ -1676,6 +1676,89 @@ class AICore:
             return
         self.session_states.pop(call_id, None)
         # セッション状態のみクリア（フラグは on_call_end() でクリア）
+        # last_activityもクリア
+        self.last_activity.pop(call_id, None)
+    
+    def _start_activity_monitor(self) -> None:
+        """
+        無音タイムアウト監視スレッドを開始
+        
+        ASR無音10秒でFlowEngine.transition("NOT_HEARD")を呼び出す
+        """
+        if self._activity_monitor_running:
+            return
+        
+        def _activity_monitor_worker():
+            """無音タイムアウト監視ワーカースレッド"""
+            self._activity_monitor_running = True
+            self.logger.info("[ACTIVITY_MONITOR] Started activity monitor thread")
+            
+            while self._activity_monitor_running:
+                try:
+                    time.sleep(1.0)  # 1秒ごとにチェック
+                    
+                    current_time = time.time()
+                    timeout_sec = 10.0  # 無音タイムアウト: 10秒
+                    
+                    # 各call_idの最終活動時刻をチェック
+                    for call_id, last_activity_time in list(self.last_activity.items()):
+                        # 再生中は無音タイムアウトをスキップ
+                        if self.is_playing.get(call_id, False):
+                            continue
+                        
+                        elapsed = current_time - last_activity_time
+                        if elapsed >= timeout_sec:
+                            self.logger.info(
+                                f"[ACTIVITY_MONITOR] Timeout detected: call_id={call_id} "
+                                f"elapsed={elapsed:.1f}s -> calling FlowEngine.transition(NOT_HEARD)"
+                            )
+                            
+                            # FlowEngine.transition("NOT_HEARD")を呼び出す
+                            try:
+                                flow_engine = self.flow_engines.get(call_id) or self.flow_engine
+                                if flow_engine:
+                                    state = self._get_session_state(call_id)
+                                    client_id = self.call_client_map.get(call_id) or state.meta.get("client_id") or self.client_id or "000"
+                                    
+                                    # NOT_HEARDコンテキストで遷移
+                                    context = {
+                                        "intent": "NOT_HEARD",
+                                        "text": "",
+                                        "normalized_text": "",
+                                        "keywords": self.keywords,
+                                        "user_reply_received": False,
+                                        "user_voice_detected": False,
+                                        "timeout": True,
+                                        "is_first_sales_call": getattr(state, "is_first_sales_call", False),
+                                    }
+                                    
+                                    next_phase = flow_engine.transition(state.phase or "ENTRY", context)
+                                    
+                                    if next_phase != state.phase:
+                                        state.phase = next_phase
+                                        self.logger.info(
+                                            f"[ACTIVITY_MONITOR] Phase transition: {state.phase} -> {next_phase} "
+                                            f"(call_id={call_id}, timeout)"
+                                        )
+                                    
+                                    # テンプレートを取得して再生
+                                    template_ids = flow_engine.get_templates(next_phase)
+                                    if template_ids:
+                                        self._play_template_sequence(call_id, template_ids, client_id)
+                                    
+                                    # 最終活動時刻を更新（再タイムアウトを防ぐ）
+                                    self.last_activity[call_id] = current_time
+                            except Exception as e:
+                                self.logger.exception(f"[ACTIVITY_MONITOR] Error handling timeout: {e}")
+                except Exception as e:
+                    if self._activity_monitor_running:
+                        self.logger.exception(f"[ACTIVITY_MONITOR] Monitor thread error: {e}")
+                    time.sleep(1.0)
+        
+        import threading
+        self._activity_monitor_thread = threading.Thread(target=_activity_monitor_worker, daemon=True)
+        self._activity_monitor_thread.start()
+        self.logger.info("[ACTIVITY_MONITOR] Activity monitor thread started")
     
     def on_call_end(self, call_id: Optional[str], source: str = "unknown") -> None:
         """
@@ -3036,6 +3119,9 @@ class AICore:
         
         # call_id を self.call_id に保存（_append_call_log で使用）
         self.call_id = call_id
+        
+        # 【セッションログ保存】on_transcriptイベントをJSONファイルに保存
+        self._save_transcript_event(call_id, text, is_final, kwargs)
         
         # ============================================================
         # partial（is_final=False）の場合は partial_transcripts に追記するだけ
