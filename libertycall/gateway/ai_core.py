@@ -3337,12 +3337,16 @@ class AICore:
         # 【最終活動時刻を更新】
         self.last_activity[call_id] = time.time()
         
-        # 【再生中割り込み処理】再生中にASR入力があった場合はuuid_breakを実行
+        # 【再生中割り込み処理】再生中にASR入力があった場合はuuid_breakを実行（即時フラッシュ）
+        # 応答速度最適化: 割り込み処理を非同期化し、軽い呼吸時間を確保してから次の処理に進む
         if self.is_playing.get(call_id, False):
-            self.logger.info(f"[PLAYBACK_INTERRUPT] call_id={call_id} text={text!r} -> executing uuid_break")
-            self._break_playback(call_id)
-            # 割り込み後はis_playingをFalseに設定
+            self.logger.info(f"[PLAYBACK_INTERRUPT] call_id={call_id} text={text!r} -> executing uuid_break (async)")
+            self._break_playback(call_id)  # 非同期実行（ブロックしない）
+            # 割り込み後はis_playingをFalseに設定（即座に次の再生を可能にする）
             self.is_playing[call_id] = False
+            # 応答速度最適化: 軽い呼吸時間を確保（0.05秒）してから次の処理に進む
+            # これにより「割り込んだ瞬間に返す」自然な会話感を実現
+            time.sleep(0.05)  # 50msの軽い待機（割り込み処理の完了を待つ）
         
         # 過去の partial を取り出す
         partial_text = ""
