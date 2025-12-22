@@ -1314,7 +1314,7 @@ class AICore:
         text: str,
         normalized_text: str,
         intent: str,
-        state: Any
+        state: ConversationState
     ) -> Tuple[str, List[str], str, bool]:
         """
         FlowEngineを使ってフェーズ遷移とテンプレート選択を行う
@@ -1358,13 +1358,63 @@ class AICore:
         if not template_ids:
             template_ids = self.flow_engine.get_templates(current_phase)
         
+        # テンプレートIDリストから実際に使用するテンプレートを選択
+        # 複数のテンプレートIDがある場合は、Intentやテキストに基づいて選択
+        if template_ids and len(template_ids) > 1:
+            # Intentに基づいてテンプレートを選択（既存のselect_template_ids()を使用）
+            try:
+                from .intent_rules import select_template_ids
+                selected = select_template_ids(intent or "UNKNOWN", text)
+                if selected:
+                    # select_template_ids()で選択されたテンプレートを優先
+                    template_ids = selected
+                else:
+                    # 選択できない場合は、リストの最初の要素を使用
+                    template_ids = [template_ids[0]]
+            except Exception as e:
+                self.logger.warning(f"[FLOW_ENGINE] Failed to select template: {e}, using first template")
+                template_ids = [template_ids[0]]
+        elif template_ids and len(template_ids) == 1:
+            # 1つのテンプレートIDのみの場合はそのまま使用
+            pass
+        else:
+            # テンプレートIDがない場合は、フォールバック（110を使用）
+            template_ids = ["110"]
+        
         # テンプレートから返答テキストを生成
-        reply_text = self._render_templates(template_ids) if template_ids else ""
+        reply_text = self._render_templates_from_ids(template_ids) if template_ids else ""
         
         # 転送要求の判定（HANDOFF_DONEフェーズの場合）
         transfer_requested = (next_phase == "HANDOFF_DONE")
         
         return reply_text, template_ids, intent, transfer_requested
+    
+    def _render_templates_from_ids(self, template_ids: List[str]) -> str:
+        """
+        テンプレートIDのリストから返答テキストを生成
+        
+        :param template_ids: テンプレートIDのリスト
+        :return: 結合された返答テキスト
+        """
+        texts = []
+        for template_id in template_ids:
+            # templates.jsonからテキストを取得
+            template_config = self.templates.get(template_id)
+            if template_config and isinstance(template_config, dict):
+                text = template_config.get("text", "")
+                if text:
+                    texts.append(text)
+            else:
+                # フォールバック: intent_rulesから取得
+                try:
+                    from .intent_rules import get_response_template
+                    text = get_response_template(template_id)
+                    if text:
+                        texts.append(text)
+                except Exception:
+                    pass
+        
+        return " ".join(texts) if texts else ""
     
     def _play_template_sequence(self, call_id: str, template_ids: List[str]) -> None:
         """
