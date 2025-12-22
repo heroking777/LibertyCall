@@ -3,6 +3,12 @@
 
 set -e
 
+# 引数解析
+ROTATE_COUNT=0
+if [ "$1" = "--rotate" ] && [ -n "$2" ]; then
+    ROTATE_COUNT=$2
+fi
+
 # 日付を取得
 DATE=$(date +%F)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -29,6 +35,18 @@ tar czf "${BACKUP_DIR}/${SNAPSHOT_NAME}" "${BACKUP_PATHS[@]}" 2>/dev/null || {
 }
 
 echo "✅ スナップショットを作成しました: ${BACKUP_DIR}/${SNAPSHOT_NAME}"
+
+# ローテーション処理（--rotate オプションが指定された場合）
+if [ "$ROTATE_COUNT" -gt 0 ]; then
+    echo "🔄 古いバックアップをローテーション中（保持数: ${ROTATE_COUNT}）..."
+    # 日付順にソートして、古いものを削除
+    cd "$BACKUP_DIR"
+    ls -t libertycall_000_*.tar.gz 2>/dev/null | tail -n +$((ROTATE_COUNT + 1)) | while read -r old_file; do
+        echo "   削除: $old_file"
+        rm -f "$old_file"
+    done
+    echo "✅ ローテーション完了"
+fi
 
 # Gitタグの作成（オプション）
 if [ -d "/opt/libertycall/.git" ]; then
