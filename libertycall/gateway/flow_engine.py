@@ -63,19 +63,34 @@ class FlowEngine:
     
     def get_templates(self, phase_name: str) -> List[str]:
         """
-        指定されたフェーズのテンプレートIDリストを取得
+        指定されたフェーズのテンプレートIDリストを取得（エラーフォールバック対応）
         
         :param phase_name: フェーズ名（例: "ENTRY", "QA"）
         :return: テンプレートIDのリスト
         """
-        phases = self.flow.get("phases", {})
-        phase = phases.get(phase_name)
-        if not phase:
-            self.logger.warning(f"Phase not found: {phase_name}")
-            return []
-        
-        templates = phase.get("templates", [])
-        return templates if isinstance(templates, list) else []
+        try:
+            phases = self.flow.get("phases", {})
+            phase = phases.get(phase_name)
+            if not phase:
+                self.logger.warning(f"Phase not found: {phase_name}, using fallback template")
+                # フォールバック: デフォルトの「聞き取れませんでした」テンプレートを返す
+                return ["110"]
+            
+            templates = phase.get("templates", [])
+            if not isinstance(templates, list):
+                self.logger.warning(f"Invalid templates format for phase: {phase_name}, using fallback")
+                return ["110"]
+            
+            # テンプレートが空の場合はフォールバック
+            if not templates:
+                self.logger.warning(f"No templates found for phase: {phase_name}, using fallback")
+                return ["110"]
+            
+            return templates
+        except Exception as e:
+            self.logger.exception(f"Error getting templates for phase {phase_name}: {e}")
+            # エラー時はフォールバックテンプレートを返す
+            return ["110"]
     
     def transition(
         self,
@@ -83,42 +98,52 @@ class FlowEngine:
         context: Dict[str, Any]
     ) -> str:
         """
-        現在のフェーズとコンテキストから次のフェーズを決定
+        現在のフェーズとコンテキストから次のフェーズを決定（エラーフォールバック対応）
         
         :param current_phase: 現在のフェーズ名
         :param context: コンテキスト情報（intent, keywords, flags等）
         :return: 次のフェーズ名（遷移しない場合は現在のフェーズ名を返す）
         """
-        phases = self.flow.get("phases", {})
-        phase = phases.get(current_phase)
-        
-        if not phase:
-            self.logger.warning(f"Phase not found: {current_phase}, defaulting to QA")
-            return "QA"
-        
-        transitions = phase.get("transitions", [])
-        if not transitions:
-            self.logger.debug(f"No transitions defined for phase: {current_phase}")
+        try:
+            phases = self.flow.get("phases", {})
+            phase = phases.get(current_phase)
+            
+            if not phase:
+                self.logger.warning(f"Phase not found: {current_phase}, defaulting to QA")
+                return "QA"
+            
+            transitions = phase.get("transitions", [])
+            if not transitions:
+                self.logger.debug(f"No transitions defined for phase: {current_phase}")
+                return current_phase
+            
+            # 各遷移条件を評価
+            for transition in transitions:
+                try:
+                    condition = transition.get("condition", "")
+                    target = transition.get("target")
+                    
+                    if not target:
+                        continue
+                    
+                    if self._eval_condition(condition, context):
+                        self.logger.info(
+                            f"Flow transition: {current_phase} -> {target} "
+                            f"(condition: {condition})"
+                        )
+                        return target
+                except Exception as e:
+                    # 個別の遷移条件評価でエラーが発生した場合はスキップして次へ
+                    self.logger.warning(f"Error evaluating transition condition: {e}, skipping")
+                    continue
+            
+            # 条件にマッチしない場合は現在のフェーズを維持
+            self.logger.debug(f"No transition matched for phase: {current_phase}, staying in current phase")
             return current_phase
-        
-        # 各遷移条件を評価
-        for transition in transitions:
-            condition = transition.get("condition", "")
-            target = transition.get("target")
-            
-            if not target:
-                continue
-            
-            if self._eval_condition(condition, context):
-                self.logger.info(
-                    f"Flow transition: {current_phase} -> {target} "
-                    f"(condition: {condition})"
-                )
-                return target
-        
-        # 条件にマッチしない場合は現在のフェーズを維持
-        self.logger.debug(f"No transition matched for phase: {current_phase}, staying in current phase")
-        return current_phase
+        except Exception as e:
+            self.logger.exception(f"Error in FlowEngine.transition: {e}")
+            # エラー時は安全なフェーズ（QA）にフォールバック
+            return "QA"
     
     def _eval_condition(self, condition: str, context: Dict[str, Any]) -> bool:
         """

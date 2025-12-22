@@ -2257,6 +2257,31 @@ class RealtimeGateway:
             self.logger.exception(f"[ESL] Failed to initialize ESL connection: {e}")
             self.esl_connection = None
     
+    def _recover_esl_connection(self) -> None:
+        """
+        FreeSWITCH ESL接続を自動リカバリ（接続が切れた場合に再接続を試みる）
+        
+        :return: None
+        """
+        if self.esl_connection and self.esl_connection.connected():
+            return  # 既に接続されている場合は何もしない
+        
+        self.logger.warning("[ESL_RECOVERY] ESL connection lost, attempting to reconnect...")
+        import time
+        time.sleep(3)  # 3秒待機してから再接続
+        
+        try:
+            self._init_esl_connection()
+            if self.esl_connection and self.esl_connection.connected():
+                self.logger.info("[ESL_RECOVERY] ESL connection recovered successfully")
+                # イベントリスナーも再起動
+                if hasattr(self, 'esl_listener_thread') and self.esl_listener_thread and not self.esl_listener_thread.is_alive():
+                    self._start_esl_event_listener()
+            else:
+                self.logger.warning("[ESL_RECOVERY] ESL reconnection failed, will retry on next attempt")
+        except Exception as e:
+            self.logger.exception(f"[ESL_RECOVERY] Failed to recover ESL connection: {e}")
+    
     def _start_esl_event_listener(self) -> None:
         """
         FreeSWITCH ESLイベントリスナーを開始（CHANNEL_EXECUTE_COMPLETE監視）
@@ -2268,7 +2293,7 @@ class RealtimeGateway:
             return
         
         def _esl_event_listener_worker():
-            """ESLイベントリスナーのワーカースレッド"""
+            """ESLイベントリスナーのワーカースレッド（自動リカバリ対応）"""
             try:
                 from libs.esl.ESL import ESLevent
                 
@@ -2276,12 +2301,27 @@ class RealtimeGateway:
                 self.esl_connection.events("plain", "CHANNEL_EXECUTE_COMPLETE")
                 self.logger.info("[ESL_LISTENER] Started listening for CHANNEL_EXECUTE_COMPLETE events")
                 
+                consecutive_errors = 0
+                max_consecutive_errors = 5
+                
                 while self.running:
                     try:
+                        # ESL接続が切れている場合は自動リカバリを試みる
+                        if not self.esl_connection or not self.esl_connection.connected():
+                            self.logger.warning("[ESL_LISTENER] ESL connection lost, attempting recovery...")
+                            self._recover_esl_connection()
+                            if not self.esl_connection or not self.esl_connection.connected():
+                                time.sleep(3)  # 再接続に失敗した場合は3秒待機
+                                continue
+                            # 再接続成功時はイベント購読を再設定
+                            self.esl_connection.events("plain", "CHANNEL_EXECUTE_COMPLETE")
+                            consecutive_errors = 0
+                        
                         # イベントを受信（タイムアウト: 1秒）
                         event = self.esl_connection.recvEventTimed(1000)
                         
                         if not event:
+                            consecutive_errors = 0  # タイムアウトはエラーではない
                             continue
                         
                         event_name = event.getHeader('Event-Name')
@@ -2302,12 +2342,31 @@ class RealtimeGateway:
                                 self.ai_core.is_playing[uuid] = False
                                 self.logger.info(f"[ESL_LISTENER] Playback completed: uuid={uuid} is_playing[{uuid}] = False")
                         
+                        consecutive_errors = 0  # 成功時はエラーカウントをリセット
+                        
                     except Exception as e:
+                        consecutive_errors += 1
                         if self.running:
-                            self.logger.exception(f"[ESL_LISTENER] Error processing event: {e}")
+                            self.logger.exception(f"[ESL_LISTENER] Error processing event (consecutive_errors={consecutive_errors}): {e}")
+                        
+                        # 連続エラーが一定回数を超えた場合は自動リカバリを試みる
+                        if consecutive_errors >= max_consecutive_errors:
+                            self.logger.warning(f"[ESL_LISTENER] Too many consecutive errors ({consecutive_errors}), attempting recovery...")
+                            self._recover_esl_connection()
+                            consecutive_errors = 0
+                        
                         time.sleep(0.1)
             except Exception as e:
                 self.logger.exception(f"[ESL_LISTENER] Event listener thread error: {e}")
+                # スレッドがクラッシュした場合、3秒後に再起動を試みる
+                if self.running:
+                    self.logger.warning("[ESL_LISTENER] Event listener thread crashed, will restart in 3 seconds...")
+                    import threading
+                    def _restart_listener():
+                        time.sleep(3)
+                        if self.running:
+                            self._start_esl_event_listener()
+                    threading.Thread(target=_restart_listener, daemon=True).start()
         
         # イベントリスナースレッドを開始
         import threading
@@ -2317,17 +2376,25 @@ class RealtimeGateway:
     
     def _handle_playback(self, call_id: str, audio_file: str) -> None:
         """
-        FreeSWITCHに音声再生リクエストを送信（ESL使用）
+        FreeSWITCHに音声再生リクエストを送信（ESL使用、自動リカバリ対応）
         
         :param call_id: 通話UUID
         :param audio_file: 音声ファイルのパス
         """
         try:
+            # ESL接続が切れている場合は自動リカバリを試みる
             if not self.esl_connection or not self.esl_connection.connected():
                 self.logger.warning(
-                    f"[PLAYBACK] ESL not available, skipping playback: call_id={call_id} file={audio_file}"
+                    f"[PLAYBACK] ESL not available, attempting recovery: call_id={call_id} file={audio_file}"
                 )
-                return
+                self._recover_esl_connection()
+                
+                # 再接続に失敗した場合はスキップ
+                if not self.esl_connection or not self.esl_connection.connected():
+                    self.logger.error(
+                        f"[PLAYBACK] ESL recovery failed, skipping playback: call_id={call_id} file={audio_file}"
+                    )
+                    return
             
             # 再生開始: is_playing[uuid] = True を設定
             if hasattr(self.ai_core, 'is_playing'):

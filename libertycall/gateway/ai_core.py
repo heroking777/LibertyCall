@@ -396,6 +396,36 @@ class GoogleASR:
                     self.logger.exception(
                         "GoogleASR._stream_worker: error_callback failed: %s", cb_err
                     )
+            
+            # 【ASR自動リカバリ】ストリーミング接続が切れた場合、自動的に再接続を試みる
+            # ただし、認証エラーなどの永続的なエラーの場合は再試行しない
+            error_msg = str(e).lower()
+            is_permanent_error = any(keyword in error_msg for keyword in [
+                "credentials", "authentication", "permission", "unauthorized",
+                "forbidden", "not found", "invalid"
+            ])
+            
+            if not is_permanent_error:
+                # 一時的なエラーの場合、3秒待ってから自動的に再起動を試みる
+                self.logger.info("[ASR_RECOVERY] Attempting to restart ASR stream worker in 3 seconds...")
+                import threading
+                import time
+                
+                def _recover_stream_worker():
+                    time.sleep(3)
+                    # ストリームが停止している場合のみ再起動
+                    if self._stream_thread is None and not self._stop_event.is_set():
+                        call_id = getattr(self, "_current_call_id", None)
+                        if call_id:
+                            self.logger.info(f"[ASR_RECOVERY] Restarting ASR stream worker for call_id={call_id}")
+                            try:
+                                # ストリームワーカーを再起動
+                                self._start_stream_worker(call_id)
+                            except Exception as recover_err:
+                                self.logger.exception(f"[ASR_RECOVERY] Failed to restart ASR stream worker: {recover_err}")
+                
+                recovery_thread = threading.Thread(target=_recover_stream_worker, daemon=True)
+                recovery_thread.start()
         finally:
             # スレッドハンドルを None に戻す（次回 feed_audio で再起動可能にする）
             self._stream_thread = None
