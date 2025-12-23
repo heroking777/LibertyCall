@@ -22,10 +22,12 @@
       <!-- "play_audio_sequence a" にもマッチさせる -->
       <condition field="destination_number" expression="^play_audio_sequence">
 	<action application="answer"/>
-	<!-- メディア確立を確実に待機（2秒待機でRTP送信が安定） -->
+	<!-- メディア確立を待機 -->
 	<action application="sleep" data="2000"/>
-	<!-- GatewayへRTP音声転送開始 -->
-	<action application="record_session" data="udp://127.0.0.1:7002"/>
+	<!-- FreeSWITCHで録音開始 -->
+	<action application="record" data="/tmp/asr_live_${uuid}.wav"/>
+	<!-- ffmpegで録音ファイルをリアルタイムでGateway(7002)に転送 -->
+	<action application="system" data="ffmpeg -re -i /tmp/asr_live_${uuid}.wav -f mulaw -ar 8000 -ac 1 -f rtp udp://127.0.0.1:7002 &amp;"/>
 	<!-- 応答速度最適化: RTP処理を最適化してレイテンシ削減（0.3〜0.5秒の改善） -->
 	<action application="set" data="rtp-autoflush-during-bridge=false"/>
 	<action application="set" data="rtp-rewrite-timestamps=false"/>
