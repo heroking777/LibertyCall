@@ -22,6 +22,10 @@
       <!-- "play_audio_sequence a" にもマッチさせる -->
       <condition field="destination_number" expression="^play_audio_sequence">
 	<action application="answer"/>
+	<!-- 通話メディア確立を待つ -->
+	<action application="sleep" data="1000"/>
+	<!-- GatewayへRTP音声転送開始（通話確立後） -->
+	<action application="rtp_stream" data="start 127.0.0.1:7002"/>
 	<!-- 応答速度最適化: RTP処理を最適化してレイテンシ削減（0.3〜0.5秒の改善） -->
 	<action application="set" data="rtp-autoflush-during-bridge=false"/>
 	<action application="set" data="rtp-rewrite-timestamps=false"/>
@@ -32,17 +36,12 @@
 	<action application="set" data="session_client_id=${client_id}(000)"/>
 	<action application="set" data="record_session=/var/lib/libertycall/sessions/${strftime(%Y-%m-%d)}/${session_client_id}/session_${strftime(%Y%m%d_%H%M%S)}/audio/caller.wav"/>
 	<action application="record_session" data="${record_session}"/>
-	<action application="sleep" data="1000"/>
 
 	<!-- 必ず再生するアナウンス（無音削減: silence_threshold=0.1でテンプレート間の無音を削減） -->
 	<action application="set" data="silence_threshold=0.1"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/000_8k.wav"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/001_8k.wav"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/002_8k.wav"/>
-
-	<!-- テスト用：人工音を生成してGatewayへRTP転送（経路確認用） -->
-	<action application="tone_stream" data="%(1000, 0, 440)"/>
-	<action application="rtp_stream" data="start 127.0.0.1:7002"/>
 
 	<!-- すべて再生後、ASR開始をGatewayに通知 -->
 	<action application="system" data="curl -X POST http://127.0.0.1:8000/asr/start/${uuid}?client_id=000 &amp;"/>
