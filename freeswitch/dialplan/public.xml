@@ -26,10 +26,10 @@
 	<action application="set" data="rtp-rewrite-timestamps=false"/>
 	<action application="set" data="rtp-autoflush=false"/>
 	<action application="set" data="disable-transcoding=true"/>
-	<!-- bridgeを完全に削除し、transferで同一チャンネル内でplay_audio_sequenceに遷移（BYE送信を防止） -->
+	<!-- transferを廃止し、Luaスクリプトで同一チャンネル内で全アクションを実行（BYE送信を防止） -->
 	<action application="set" data="hangup_after_bridge=false"/>
 	<action application="set" data="continue_on_fail=true"/>
-	<action application="transfer" data="play_audio_sequence XML default"/>
+	<action application="lua" data="play_audio_sequence.lua"/>
       </condition>
     </extension>
 
