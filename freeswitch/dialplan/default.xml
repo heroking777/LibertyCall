@@ -18,6 +18,21 @@
       FreeSWITCH Dialplan: 000-002再生後にASR起動
       000-002を再生し終わった瞬間に、GatewayのREST APIにASR起動を通知
     ================================ -->
+    <!-- Loopbackテスト用extension（SIP網を介さないローカルテスト） -->
+    <extension name="loopback-test">
+      <condition field="destination_number" expression="^777$">
+	<action application="answer"/>
+	<action application="sleep" data="1000"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/000_8k.wav"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/001_8k.wav"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/002_8k.wav"/>
+	<action application="sleep" data="5000"/>
+	<action application="playback" data="/opt/libertycall/clients/000/audio/003_8k.wav"/>
+	<action application="sleep" data="5000"/>
+	<action application="hangup" data="NORMAL_CLEARING"/>
+      </condition>
+    </extension>
+
     <extension name="play_audio_sequence">
       <!-- "play_audio_sequence a" にもマッチさせる -->
       <condition field="destination_number" expression="^play_audio_sequence">
