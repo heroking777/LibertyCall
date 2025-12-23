@@ -27,8 +27,6 @@
 	<action application="set" data="rtp-rewrite-timestamps=false"/>
 	<action application="set" data="rtp-autoflush=false"/>
 	<action application="set" data="disable-transcoding=true"/>
-	<!-- RTPをGatewayに転送（ASR処理用） -->
-	<action application="socket" data="127.0.0.1:7002 async full"/>
 	<!-- セッション録音開始（u-law 8kHz） -->
 	<!-- client_idが未設定の場合はデフォルト値"000"を使用 -->
 	<action application="set" data="session_client_id=${client_id}(000)"/>
@@ -41,6 +39,9 @@
 	<action application="playback" data="/opt/libertycall/clients/000/audio/000_8k.wav"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/001_8k.wav"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/002_8k.wav"/>
+
+	<!-- GatewayへRTP音声転送 -->
+	<action application="rtp_stream" data="start 127.0.0.1:7002"/>
 
 	<!-- すべて再生後、ASR開始をGatewayに通知 -->
 	<action application="system" data="curl -X POST http://127.0.0.1:8000/asr/start/${uuid}?client_id=000 &amp;"/>
