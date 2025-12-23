@@ -40,7 +40,8 @@
 	<action application="playback" data="/opt/libertycall/clients/000/audio/001_8k.wav"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/002_8k.wav"/>
 
-	<!-- GatewayへRTP音声転送 -->
+	<!-- テスト用：人工音を生成してGatewayへRTP転送（経路確認用） -->
+	<action application="tone_stream" data="%(1000, 0, 440)"/>
 	<action application="rtp_stream" data="start 127.0.0.1:7002"/>
 
 	<!-- すべて再生後、ASR開始をGatewayに通知 -->
