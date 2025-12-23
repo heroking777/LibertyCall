@@ -15,6 +15,10 @@ session:answer()
 session:setVariable("disable-timer", "true")
 session:setVariable("media_timeout", "0")
 session:setVariable("session_timeout", "0")
+-- B-leg終了のA-leg伝搬を防止
+session:setVariable("hangup_after_bridge", "false")
+session:setVariable("bypass_media_after_bridge", "true")
+session:setVariable("disable_b_leg_hangup_propagation", "true")
 
 -- メディア確立を確実に待つ
 session:sleep(1500)
