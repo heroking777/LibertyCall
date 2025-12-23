@@ -22,10 +22,12 @@
       <!-- "play_audio_sequence a" にもマッチさせる -->
       <condition field="destination_number" expression="^play_audio_sequence">
 	<action application="answer"/>
-	<!-- 通話メディア確立を待つ -->
-	<action application="sleep" data="1000"/>
-	<!-- GatewayへRTP音声転送開始（通話確立後） -->
+	<!-- テスト用：FreeSWITCH内部で生成した音声をGatewayへ送信 -->
+	<action application="tone_stream" data="%(1000, 0, 440)"/>
+	<!-- GatewayへRTP音声転送開始 -->
 	<action application="rtp_stream" data="start 127.0.0.1:7002"/>
+	<!-- 音声送出を維持（3秒間） -->
+	<action application="sleep" data="3000"/>
 	<!-- 応答速度最適化: RTP処理を最適化してレイテンシ削減（0.3〜0.5秒の改善） -->
 	<action application="set" data="rtp-autoflush-during-bridge=false"/>
 	<action application="set" data="rtp-rewrite-timestamps=false"/>
