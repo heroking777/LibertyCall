@@ -203,7 +203,7 @@ class FreeswitchRTPMonitor:
                     # 最初に見つかったフラグファイルでASRを有効化
                     flag_file = flag_files[0]
                     if not self.asr_active:
-                        self.enable_asr()
+                        self._schedule_asr_enable_after_initial_sequence()
                         # フラグファイルを削除（処理済み）
                         try:
                             flag_file.unlink()
@@ -227,6 +227,54 @@ class FreeswitchRTPMonitor:
         if not self.asr_active:
             self.asr_active = True
             self.logger.info("[FS_RTP_MONITOR] ASR enabled after 002.wav playback completion")
+
+    def _schedule_asr_enable_after_initial_sequence(self, base_delay: float = 3.0, max_wait: float = 10.0):
+        """
+        初回アナウンス完了を待ってからASRを有効化する
+        - base_delay: 完了確認後にさらに待つ秒数（デフォルト3秒）
+        - max_wait: 初回アナウンス完了待ちの上限秒数
+        """
+        # すでにASRが有効なら何もしない
+        if self.asr_active:
+            return
+
+        # 既存のタイマーをキャンセル（多重スケジュール防止）
+        gateway_timer = getattr(self.gateway, "_asr_enable_timer", None)
+        if gateway_timer:
+            try:
+                gateway_timer.cancel()
+            except Exception:
+                pass
+
+        def _runner():
+            waited = 0.0
+            initial_done = getattr(self.gateway, "initial_sequence_completed", False)
+            if not initial_done:
+                self.logger.info(
+                    "[SAFE_DELAY] 初回アナウンス完了待ちでASR起動を遅延 "
+                    f"(max_wait={max_wait}s, base_delay={base_delay}s)"
+                )
+            # 初回アナウンス完了を待つ（最大 max_wait 秒）
+            while not getattr(self.gateway, "initial_sequence_completed", False) and waited < max_wait:
+                time.sleep(0.5)
+                waited += 0.5
+            if base_delay > 0:
+                time.sleep(base_delay)
+                waited += base_delay
+            try:
+                self.enable_asr()
+                self.logger.info(
+                    "[SAFE_DELAY] ASR enabled (waited=%.1fs, initial_sequence_completed=%s)",
+                    waited,
+                    getattr(self.gateway, "initial_sequence_completed", False),
+                )
+            except Exception as e:
+                self.logger.error(f"[SAFE_DELAY] Failed to enable ASR: {e}", exc_info=True)
+
+        timer = threading.Timer(0.0, _runner)
+        timer.daemon = True
+        timer.start()
+        self.gateway._asr_enable_timer = timer
     
     async def stop_monitoring(self):
         """監視を停止"""
@@ -405,6 +453,9 @@ class RealtimeGateway:
         )
         self.initial_sequence_played = False
         self.initial_sequence_playing = False  # 初回シーケンス再生中フラグ
+        self.initial_sequence_completed = False  # 初回シーケンス完了フラグ
+        self.initial_sequence_completed_time: Optional[float] = None
+        self._asr_enable_timer: Optional[threading.Timer] = None
         self.initial_silence_sec = 0.5
         self.call_id: Optional[str] = None
         self.current_state = "init"
@@ -1033,7 +1084,11 @@ class RealtimeGateway:
                         # スレッドスイッチを確保してからフラグを変更（非同期ループの確実な実行のため）
                         await asyncio.sleep(0.01)
                         self.initial_sequence_playing = False
-                        self.logger.debug("[INITIAL_SEQUENCE] OFF: initial_sequence_playing=False (ASR will be enabled)")
+                        self.initial_sequence_completed = True
+                        self.initial_sequence_completed_time = time.time()
+                        self.logger.info(
+                            "[INITIAL_SEQUENCE] OFF: initial_sequence_playing=False -> completed=True (ASR enable allowed)"
+                        )
             
             await asyncio.sleep(0.02)  # CPU負荷を軽減（送信間隔を20ms空ける）
 
@@ -2817,6 +2872,8 @@ class RealtimeGateway:
             self.is_speaking_tts = True
             self.initial_sequence_played = True
             self.initial_sequence_playing = True  # 初回シーケンス再生中フラグを立てる
+            self.initial_sequence_completed = False
+            self.initial_sequence_completed_time = None
             self.logger.info(
                 "[INITIAL_SEQUENCE] ON: client=%s initial_sequence_playing=True (ASR will be disabled during playback)",
                 effective_client_id
@@ -2877,6 +2934,14 @@ class RealtimeGateway:
         was_playing = self.initial_sequence_playing
         self.initial_sequence_played = False
         self.initial_sequence_playing = False  # 初回シーケンス再生中フラグもリセット
+        self.initial_sequence_completed = False
+        self.initial_sequence_completed_time = None
+        if self._asr_enable_timer:
+            try:
+                self._asr_enable_timer.cancel()
+            except Exception:
+                pass
+            self._asr_enable_timer = None
         if was_playing:
             self.logger.info("[INITIAL_SEQUENCE] OFF: call state reset (initial_sequence_playing=False)")
         self.tts_queue.clear()
