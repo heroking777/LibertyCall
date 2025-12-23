@@ -200,23 +200,17 @@ class FreeswitchRTPMonitor:
                     )
                 
                 if flag_files:
-                    # 最初に見つかったフラグファイルでASRを有効化
+                    # 最初に見つかったフラグファイルでASRを有効化（必ずSAFE_DELAY経由）
                     flag_file = flag_files[0]
                     if not self.asr_active:
+                        self.logger.info("[SAFE_DELAY] 初回アナウンス完了検知、ASR起動を3秒遅延させます")
                         self._schedule_asr_enable_after_initial_sequence()
-                        # フラグファイルを削除（処理済み）
-                        try:
-                            flag_file.unlink()
-                            self.logger.info(f"[FS_RTP_MONITOR] Removed ASR enable flag: {flag_file}")
-                        except Exception as e:
-                            self.logger.warning(f"[FS_RTP_MONITOR] Failed to remove flag file: {e}")
-                    else:
-                        # 既に有効化済みの場合はフラグファイルだけ削除
-                        try:
-                            flag_file.unlink()
-                            self.logger.debug(f"[FS_RTP_MONITOR] Removed ASR enable flag (already active): {flag_file}")
-                        except Exception as e:
-                            self.logger.warning(f"[FS_RTP_MONITOR] Failed to remove flag file: {e}")
+                    # フラグファイルは処理済みとして削除（有効化済みでも削除）
+                    try:
+                        flag_file.unlink()
+                        self.logger.info(f"[FS_RTP_MONITOR] Removed ASR enable flag: {flag_file}")
+                    except Exception as e:
+                        self.logger.warning(f"[FS_RTP_MONITOR] Failed to remove flag file: {e}")
             except Exception as e:
                 self.logger.error(f"[FS_RTP_MONITOR] Error checking ASR enable flag: {e}", exc_info=True)
             
@@ -593,7 +587,7 @@ class RealtimeGateway:
                     await asyncio.sleep(8.0)
                     if not self.fs_rtp_monitor.asr_active:
                         self.logger.info("[FS_RTP_MONITOR] DEBUG: Force-enabling ASR after 8 seconds (temporary test)")
-                        self.fs_rtp_monitor.enable_asr()
+                        self.fs_rtp_monitor._schedule_asr_enable_after_initial_sequence()
                 asyncio.create_task(force_enable_asr_after_delay())
 
             # サービスを維持（停止イベントを待つ）
