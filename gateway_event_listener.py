@@ -410,13 +410,24 @@ def handle_call(uuid, event):
     # 通話ごとに独立したプロセスで起動
     try:
         log_file = f"/tmp/gateway_{uuid}.log"
+        # 必要な環境変数のみを選択的に渡す（LC_RTP_PORT等は引数で上書きされるため除外）
+        env = {}
+        # ASR関連の環境変数を渡す
+        for key in ["LC_ASR_STREAMING_ENABLED", "LC_ASR_PROVIDER", "LC_ASR_CHUNK_MS", "LC_ASR_SILENCE_MS", 
+                    "LC_DEFAULT_CLIENT_ID", "LC_TTS_STREAMING", "PYTHONUNBUFFERED"]:
+            value = os.getenv(key)
+            if value is not None:
+                env[key] = value
+        # デフォルトでストリーミングを有効化（環境変数が設定されていない場合）
+        if "LC_ASR_STREAMING_ENABLED" not in env:
+            env["LC_ASR_STREAMING_ENABLED"] = "1"
         with open(log_file, "w") as log_fd:
             subprocess.Popen(
                 ["python3", gateway_script, "--uuid", uuid, "--rtp_port", rtp_port],
                 stdout=log_fd,
                 stderr=subprocess.STDOUT,
                 cwd="/opt/libertycall",
-                env={}  # 親環境変数を完全にリセット（LC_RTP_PORT等が引数を上書きしないように）
+                env=env
             )
         logger.info(f"[handle_call] realtime_gateway を起動しました (UUID={uuid}, RTP_PORT={rtp_port})")
         logger.info(f"[handle_call] ログファイル: {log_file}")
