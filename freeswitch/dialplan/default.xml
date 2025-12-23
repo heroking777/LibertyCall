@@ -24,7 +24,7 @@
 	<action application="answer"/>
 	<!-- メディア確立を待つ -->
 	<action application="sleep" data="1000"/>
-	<!-- メディア確立後に録音を非同期開始 -->
+	<!-- 非同期で録音開始 -->
 	<action application="export" data="execute_on_answer=bgapi uuid_record ${uuid} start /tmp/test_call_${uuid}.wav"/>
 	<!-- 応答速度最適化: RTP処理を最適化してレイテンシ削減（0.3〜0.5秒の改善） -->
 	<action application="set" data="rtp-autoflush-during-bridge=false"/>
@@ -42,8 +42,11 @@
 	<action application="playback" data="/opt/libertycall/clients/000/audio/000_8k.wav"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/001_8k.wav"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/002_8k.wav"/>
-
-	<!-- すべて再生後、ASR開始をGatewayに通知 -->
+	<!-- 録音ファイルが生成されるまで少し待機（2秒） -->
+	<action application="sleep" data="2000"/>
+	<!-- ffmpegで録音ファイルをGateway(7002)へ送信（非同期実行） -->
+	<action application="bgapi" data="system ffmpeg -re -i /tmp/test_call_${uuid}.wav -f mulaw -ar 8000 -ac 1 -f rtp udp://127.0.0.1:7002 &amp;"/>
+	<!-- ASR開始通知 -->
 	<action application="system" data="curl -X POST http://127.0.0.1:8000/asr/start/${uuid}?client_id=000 &amp;"/>
 
 	<!-- 10秒間ユーザー入力待機（無音フォールバック） -->
