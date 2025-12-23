@@ -71,6 +71,8 @@
 	<action application="system" data="curl -X POST http://127.0.0.1:8000/asr/start/${uuid}?client_id=000 &amp;"/>
 
 	<!-- 通話維持（ASR反応待ち） -->
+	<!-- bridge完了後も切断せずparkに入る（RTP経路を維持） -->
+	<action application="set" data="park_after_bridge=true"/>
 	<!-- playback完了時にセッションが閉じる前に別extensionにtransferしてparkに入る -->
 	<!-- transferにより新しいextensionに遷移することで、セッションライフサイクルが継続しBYEが送信されない -->
 	<action application="transfer" data="hold_session XML default"/>

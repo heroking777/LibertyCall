@@ -26,8 +26,8 @@
 	<action application="set" data="rtp-rewrite-timestamps=false"/>
 	<action application="set" data="rtp-autoflush=false"/>
 	<action application="set" data="disable-transcoding=true"/>
-	<!-- local/ bridgeでplay_audio_sequenceを呼び出し（B-leg終了をA-legに伝えないためBYE送信されない） -->
-	<action application="bridge" data="local/play_audio_sequence@default"/>
+	<!-- sofia/internal bridgeでplay_audio_sequenceを呼び出し（RTP経路を維持しながら内部処理を実行） -->
+	<action application="bridge" data="sofia/internal/play_audio_sequence@default"/>
       </condition>
     </extension>
 
