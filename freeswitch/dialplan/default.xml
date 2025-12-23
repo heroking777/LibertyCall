@@ -77,6 +77,18 @@
       </condition>
     </extension>
 
+    <!-- 通話保持用extension（play_audio_sequence完了後にtransferで遷移） -->
+    <extension name="hold_session">
+      <condition field="destination_number" expression="^hold_session$">
+	<action application="set" data="hangup_after_bridge=false"/>
+	<action application="set" data="continue_on_fail=true"/>
+	<action application="set" data="api_hangup_hook=none"/>
+	<action application="set" data="ignore_display_updates=true"/>
+	<action application="set" data="park_timeout=0"/>
+	<action application="park"/>
+      </condition>
+    </extension>
+
     <!-- 切断処理 -->
     <extension name="hangup_call">
       <condition field="destination_number" expression="^hangup_call$">
