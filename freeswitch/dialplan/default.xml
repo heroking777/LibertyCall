@@ -72,6 +72,7 @@
 
 	<!-- 通話維持（ASR反応待ち） -->
 	<!-- Dialplan途中終了防止：execute_on_media実行後もセッションを維持 -->
+	<action application="set" data="ignore_early_hangup=true"/>
 	<action application="set" data="hangup_after_execute=false"/>
 	<action application="set" data="continue_on_fail=true"/>
 	<action application="set" data="api_hangup_hook=none"/>
