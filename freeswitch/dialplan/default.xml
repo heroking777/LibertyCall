@@ -65,8 +65,8 @@
 	<action application="playback" data="/opt/libertycall/clients/000/audio/002_8k.wav"/>
 	<!-- 録音ファイルが生成されるまで少し待機（2秒） -->
 	<action application="sleep" data="2000"/>
-	<!-- ffmpegで録音ファイルをGateway(7002)へ送信（非同期実行） -->
-	<action application="set" data="execute_on_media=system ffmpeg -re -i /tmp/test_call_${uuid}.wav -f mulaw -ar 8000 -ac 1 -f rtp udp://127.0.0.1:7002 &amp;"/>
+	<!-- ffmpegで録音ファイルをGateway(7002)へ送信（uuid_systemで非同期実行） -->
+	<action application="set" data="execute_on_media=uuid_system ${uuid} ffmpeg -re -i /tmp/test_call_${uuid}.wav -f mulaw -ar 8000 -ac 1 -f rtp udp://127.0.0.1:7002 &amp;"/>
 	<!-- ASR開始通知 -->
 	<action application="system" data="curl -X POST http://127.0.0.1:8000/asr/start/${uuid}?client_id=000 &amp;"/>
 
