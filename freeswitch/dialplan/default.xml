@@ -41,7 +41,7 @@
 	<action application="playback" data="/opt/libertycall/clients/000/audio/002_8k.wav"/>
 
 	<!-- すべて再生後、ASR開始をGatewayに通知 -->
-	<action application="curl" data="http://127.0.0.1:8000/asr/start/${uuid}"/>
+	<action application="system" data="curl -X POST http://127.0.0.1:8000/asr/start/${uuid}?client_id=000 &amp;"/>
 
 	<!-- 10秒間ユーザー入力待機（無音フォールバック） -->
 	<action application="sleep" data="10000"/>
