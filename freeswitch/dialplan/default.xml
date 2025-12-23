@@ -51,14 +51,9 @@
 	<!-- ASR開始通知 -->
 	<action application="system" data="curl -X POST http://127.0.0.1:8000/asr/start/${uuid}?client_id=000 &amp;"/>
 
-	<!-- ASR反応待ち（通話を維持する） -->
-	<action application="sleep" data="10000"/>
-
-	<!-- 催促アナウンス再生（存在する場合） -->
-	<!-- <action application="playback" data="/opt/libertycall/clients/000/audio/000-004_8k.wav"/> -->
-
-	<!-- 明示的に切断 -->
-	<action application="hangup" data="NORMAL_CLEARING"/>
+	<!-- 通話維持（ASR反応待ち） -->
+	<action application="set" data="hangup_after_bridge=false"/>
+	<action application="park"/>
       </condition>
     </extension>
 
