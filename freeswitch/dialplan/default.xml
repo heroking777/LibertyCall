@@ -27,6 +27,8 @@
 	<action application="set" data="rtp-rewrite-timestamps=false"/>
 	<action application="set" data="rtp-autoflush=false"/>
 	<action application="set" data="disable-transcoding=true"/>
+	<!-- RTPをGatewayに転送（ASR処理用） -->
+	<action application="socket" data="127.0.0.1:7002 async full"/>
 	<!-- セッション録音開始（u-law 8kHz） -->
 	<!-- client_idが未設定の場合はデフォルト値"000"を使用 -->
 	<action application="set" data="session_client_id=${client_id}(000)"/>
