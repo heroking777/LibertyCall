@@ -26,8 +26,10 @@
 	<action application="set" data="rtp-rewrite-timestamps=false"/>
 	<action application="set" data="rtp-autoflush=false"/>
 	<action application="set" data="disable-transcoding=true"/>
-	<!-- sofia/internal bridgeでplay_audio_sequenceを呼び出し（RTP経路を維持しながら内部処理を実行） -->
-	<action application="bridge" data="sofia/internal/play_audio_sequence@default"/>
+	<!-- bridgeを完全に削除し、transferで同一チャンネル内でplay_audio_sequenceに遷移（BYE送信を防止） -->
+	<action application="set" data="hangup_after_bridge=false"/>
+	<action application="set" data="continue_on_fail=true"/>
+	<action application="transfer" data="play_audio_sequence XML default"/>
       </condition>
     </extension>
 
