@@ -26,8 +26,8 @@
 	<action application="set" data="rtp-rewrite-timestamps=false"/>
 	<action application="set" data="rtp-autoflush=false"/>
 	<action application="set" data="disable-transcoding=true"/>
-	<!-- loopbackをやめて直接transferでplay_audio_sequenceに遷移（A-leg連鎖切断を防止） -->
-	<action application="transfer" data="play_audio_sequence XML default"/>
+	<!-- local/ bridgeでplay_audio_sequenceを呼び出し（B-leg終了をA-legに伝えないためBYE送信されない） -->
+	<action application="bridge" data="local/play_audio_sequence@default"/>
       </condition>
     </extension>
 
