@@ -22,10 +22,12 @@
       <!-- "play_audio_sequence a" にもマッチさせる -->
       <condition field="destination_number" expression="^play_audio_sequence">
 	<action application="answer"/>
-	<!-- メディア確立を待つ -->
-	<action application="sleep" data="1000"/>
-	<!-- 非同期で録音開始 -->
+	<!-- メディア確立を確実に待つ -->
+	<action application="sleep" data="1500"/>
+	<!-- メディア確立後に録音を非同期で開始 -->
 	<action application="export" data="execute_on_answer=bgapi uuid_record ${uuid} start /tmp/test_call_${uuid}.wav"/>
+	<!-- 録音開始を確実にするため少し待機 -->
+	<action application="sleep" data="500"/>
 	<!-- 応答速度最適化: RTP処理を最適化してレイテンシ削減（0.3〜0.5秒の改善） -->
 	<action application="set" data="rtp-autoflush-during-bridge=false"/>
 	<action application="set" data="rtp-rewrite-timestamps=false"/>
