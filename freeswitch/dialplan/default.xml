@@ -22,11 +22,9 @@
       <!-- "play_audio_sequence a" にもマッチさせる -->
       <condition field="destination_number" expression="^play_audio_sequence">
 	<action application="answer"/>
-	<action application="sleep" data="500"/>
-	<action application="export" data="execute_on_answer="/>
-	<action application="export" data="execute_on_media="/>
-	<!-- テスト用：FreeSWITCHでローカル録音（record_session動作確認） -->
-	<action application="record_session" data="/tmp/test_call_${uuid}.wav"/>
+	<action application="sleep" data="1000"/>
+	<!-- FreeSWITCHで録音を開始（recordアプリケーション使用） -->
+	<action application="record" data="/tmp/test_call_${uuid}.wav"/>
 	<!-- 応答速度最適化: RTP処理を最適化してレイテンシ削減（0.3〜0.5秒の改善） -->
 	<action application="set" data="rtp-autoflush-during-bridge=false"/>
 	<action application="set" data="rtp-rewrite-timestamps=false"/>
