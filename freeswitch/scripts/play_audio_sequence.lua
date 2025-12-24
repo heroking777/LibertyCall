@@ -8,8 +8,26 @@ local client_id = session:getVariable("client_id") or "000"
 -- ログ出力
 freeswitch.consoleLog("INFO", string.format("[LUA] play_audio_sequence start uuid=%s client_id=%s\n", uuid, client_id))
 
--- 応答
-session:answer()
+-- ========================================
+-- セッション初期化と通話安定化
+-- ========================================
+
+if not session:ready() then
+    freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready, waiting 500ms...\n")
+    freeswitch.msleep(500)
+end
+
+-- 確実に応答状態にする（これが無いとplaybackで即切断する）
+if not session:answered() then
+    freeswitch.consoleLog("INFO", "[CALLFLOW] Answering call to enable audio playback\n")
+    session:answer()
+    freeswitch.msleep(300)
+end
+
+-- hangup_after_bridgeをfalseにして勝手に切断されないようにする
+session:setVariable("hangup_after_bridge", "false")
+session:setVariable("ignore_display_updates", "true")
+session:setVariable("playback_terminators", "")
 
 -- A-legのセッションタイムアウトを完全に無効化
 session:setVariable("disable-timer", "true")
@@ -73,17 +91,118 @@ freeswitch.consoleLog("INFO", "[RTP_DEBUG] Exec command: " .. cmd .. "\n")
 local result = api:execute("system", cmd)
 freeswitch.consoleLog("INFO", "[RTP_DEBUG] ffmpeg launch result: " .. (result or "nil") .. "\n")
 
--- 通話維持（ASR反応待ち）
--- Dialplan途中終了防止：execute_on_media実行後もセッションを維持
-session:setVariable("ignore_early_hangup", "true")
-session:setVariable("hangup_after_execute", "false")
-session:setVariable("continue_on_fail", "true")
-session:setVariable("api_hangup_hook", "none")
-session:setVariable("ignore_display_updates", "true")
-session:setVariable("park_timeout", "0")
+-- ========================================
+-- 無音監視と催促制御（Lua側で完結）
+-- ========================================
 
--- parkで通話維持
-session:execute("park")
+-- ASR検出タイムスタンプファイル
+local asr_timestamp_file = "/tmp/asr_last.txt"
+
+-- 催促音声ファイル
+local reminders = {
+    "/opt/libertycall/clients/000/audio/000-004_8k.wav",
+    "/opt/libertycall/clients/000/audio/000-005_8k.wav",
+    "/opt/libertycall/clients/000/audio/000-006_8k.wav"
+}
+
+-- タイムアウト設定（秒）
+local silence_timeout = 10
+
+-- 初回アナウンス再生後、ASRモニタ開始までの待機時間（10秒）
+freeswitch.consoleLog("INFO", "[CALLFLOW] Waiting 10 seconds after initial prompts before starting silence monitoring\n")
+session:sleep(10000)
+
+-- 無音監視開始
+local prompt_count = 0
+local last_asr_time = os.time()
+local start_time = os.time()
+
+freeswitch.consoleLog("INFO", "[CALLFLOW] Starting silence monitoring loop\n")
+
+-- 無音検知ループ（セッション維持ループ）
+while session:ready() do
+    -- 1秒待機
+    session:sleep(1000)
+    
+    -- ASR検出タイムスタンプをチェック
+    local asr_timestamp = 0
+    local f = io.open(asr_timestamp_file, "r")
+    if f then
+        local content = f:read("*a")
+        f:close()
+        if content then
+            asr_timestamp = tonumber(content) or 0
+        end
+    end
+    
+    -- ASR検出があれば、タイムスタンプを更新して催促カウントをリセット
+    if asr_timestamp > last_asr_time then
+        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] ASR detected at timestamp %d\n", asr_timestamp))
+        last_asr_time = asr_timestamp
+        
+        -- ASRハンドラー側で復唱と切断が行われるまで待機（最大10秒）
+        freeswitch.consoleLog("INFO", "[CALLFLOW] Speech detected, waiting for ASR handler to process (max 10 seconds)\n")
+        local wait_start = os.time()
+        while session:ready() and os.difftime(os.time(), wait_start) < 10 do
+            session:sleep(1000)
+        end
+        -- ASRハンドラー側で切断される想定だが、念のためここでも切断
+        if session:ready() then
+            freeswitch.consoleLog("INFO", "[CALLFLOW] ASR handler did not hangup, hanging up from Lua\n")
+            session:hangup("NORMAL_CLEARING")
+        end
+        break
+    end
+    
+    -- 無音時間をチェック
+    local elapsed = os.difftime(os.time(), start_time)
+    
+    if elapsed >= silence_timeout then
+        prompt_count = prompt_count + 1
+        
+        if prompt_count <= #reminders then
+            -- 催促を再生
+            local reminder_path = reminders[prompt_count]
+            freeswitch.consoleLog("INFO", string.format("[CALLFLOW] Timeout %d, playing reminder %d: %s\n", elapsed, prompt_count, reminder_path))
+            
+            -- セッションがreadyか確認
+            if not session:ready() then
+                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready before reminder playback\n")
+                break
+            end
+            
+            -- ファイル存在確認と安全な再生
+            if freeswitch.FileExists(reminder_path) then
+                freeswitch.consoleLog("INFO", string.format("[CALLFLOW] Playing reminder: %s\n", reminder_path))
+                -- playbackコマンドを安全に実行（hangup保護付き）
+                local ok, err = pcall(function()
+                    session:execute("playback", reminder_path)
+                end)
+                if not ok then
+                    freeswitch.consoleLog("WARNING", string.format("[CALLFLOW] Playback failed for %s: %s\n", reminder_path, tostring(err)))
+                end
+            else
+                freeswitch.consoleLog("WARNING", string.format("[CALLFLOW] Reminder file missing: %s\n", reminder_path))
+            end
+            
+            -- playback後に通話が閉じていないか確認
+            if not session:ready() then
+                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session closed right after reminder playback\n")
+                break
+            end
+            
+            -- 再生後、余韻時間確保（再生完了検知まで）
+            session:sleep(1500)
+            
+            start_time = os.time()  -- 催促再生後、タイマーをリセット
+        else
+            -- 3回催促後も無反応：切断
+            freeswitch.consoleLog("INFO", "[CALLFLOW] No response after 3 prompts → hangup\n")
+            session:hangup("NO_ANSWER")
+            break
+        end
+    end
+end
 
 freeswitch.consoleLog("INFO", string.format("[LUA] play_audio_sequence end uuid=%s\n", uuid))
 
