@@ -18,16 +18,24 @@ if not session:ready() then
 end
 
 -- 確実に応答状態にする（これが無いとplaybackで即切断する）
+-- 通話が確実に確立するまで待つ（最大3秒）
 if not session:answered() then
     freeswitch.consoleLog("INFO", "[CALLFLOW] Answering call to enable audio playback\n")
     session:answer()
-    freeswitch.msleep(300)
+    local wait_start = os.time()
+    while not session:ready() and os.difftime(os.time(), wait_start) < 3 do
+        freeswitch.msleep(250)
+    end
+    freeswitch.consoleLog("INFO", "[CALLFLOW] Call answered and RTP ready\n")
 end
 
 -- hangup_after_bridgeをfalseにして勝手に切断されないようにする
 session:setVariable("hangup_after_bridge", "false")
 session:setVariable("ignore_display_updates", "true")
 session:setVariable("playback_terminators", "")
+
+-- AutoHangupを無効化（playback完了時に勝手にhangupするのを防ぐ）
+session:setAutoHangup(false)
 
 -- A-legのセッションタイムアウトを完全に無効化
 session:setVariable("disable-timer", "true")
@@ -165,10 +173,15 @@ while session:ready() do
             local reminder_path = reminders[prompt_count]
             freeswitch.consoleLog("INFO", string.format("[CALLFLOW] Timeout %d, playing reminder %d: %s\n", elapsed, prompt_count, reminder_path))
             
-            -- セッションがreadyか確認
+            -- 催促再生前にRTPが切れていないか確認
             if not session:ready() then
-                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready before reminder playback\n")
-                break
+                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready before reminder playback, attempting re-answer\n")
+                session:answer()
+                freeswitch.msleep(500)
+                if not session:ready() then
+                    freeswitch.consoleLog("WARNING", "[CALLFLOW] Session still not ready after re-answer, breaking\n")
+                    break
+                end
             end
             
             -- ファイル存在確認と安全な再生
