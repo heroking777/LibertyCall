@@ -4,9 +4,12 @@
 -- UUID取得
 local uuid = session:getVariable("uuid")
 local client_id = session:getVariable("client_id") or "000"
+-- UUIDを変数に保存（Zombieセッションでも失わないように）
+local call_uuid = session:get_uuid()
 
 -- ログ出力
 freeswitch.consoleLog("INFO", string.format("[LUA] play_audio_sequence start uuid=%s client_id=%s\n", uuid, client_id))
+freeswitch.consoleLog("INFO", "[CALLFLOW] Stored call UUID: " .. tostring(call_uuid) .. "\n")
 
 -- ========================================
 -- セッション初期化と通話安定化
@@ -156,17 +159,14 @@ while session:ready() do
             io.close(f)
             freeswitch.consoleLog("INFO", "[CALLFLOW] Attempting reminder playback: " .. reminder_path .. "\n")
 
-            -- セッションがZombieなら強制復活
+            -- ここでUUIDを固定変数から利用
             if not session:ready() then
-                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready, forcing rebind\n")
-                session = freeswitch.Session(session:get_uuid())
+                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready, forcing rebind via stored UUID\n")
+                freeswitch.API():executeString("uuid_exists " .. call_uuid)
                 freeswitch.msleep(100)
-                session:execute("answer")
-                freeswitch.msleep(300)
             end
 
-            -- 最後の安全策：Zombie状態でも再生実行
-            local result = freeswitch.API():executeString("uuid_broadcast " .. session:get_uuid() .. " playback " .. reminder_path)
+            local result = freeswitch.API():executeString("uuid_broadcast " .. call_uuid .. " playback " .. reminder_path)
             freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback via uuid_broadcast result: " .. tostring(result) .. "\n")
 
         else
