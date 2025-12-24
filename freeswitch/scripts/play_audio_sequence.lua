@@ -162,17 +162,15 @@ while session:ready() do
             freeswitch.consoleLog("INFO", "[CALLFLOW] Attempting reminder playback: " .. reminder_path .. "\n")
 
             -- ここでUUIDを固定変数から利用
-            if not session:ready() then
-                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready, forcing rebind via stored UUID\n")
-                freeswitch.API():executeString("uuid_exists " .. call_uuid)
-                freeswitch.msleep(100)
+            if not call_uuid then
+                freeswitch.consoleLog("ERROR", "[CALLFLOW] call_uuid is nil, cannot execute bgapi\n")
+            else
+                -- FreeSWITCHイベントソケット経由でbgapiを送信（Zombieでも有効）
+                local cmd = string.format("uuid_broadcast %s playback %s both", call_uuid, reminder_path)
+                freeswitch.consoleLog("INFO", "[CALLFLOW] Sending bgapi via socket: " .. cmd .. "\n")
+                local result = send_bgapi(cmd)
+                freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (socket) result: " .. tostring(result) .. "\n")
             end
-
-            -- FreeSWITCH外部APIで再生を実行（Zombieでも有効）
-            local api = freeswitch.API()
-            local cmd = string.format("bgapi uuid_broadcast %s playback %s both", call_uuid, reminder_path)
-            local result = api:executeString(cmd)
-            freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (bgapi external) result: " .. tostring(result) .. "\n")
 
         else
             freeswitch.consoleLog("ERR", "[CALLFLOW] Reminder file missing: " .. reminder_path .. "\n")
