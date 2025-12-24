@@ -1,26 +1,6 @@
 -- LibertyCall: play_audio_sequence Luaスクリプト
 -- 同一チャンネル内で全アクションを実行（transferによる別チャンネル化を防止）
 
--- socket モジュールをロード（FreeSWITCHイベントソケット経由でbgapi送信用）
-local socket = require("socket")
-
--- FreeSWITCHイベントソケット経由でbgapiを送信する関数
-function send_bgapi(cmd)
-    local client = socket.tcp()
-    client:settimeout(2)
-    local ok, err = client:connect("127.0.0.1", 8021)
-    if not ok then
-        freeswitch.consoleLog("ERR", "[CALLFLOW] Socket connect failed: " .. tostring(err) .. "\n")
-        return nil
-    end
-    client:send("auth ClueCon\n")
-    client:receive("*l")
-    client:send("bgapi " .. cmd .. "\n\n")
-    local line = client:receive("*l")
-    client:close()
-    return line
-end
-
 -- UUID取得
 local uuid = session:getVariable("uuid")
 local client_id = session:getVariable("client_id") or "000"
@@ -185,11 +165,17 @@ while session:ready() do
             if not call_uuid then
                 freeswitch.consoleLog("ERROR", "[CALLFLOW] call_uuid is nil, cannot execute bgapi\n")
             else
-                -- FreeSWITCHイベントソケット経由でbgapiを送信（Zombieでも有効）
+                -- FreeSWITCHの内部ジョブスケジューラに登録（セッションに依存しない）
+                local api = freeswitch.API()
                 local cmd = string.format("uuid_broadcast %s playback %s both", call_uuid, reminder_path)
-                freeswitch.consoleLog("INFO", "[CALLFLOW] Sending bgapi via socket: " .. cmd .. "\n")
-                local result = send_bgapi(cmd)
-                freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (socket) result: " .. tostring(result) .. "\n")
+                freeswitch.consoleLog("INFO", "[CALLFLOW] Executing bgapi command: " .. cmd .. "\n")
+                
+                -- sched_api +1 none で1秒後に独立ジョブとして実行（Luaセッションの生存に依存しない）
+                local result = api:executeString("sched_api +1 none " .. cmd)
+                freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (sched_api) result: " .. tostring(result) .. "\n")
+                
+                -- 送信後にLuaスレッドを1秒キープして即GCを防止
+                freeswitch.msleep(1000)
             end
 
         else
