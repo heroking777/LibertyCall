@@ -138,26 +138,37 @@ local loop_counter = 0
 freeswitch.consoleLog("INFO", "[CALLFLOW] Entering silence monitor loop\n")
 freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Initial state: session_ready=%s, elapsed=%d, prompt_count=%d\n", tostring(session:ready()), elapsed, prompt_count))
 
+-- RTP keepalive用の無音ファイルパス
+local silence_file = "/usr/local/freeswitch/sounds/en/us/callie/ivr/8000/silence_stream_1000.wav"
+local keepalive_logged = false
+
 -- 無音検知ループ（セッション維持ループ）
 while session:ready() do
-    freeswitch.msleep(1000)  -- セッション状態に依存せず確実にスリープ
+    -- RTPキープアライブ: 実ファイルを再生して確実にRTPパケットを送信
+    -- 相手側SIPゲートウェイがRTP無通信を検知してBYEを送信するのを防ぐため、
+    -- FreeSWITCHのRTP送信レイヤを通した実ファイル再生を使用
+    if not keepalive_logged then
+        freeswitch.consoleLog("INFO", "[CALLFLOW] Sending RTP keepalive via silence file\n")
+        keepalive_logged = true
+    end
+    
+    local ok_keepalive, err_keepalive = pcall(function()
+        -- 1000msの無音ファイルを再生（実際のRTP UDPパケットが送信される）
+        session:execute("playback", silence_file)
+    end)
+    if not ok_keepalive then
+        freeswitch.consoleLog("WARNING", "[CALLFLOW] RTP keepalive silence file failed: " .. tostring(err_keepalive) .. "\n")
+    end
+    
+    -- 1秒単位でループを回す（ブロックしないよう50msごとにチェック）
+    local sleep_count = 0
+    while sleep_count < 20 and session:ready() do  -- 20回 × 50ms = 1000ms
+        freeswitch.msleep(50)
+        sleep_count = sleep_count + 1
+    end
+    
     elapsed = elapsed + 1
     loop_counter = loop_counter + 1
-    
-    -- RTPキープアライブ: 定期的に軽いトーン信号を送信（相手側RTP監視維持）
-    -- 相手側SIPゲートウェイがRTP無通信を検知してBYEを送信するのを防ぐため、
-    -- 実際のRTP payloadを含むトーン信号を送信
-    -- 注意: tone_streamは短い間隔（500ms）で送信し、ループをブロックしないようにする
-    if loop_counter % 1 == 0 then  -- 毎回実行
-        local ok_keepalive, err_keepalive = pcall(function()
-            -- 500msの軽いトーン信号を送信（RTPパケットが確実に流れる）
-            -- 350Hzと440Hzの2トーン（DTMF的な信号）で、無音ではなく実際のRTP payloadを送信
-            session:execute("playback", "tone_stream://%(500,0,350,440)")
-        end)
-        if not ok_keepalive then
-            freeswitch.consoleLog("WARNING", "[CALLFLOW] RTP keepalive tone failed: " .. tostring(err_keepalive) .. "\n")
-        end
-    end
     
     -- デバッグ: 最初の数回は必ずログ出力
     if loop_counter <= 3 then
