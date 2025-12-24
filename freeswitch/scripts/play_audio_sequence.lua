@@ -54,11 +54,12 @@ session:execute("playback", "/opt/libertycall/clients/000/audio/002_8k.wav")
 -- 録音ファイルが生成されるまで少し待機（2秒）
 session:sleep(2000)
 
--- ffmpegで録音ファイルをGateway(7002)へ送信（uuid_systemで非同期実行）
-session:execute("set", "execute_on_media=uuid_system " .. uuid .. " ffmpeg -re -i /tmp/test_call_" .. uuid .. ".wav -f mulaw -ar 8000 -ac 1 -f rtp udp://127.0.0.1:7002 &")
-
--- ASR開始通知
-session:execute("system", "curl -X POST http://127.0.0.1:8000/asr/start/" .. uuid .. "?client_id=" .. client_id .. " &")
+-- GatewayへリアルタイムRTPをミラー送信（uuid_rtp_stream使用）
+-- 現在の通話UUIDを取得（既に取得済み）
+freeswitch.consoleLog("INFO", "[RTP] Starting RTP mirror for call " .. uuid .. "\n")
+api = freeswitch.API()
+local rtp_result = api:execute("uuid_rtp_stream", uuid .. " start 127.0.0.1:7002 codec=PCMU")
+freeswitch.consoleLog("INFO", "[RTP] uuid_rtp_stream result: " .. (rtp_result or "nil") .. "\n")
 
 -- 通話維持（ASR反応待ち）
 -- Dialplan途中終了防止：execute_on_media実行後もセッションを維持
