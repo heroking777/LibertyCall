@@ -116,17 +116,6 @@ local reminders = {
 -- タイムアウト設定（秒）
 local silence_timeout = 10
 
--- ==========================================
--- 無音RTPストリームを送信（相手側RTP監視維持）
--- ==========================================
--- silence_stream://-1 は無限に無音RTP payloadを送り続ける
--- これにより、相手側（SIPキャリア）がRTP無通信と判断せず、10秒タイムアウトが発生しない
-freeswitch.consoleLog("INFO", "[CALLFLOW] Starting background silence stream (keepalive RTP)\n")
--- uuid_broadcastを使用して別スレッドで無音ストリームを再生（Luaロジックと競合しない）
-api = freeswitch.API()
-local broadcast_result = api:executeString("uuid_broadcast " .. uuid .. " silence_stream://-1 both")
-freeswitch.consoleLog("INFO", "[CALLFLOW] uuid_broadcast result: " .. (broadcast_result or "nil") .. "\n")
-
 -- 初回アナウンス再生後、ASRモニタ開始までの待機時間（10秒）
 freeswitch.consoleLog("INFO", "[CALLFLOW] Waiting 10 seconds after initial prompts before starting silence monitoring\n")
 session:sleep(10000)
@@ -147,6 +136,20 @@ while session:ready() do
     freeswitch.msleep(1000)  -- セッション状態に依存せず確実にスリープ
     elapsed = elapsed + 1
     loop_counter = loop_counter + 1
+    
+    -- RTPキープアライブ: 1秒ごとに短い無音を送信（相手側RTP監視維持）
+    -- 注意: silence_stream://200 は200msの無音で、非ブロッキング
+    -- ただし、playbackが完了する前に次のループが実行される可能性があるため、
+    -- 催促音再生時には待機時間を確保する
+    if loop_counter % 1 == 0 then  -- 毎回実行
+        local ok_keepalive, err_keepalive = pcall(function()
+            -- 非同期実行を試みる（ただし、FreeSWITCHの制約により同期になる可能性がある）
+            session:execute("playback", "silence_stream://200")
+        end)
+        if not ok_keepalive then
+            freeswitch.consoleLog("WARNING", "[CALLFLOW] RTP keepalive failed: " .. tostring(err_keepalive) .. "\n")
+        end
+    end
     
     -- デバッグ: 最初の数回は必ずログ出力
     if loop_counter <= 3 then
@@ -197,6 +200,9 @@ while session:ready() do
         if prompt_count <= #reminders then
             -- 催促を再生
             local reminder_path = reminders[prompt_count]
+            
+            -- RTPキープアライブのplaybackが完了するまで少し待機
+            freeswitch.msleep(300)
             
             -- 再answerチェック
             if not session:ready() then
