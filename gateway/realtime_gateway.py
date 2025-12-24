@@ -104,8 +104,10 @@ class FreeswitchRTPMonitor:
         self.asr_active = False  # 002.wav再生完了後にTrueになる
         
     def get_rtp_port_from_freeswitch(self) -> Optional[int]:
-        """FreeSWITCHから現在の送信RTPポートを取得"""
+        """FreeSWITCHから現在の送信RTPポートを取得（uuid_dump経由）"""
+        import re
         try:
+            # まず show channels でアクティブなチャンネルのUUIDを取得
             result = subprocess.run(
                 ["fs_cli", "-x", "show", "channels"],
                 capture_output=True,
@@ -114,23 +116,46 @@ class FreeswitchRTPMonitor:
             )
             if result.returncode != 0:
                 self.logger.warning(f"[FS_RTP_MONITOR] fs_cli failed: {result.stderr}")
-                if result.stdout:
-                    self.logger.debug(f"[FS_RTP_MONITOR] fs_cli stdout: {result.stdout[:200]}")
                 return None
             
-            # local_media_port を検索（複数チャンネルがある場合は最初のものを取得）
-            import re
-            matches = re.findall(r"local_media_port:\s+(\d+)", result.stdout)
-            if matches:
-                port = int(matches[0])  # 最初のチャンネルのポートを使用
-                self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH RTP port: {port} (from {len(matches)} channel(s))")
-                if len(matches) > 1:
-                    self.logger.warning(f"[FS_RTP_MONITOR] Multiple channels detected, using first port: {port}")
+            # CSV形式の出力からUUIDを抽出（最初の行はヘッダー、2行目以降がデータ）
+            lines = result.stdout.strip().split('\n')
+            if len(lines) < 2 or lines[0].startswith('0 total'):
+                # チャンネルが存在しない
+                return None
+            
+            # 2行目以降からUUIDを抽出（最初のカラムがUUID）
+            uuid = None
+            for line in lines[1:]:
+                if line.strip() and not line.startswith('uuid,'):
+                    parts = line.split(',')
+                    if parts and parts[0].strip():
+                        uuid = parts[0].strip()
+                        break
+            
+            if not uuid:
+                return None
+            
+            # uuid_dump でチャンネル変数を取得
+            dump_result = subprocess.run(
+                ["fs_cli", "-x", f"uuid_dump {uuid}"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if dump_result.returncode != 0:
+                self.logger.warning(f"[FS_RTP_MONITOR] uuid_dump failed for {uuid}: {dump_result.stderr}")
+                return None
+            
+            # local_media_port または rtp_local_media_port を検索
+            port_matches = re.findall(r"(?:local_media_port|rtp_local_media_port):\s+(\d+)", dump_result.stdout)
+            if port_matches:
+                port = int(port_matches[0])
+                self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH RTP port: {port} (from uuid_dump of {uuid})")
                 return port
             else:
-                self.logger.warning("[FS_RTP_MONITOR] local_media_port not found in show channels output")
-                if result.stdout:
-                    self.logger.debug(f"[FS_RTP_MONITOR] show channels output: {result.stdout[:500]}")
+                self.logger.warning(f"[FS_RTP_MONITOR] RTP port not found in uuid_dump output for {uuid}")
+                self.logger.debug(f"[FS_RTP_MONITOR] uuid_dump output: {dump_result.stdout[:500]}")
                 return None
         except Exception as e:
             self.logger.error(f"[FS_RTP_MONITOR] Error getting RTP port: {e}", exc_info=True)
