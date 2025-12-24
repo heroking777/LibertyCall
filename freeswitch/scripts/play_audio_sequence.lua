@@ -62,9 +62,13 @@ local rtp_result = api:execute("uuid_rtp_stream", uuid .. " start 127.0.0.1:7002
 freeswitch.consoleLog("INFO", "[RTP] uuid_rtp_stream result: " .. (rtp_result or "nil") .. "\n")
 
 -- デバッグ用: ffmpegで強制的に音声をUDP送信（uuid_rtp_streamが動作しない場合のテスト）
+-- bash -c '... & disown' により確実に非同期実行（FreeSWITCHの同期ブロックを回避）
 freeswitch.consoleLog("INFO", "[RTP_DEBUG] Starting ffmpeg test stream to 127.0.0.1:7002\n")
-local ffmpeg_path = "/usr/bin/ffmpeg"  -- 絶対パス指定
-local cmd = string.format("%s -re -i /opt/libertycall/clients/000/audio/000_8k.wav -ar 8000 -ac 1 -acodec pcm_mulaw -f rtp udp://127.0.0.1:7002 > /tmp/ffmpeg_rtp_test.log 2>&1 &", ffmpeg_path)
+local ffmpeg_path = "/usr/bin/ffmpeg"
+local cmd = string.format(
+    "bash -c '%s -re -i /opt/libertycall/clients/000/audio/000_8k.wav -ar 8000 -ac 1 -acodec pcm_mulaw -f rtp udp://127.0.0.1:7002 > /tmp/ffmpeg_rtp_test.log 2>&1 & disown'",
+    ffmpeg_path
+)
 freeswitch.consoleLog("INFO", "[RTP_DEBUG] Exec command: " .. cmd .. "\n")
 local result = api:execute("system", cmd)
 freeswitch.consoleLog("INFO", "[RTP_DEBUG] ffmpeg launch result: " .. (result or "nil") .. "\n")
