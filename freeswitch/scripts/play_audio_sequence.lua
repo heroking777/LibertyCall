@@ -167,27 +167,28 @@ while session:ready() do
 
             if current_uuid then
                 freeswitch.consoleLog("INFO", "[CALLFLOW] Re-inviting inbound leg to media path for UUID: " .. current_uuid .. "\n")
-                -- FreeSWITCHにメディア経路を再開させる（inbound legをメディアパスに戻す）
-                local reneg = api:executeString("uuid_media " .. current_uuid .. " on")
+                local reneg = api:executeString("uuid_media " .. current_uuid)
                 freeswitch.consoleLog("INFO", "[CALLFLOW] RTP media reinvite result: " .. tostring(reneg) .. "\n")
 
-                -- 100ms待機してから再生ジョブを登録
                 freeswitch.msleep(100)
-                local cmd = string.format("uuid_broadcast %s playback %s both", current_uuid, reminder_path)
+
+                -- uuid_displace による再生（確実に音声をセッションへ強制ミックス）
+                local cmd = string.format("uuid_displace %s start %s", current_uuid, reminder_path)
                 local sched_cmd = string.format("sched_api +1 none %s", cmd)
-                freeswitch.consoleLog("INFO", "[CALLFLOW] Executing sched_api command: " .. sched_cmd .. "\n")
+
+                freeswitch.consoleLog("INFO", "[CALLFLOW] Executing sched_api (displace) command: " .. sched_cmd .. "\n")
 
                 local ok, result = pcall(function()
                     return api:executeString(sched_cmd)
                 end)
 
                 if ok then
-                    freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (sched_api) result: " .. tostring(result) .. "\n")
+                    freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (displace sched_api) result: " .. tostring(result) .. "\n")
                 else
-                    freeswitch.consoleLog("ERR", "[CALLFLOW] sched_api execution failed: " .. tostring(result) .. "\n")
+                    freeswitch.consoleLog("ERR", "[CALLFLOW] sched_api (displace) execution failed: " .. tostring(result) .. "\n")
                 end
 
-                -- 送信後にLuaスレッドを1秒キープして即GCを防止
+                -- Lua GC防止
                 freeswitch.msleep(1000)
             else
                 freeswitch.consoleLog("ERR", "[CALLFLOW] call_uuid is nil, cannot play reminder\n")
