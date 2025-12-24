@@ -22,6 +22,8 @@ end
 if not session:answered() then
     freeswitch.consoleLog("INFO", "[CALLFLOW] Answering call to enable audio playback\n")
     session:answer()
+    -- RTPを継続的に送信してセッション維持
+    session:execute("start_dtmf_generate")
     local wait_start = os.time()
     while not session:ready() and os.difftime(os.time(), wait_start) < 3 do
         freeswitch.msleep(250)
@@ -136,6 +138,8 @@ local prompt_count = 0
 
 while session:ready() do
     freeswitch.msleep(1000)
+    -- RTPを継続的に送信してセッション維持（1秒ごとに再送信を明示）
+    session:execute("start_dtmf_generate")
     elapsed = elapsed + 1
     if elapsed % 5 == 0 then
         freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Loop iteration=%d, elapsed=%d, session_ready=%s\n",
