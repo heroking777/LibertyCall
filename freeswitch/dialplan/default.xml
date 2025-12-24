@@ -479,13 +479,29 @@
 	 This extension is used by mod_portaudio so you can pa call sip:someone@example.com
 	 mod_portaudio will pass the entire string to the dialplan for routing.
     -->
-    <extension name="sip_uri">
-      <condition field="destination_number" expression="^(sip:)?(.*)$">
-	<!-- LibertyCall: ゲートウェイ経由で外線発信（自サーバIPを指定しない） -->
+    <!-- LibertyCall: 外線発信用extension（@を含む電話番号を処理、優先度を上げる） -->
+    <extension name="outbound_call_cleanup" continue="true">
+      <condition field="destination_number" expression="^([^@]+)@.*$">
 	<!-- 電話番号部分だけを抽出（@以降を削除） -->
-	<action application="set" data="sip_uri=${regex_replace($2|@.*||)}"/>
+	<action application="set" data="destination_number=$1"/>
+      </condition>
+    </extension>
+    
+    <!-- LibertyCall: 外線発信用extension（9で始まる電話番号をゲートウェイ経由で発信） -->
+    <extension name="outbound_via_rakuten">
+      <condition field="destination_number" expression="^9\d+$">
 	<action application="set" data="effective_caller_id_number=$${outbound_caller_id_number}"/>
-	<action application="bridge" data="sofia/gateway/rakuten/${sip_uri}"/>
+	<action application="bridge" data="sofia/gateway/rakuten/${destination_number}"/>
+      </condition>
+    </extension>
+    
+    <extension name="sip_uri">
+      <condition field="destination_number" expression="^(sip:)?([^@]+)(@.*)?$">
+	<!-- LibertyCall: ゲートウェイ経由で外線発信（自サーバIPを指定しない） -->
+	<!-- 電話番号部分だけを抽出（$2 = @以前の部分のみ） -->
+	<action application="set" data="number_only=$2"/>
+	<action application="set" data="effective_caller_id_number=$${outbound_caller_id_number}"/>
+	<action application="bridge" data="sofia/gateway/rakuten/${number_only}"/>
       </condition>
     </extension>
 
