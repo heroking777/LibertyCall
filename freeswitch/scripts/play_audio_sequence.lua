@@ -166,9 +166,10 @@ while session:ready() do
             local current_uuid = call_uuid or session:get_uuid()
 
             if current_uuid then
-                freeswitch.consoleLog("INFO", "[CALLFLOW] Re-negotiating RTP for UUID: " .. current_uuid .. "\n")
-                local reneg = api:executeString("uuid_media_renegotiate " .. current_uuid)
-                freeswitch.consoleLog("INFO", "[CALLFLOW] RTP renegotiate result: " .. tostring(reneg) .. "\n")
+                freeswitch.consoleLog("INFO", "[CALLFLOW] Re-inviting inbound leg to media path for UUID: " .. current_uuid .. "\n")
+                -- FreeSWITCHにメディア経路を再開させる（inbound legをメディアパスに戻す）
+                local reneg = api:executeString("uuid_media " .. current_uuid .. " on")
+                freeswitch.consoleLog("INFO", "[CALLFLOW] RTP media reinvite result: " .. tostring(reneg) .. "\n")
 
                 -- 100ms待機してから再生ジョブを登録
                 freeswitch.msleep(100)
