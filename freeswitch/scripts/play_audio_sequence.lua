@@ -131,24 +131,25 @@ freeswitch.consoleLog("INFO", "[CALLFLOW] uuid_broadcast result: " .. (broadcast
 freeswitch.consoleLog("INFO", "[CALLFLOW] Waiting 10 seconds after initial prompts before starting silence monitoring\n")
 session:sleep(10000)
 
--- 無音監視開始
+-- ==========================================
+-- 無音監視ループ: 10秒ごとに催促再生
+-- ==========================================
 local prompt_count = 0
 local last_asr_time = os.time()
-local start_time = os.time()
+local elapsed = 0
+local loop_counter = 0
 
-freeswitch.consoleLog("INFO", "[CALLFLOW] Starting silence monitoring loop\n")
+freeswitch.consoleLog("INFO", "[CALLFLOW] Entering silence monitor loop\n")
 
 -- 無音検知ループ（セッション維持ループ）
-local loop_count = 0
 while session:ready() do
-    -- 1秒待機
-    session:sleep(1000)
-    loop_count = loop_count + 1
+    freeswitch.msleep(1000)  -- セッション状態に依存せず確実にスリープ
+    elapsed = elapsed + 1
+    loop_counter = loop_counter + 1
     
-    -- デバッグ: ループ実行状況を確認
-    if loop_count % 5 == 0 then
-        local elapsed_debug = os.difftime(os.time(), start_time)
-        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Loop iteration %d, elapsed=%d, session_ready=%s\n", loop_count, elapsed_debug, tostring(session:ready())))
+    -- デバッグ: ループ実行状況を確認（5秒ごと）
+    if loop_counter % 5 == 0 then
+        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Loop iteration=%d, elapsed=%d, session_ready=%s\n", loop_counter, elapsed, tostring(session:ready())))
     end
     
     -- ASR検出タイムスタンプをチェック
@@ -171,7 +172,7 @@ while session:ready() do
         freeswitch.consoleLog("INFO", "[CALLFLOW] Speech detected, waiting for ASR handler to process (max 10 seconds)\n")
         local wait_start = os.time()
         while session:ready() and os.difftime(os.time(), wait_start) < 10 do
-            session:sleep(1000)
+            freeswitch.msleep(1000)
         end
         -- ASRハンドラー側で切断される想定だが、念のためここでも切断
         if session:ready() then
@@ -181,58 +182,36 @@ while session:ready() do
         break
     end
     
-    -- 無音時間をチェック
-    local elapsed = os.difftime(os.time(), start_time)
-    
-    -- デバッグ: タイムアウトチェック前の状態を確認
-    if elapsed >= silence_timeout - 1 then
-        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Approaching timeout: elapsed=%d, silence_timeout=%d, prompt_count=%d\n", elapsed, silence_timeout, prompt_count))
-    end
-    
+    -- タイムアウトチェック
     if elapsed >= silence_timeout then
         prompt_count = prompt_count + 1
+        
+        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] Timeout %d, playing reminder %d\n", elapsed, prompt_count))
         
         if prompt_count <= #reminders then
             -- 催促を再生
             local reminder_path = reminders[prompt_count]
             
-            -- デバッグ: セッション状態を確認
-            local session_ready_before = session:ready()
-            freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Reminder check: session_ready=%s, elapsed=%d, prompt_count=%d\n", tostring(session_ready_before), elapsed, prompt_count))
-            freeswitch.consoleLog("INFO", string.format("[CALLFLOW] Timeout %d, playing reminder %d: %s\n", elapsed, prompt_count, reminder_path))
-            
-            -- 催促再生前にRTPが切れていないか確認（強制re-answer処理）
+            -- 再answerチェック
             if not session:ready() then
-                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready before reminder playback, forcing re-answer\n")
+                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready, forcing re-answer\n")
                 session:answer()
-                session:sleep(500)
-                local session_ready_after = session:ready()
-                freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG After re-answer: session_ready=%s\n", tostring(session_ready_after)))
-                if not session:ready() then
-                    freeswitch.consoleLog("ERROR", "[CALLFLOW] Session still not ready after re-answer, skipping reminder\n")
-                    -- breakせず、次のループで再試行
-                    start_time = os.time()  -- タイマーをリセットして再試行
-                else
-                    freeswitch.consoleLog("INFO", "[CALLFLOW] Session ready after re-answer, proceeding with reminder playback\n")
-                end
+                freeswitch.msleep(500)
             end
             
-            -- セッションがreadyな場合のみ再生を実行
             if session:ready() then
                 -- ファイル存在確認と安全な再生
                 if freeswitch.FileExists(reminder_path) then
-                    freeswitch.consoleLog("INFO", string.format("[CALLFLOW] Playing reminder: %s\n", reminder_path))
-                    -- playbackコマンドを安全に実行（hangup保護付き）
                     local ok, err = pcall(function()
                         session:execute("playback", reminder_path)
                     end)
-                    if not ok then
-                        freeswitch.consoleLog("ERROR", string.format("[CALLFLOW] Reminder playback failed for %s: %s\n", reminder_path, tostring(err)))
+                    if ok then
+                        freeswitch.consoleLog("INFO", "[CALLFLOW] Playing reminder: " .. reminder_path .. "\n")
                     else
-                        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] Reminder playback completed successfully: %s\n", reminder_path))
+                        freeswitch.consoleLog("ERROR", "[CALLFLOW] Reminder playback failed: " .. tostring(err) .. "\n")
                     end
                 else
-                    freeswitch.consoleLog("WARNING", string.format("[CALLFLOW] Reminder file missing: %s\n", reminder_path))
+                    freeswitch.consoleLog("WARNING", "[CALLFLOW] Reminder file missing: " .. reminder_path .. "\n")
                 end
                 
                 -- playback後に通話が閉じていないか確認
@@ -242,14 +221,12 @@ while session:ready() do
                 end
                 
                 -- 再生後、余韻時間確保（再生完了検知まで）
-                session:sleep(1500)
-                
-                start_time = os.time()  -- 催促再生後、タイマーをリセット
+                freeswitch.msleep(1500)
             else
-                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready, skipping reminder playback this cycle\n")
-                -- タイマーをリセットして次回再試行
-                start_time = os.time()
+                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready after re-answer, skipping reminder this cycle\n")
             end
+        
+            elapsed = 0  -- 催促後、elapsedをリセット
         else
             -- 3回催促後も無反応：切断
             freeswitch.consoleLog("INFO", "[CALLFLOW] No response after 3 prompts → hangup\n")
