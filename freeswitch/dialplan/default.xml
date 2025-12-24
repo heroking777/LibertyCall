@@ -490,13 +490,18 @@
     
     <!-- LibertyCall: 外線発信用extension（すべての電話番号をゲートウェイ経由で発信） -->
     <extension name="outbound_via_rakuten">
-      <condition field="destination_number" expression="^(\d+)$">
-	<!-- 電話番号のみを抽出してゲートウェイ経由で発信（@以降は既に削除済み） -->
-	<!-- LibertyCall: 番号形式の正規化（先頭の9や00を削除、空にならないように安全に処理） -->
+      <!-- destination_number が空でも caller_dialed_number を使う -->
+      <condition field="${caller_dialed_number}" expression="(.*)">
+	<!-- caller_dialed_number から destination_number を再設定（空を防止） -->
+	<action application="set" data="destination_number=${caller_dialed_number}"/>
 	<action application="set" data="orig_number=${destination_number}"/>
-	<!-- 変数展開を確実にするため、$${destination_number}を使用 -->
-	<action application="set" data="destination_number=$${destination_number}"/>
+	<!-- sip:を削除 -->
+	<action application="regex" data="s/^sip://"/>
+	<!-- @以降を削除 -->
+	<action application="regex" data="s/@.*$//"/>
+	<!-- 先頭の9を削除 -->
 	<action application="regex" data="s/^9+//"/>
+	<!-- 先頭の00を削除 -->
 	<action application="regex" data="s/^00//"/>
 	<!-- 変数展開を強制 -->
 	<action application="set" data="destination_number=${eval(${destination_number})}"/>
@@ -507,25 +512,29 @@
 	<action application="set" data="continue_on_fail=true"/>
 	<action application="set" data="ignore_early_media=true"/>
 	<!-- ログ確認用（デバッグ中） -->
-	<action application="log" data="INFO OUTBOUND TO $${destination_number} (orig=$${orig_number})"/>
+	<action application="log" data="INFO OUTBOUND TO ${destination_number} (orig=${orig_number})"/>
 	<!-- LibertyCall: bridge後にparkでセッションを保持（即切断を防止） -->
-	<action application="bridge" data="sofia/gateway/rakuten/$${destination_number}"/>
+	<action application="bridge" data="sofia/gateway/rakuten/${destination_number}"/>
 	<action application="park"/>
       </condition>
     </extension>
     
     <!-- LibertyCall: フォールバック用extension（@を含まない番号のみ） -->
     <extension name="sip_uri">
-      <condition field="destination_number" expression="^(sip:)?([^@]+)$">
+      <!-- destination_number が空でも caller_dialed_number を使う -->
+      <condition field="${caller_dialed_number}" expression="(.*)">
+	<!-- caller_dialed_number から destination_number を再設定（空を防止） -->
+	<action application="set" data="destination_number=${caller_dialed_number}"/>
 	<!-- LibertyCall: ゲートウェイ経由で外線発信（自サーバIPを指定しない） -->
-	<!-- 電話番号部分だけを抽出（@を含まない番号のみ） -->
-	<action application="set" data="number_only=${regex_replace($2|@.*||)}"/>
-	<action application="set" data="destination_number=${number_only}"/>
-	<!-- LibertyCall: 番号形式の正規化（先頭の9や00を削除、空にならないように安全に処理） -->
+	<!-- 番号だけを抽出 -->
 	<action application="set" data="orig_number=${destination_number}"/>
-	<!-- 変数展開を確実にするため、$${destination_number}を使用 -->
-	<action application="set" data="destination_number=$${destination_number}"/>
+	<!-- sip:を削除 -->
+	<action application="regex" data="s/^sip://"/>
+	<!-- @以降を削除 -->
+	<action application="regex" data="s/@.*$//"/>
+	<!-- 先頭の9を削除 -->
 	<action application="regex" data="s/^9+//"/>
+	<!-- 先頭の00を削除 -->
 	<action application="regex" data="s/^00//"/>
 	<!-- 変数展開を強制 -->
 	<action application="set" data="destination_number=${eval(${destination_number})}"/>
@@ -535,9 +544,9 @@
 	<action application="set" data="ignore_early_media=true"/>
 	<action application="set" data="effective_caller_id_number=$${outbound_caller_id_number}"/>
 	<!-- ログ確認用（デバッグ中） -->
-	<action application="log" data="INFO OUTBOUND TO $${destination_number} (orig=$${orig_number})"/>
+	<action application="log" data="INFO OUTBOUND TO ${destination_number} (orig=${orig_number})"/>
 	<!-- LibertyCall: bridge後にparkでセッションを保持（即切断を防止） -->
-	<action application="bridge" data="sofia/gateway/rakuten/$${destination_number}"/>
+	<action application="bridge" data="sofia/gateway/rakuten/${destination_number}"/>
 	<action application="park"/>
       </condition>
     </extension>
