@@ -4,12 +4,11 @@
 -- UUID取得
 local uuid = session:getVariable("uuid")
 local client_id = session:getVariable("client_id") or "000"
--- UUIDを変数に保存（Zombieセッションでも失わないように）
-local call_uuid = session:get_uuid()
+-- UUIDを変数に保存（Zombieセッションでも失わないように、グローバル変数として定義）
+local call_uuid = nil
 
 -- ログ出力
 freeswitch.consoleLog("INFO", string.format("[LUA] play_audio_sequence start uuid=%s client_id=%s\n", uuid, client_id))
-freeswitch.consoleLog("INFO", "[CALLFLOW] Stored call UUID: " .. tostring(call_uuid) .. "\n")
 
 -- ========================================
 -- セッション初期化と通話安定化
@@ -25,6 +24,9 @@ end
 if not session:answered() then
     freeswitch.consoleLog("INFO", "[CALLFLOW] Answering call to enable audio playback\n")
     session:answer()
+    -- UUIDを変数に保存（Zombieセッションでも失わないように）
+    call_uuid = session:get_uuid()
+    freeswitch.consoleLog("INFO", "[CALLFLOW] Stored call UUID: " .. tostring(call_uuid) .. "\n")
     -- RTPを継続的に送信してセッション維持
     session:execute("start_dtmf_generate")
     local wait_start = os.time()
