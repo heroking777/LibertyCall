@@ -168,8 +168,11 @@ while session:ready() do
                 freeswitch.msleep(100)
             end
 
-            local result = freeswitch.API():executeString("uuid_broadcast " .. call_uuid .. " playback " .. reminder_path)
-            freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback via uuid_broadcast result: " .. tostring(result) .. "\n")
+            -- FreeSWITCH外部APIで再生を実行（Zombieでも有効）
+            local api = freeswitch.API()
+            local cmd = string.format("uuid_broadcast %s playback %s both", call_uuid, reminder_path)
+            local result = api:execute("bgapi", cmd)
+            freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (bgapi external) result: " .. tostring(result) .. "\n")
 
         else
             freeswitch.consoleLog("ERR", "[CALLFLOW] Reminder file missing: " .. reminder_path .. "\n")
