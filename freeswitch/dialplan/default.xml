@@ -480,9 +480,12 @@
 	 mod_portaudio will pass the entire string to the dialplan for routing.
     -->
     <extension name="sip_uri">
-      <condition field="destination_number" expression="^sip:(.*)$">
+      <condition field="destination_number" expression="^(sip:)?(.*)$">
 	<!-- LibertyCall: ゲートウェイ経由で外線発信（自サーバIPを指定しない） -->
-	<action application="bridge" data="sofia/gateway/rakuten/$1"/>
+	<!-- 電話番号部分だけを抽出（@以降を削除） -->
+	<action application="set" data="sip_uri=${regex_replace($2|@.*||)}"/>
+	<action application="set" data="effective_caller_id_number=$${outbound_caller_id_number}"/>
+	<action application="bridge" data="sofia/gateway/rakuten/${sip_uri}"/>
       </condition>
     </extension>
 
