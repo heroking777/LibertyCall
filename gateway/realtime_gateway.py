@@ -144,7 +144,7 @@ class FreeswitchRTPMonitor:
                 timeout=5
             )
             if dump_result.returncode != 0:
-                self.logger.warning(f"[FS_RTP_MONITOR] uuid_dump failed for {uuid}: {dump_result.stderr}")
+                self.logger.warning(f"[FS_RTP_MONITOR] uuid_dump failed for {uuid} (non-fatal): {dump_result.stderr}")
                 return None
             
             # variable_rtp_local_port を検索（FreeSWITCH 1.10.12以降の形式）
@@ -169,11 +169,11 @@ class FreeswitchRTPMonitor:
             self.logger.debug(f"[FS_RTP_MONITOR] uuid_dump output: {dump_result.stdout[:500]}")
             return None
         except Exception as e:
-            self.logger.error(f"[FS_RTP_MONITOR] Error getting RTP port: {e}", exc_info=True)
+            self.logger.warning(f"[FS_RTP_MONITOR] Error getting RTP port (non-fatal): {e}")
             return None
     
     async def start_monitoring(self):
-        """FreeSWITCH送信RTPポートの監視を開始"""
+        """FreeSWITCH送信RTPポートの監視を開始（RTPポート未検出でも継続）"""
         # ポート取得をリトライ（最大5回、1秒間隔）
         for retry in range(5):
             self.freeswitch_rtp_port = self.get_rtp_port_from_freeswitch()
@@ -183,7 +183,9 @@ class FreeswitchRTPMonitor:
             self.logger.debug(f"[FS_RTP_MONITOR] Retry {retry + 1}/5: waiting for FreeSWITCH channel...")
         
         if not self.freeswitch_rtp_port:
-            self.logger.error("[FS_RTP_MONITOR] Could not get FreeSWITCH RTP port, monitoring disabled")
+            self.logger.warning("[FS_RTP_MONITOR] RTPポート未検出（スキップモード）で継続します。ASRフラグファイル監視は継続します。")
+            # RTPポートが取得できなくても、ASRフラグファイル監視は継続する
+            asyncio.create_task(self._check_asr_enable_flag())
             return
         
         try:
