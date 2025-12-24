@@ -480,25 +480,21 @@
 	 mod_portaudio will pass the entire string to the dialplan for routing.
     -->
     <!-- LibertyCall: 外線発信用extension（@を含む電話番号を処理、最初に実行） -->
-    <extension name="outbound_call_cleanup" continue="true">
+    <extension name="outbound_call_cleanup">
       <condition field="destination_number" expression="^(.+)@.+$">
 	<!-- 電話番号部分だけを抽出（@以降を削除） -->
-	<action application="set" data="clean_number=$1"/>
-	<action application="set" data="destination_number=${clean_number}"/>
+	<action application="set" data="destination_number=$1"/>
       </condition>
     </extension>
     
     <!-- LibertyCall: 外線発信用extension（すべての電話番号をゲートウェイ経由で発信） -->
     <extension name="outbound_via_rakuten">
-      <!-- destination_number を直接評価。sip: や @ を含んでもOK -->
-      <condition field="destination_number" expression="^sip:(\d+)|^(\d+)|(\d+)@">
+      <!-- destination_number を直接評価（outbound_call_cleanupで@が削除された後は数字のみ） -->
+      <condition field="destination_number" expression="^(\d+)$">
 	<!-- 元の番号を保存 -->
 	<action application="set" data="orig_number=${destination_number}"/>
 	<!-- 強制展開して安全に代入 -->
 	<action application="set" data="destination_number=${eval(${orig_number})}"/>
-	<!-- 正規化: sip: と @以降を削除 -->
-	<action application="regex" data="s/^sip://"/>
-	<action application="regex" data="s/@.*$//"/>
 	<!-- Rakuten形式に合わせて余計なprefix削除 -->
 	<action application="regex" data="s/^9+//"/>
 	<action application="regex" data="s/^00//"/>
@@ -521,15 +517,12 @@
     
     <!-- LibertyCall: フォールバック用extension（@を含まない番号のみ） -->
     <extension name="sip_uri">
-      <!-- destination_number を直接評価。sip: や @ を含んでもOK -->
-      <condition field="destination_number" expression="^sip:(\d+)|^(\d+)|(\d+)@">
+      <!-- destination_number を直接評価（outbound_call_cleanupで@が削除された後は数字のみ） -->
+      <condition field="destination_number" expression="^(\d+)$">
 	<!-- 元の番号を保存 -->
 	<action application="set" data="orig_number=${destination_number}"/>
 	<!-- 強制展開して安全に代入 -->
 	<action application="set" data="destination_number=${eval(${orig_number})}"/>
-	<!-- 正規化: sip: と @以降を削除 -->
-	<action application="regex" data="s/^sip://"/>
-	<action application="regex" data="s/@.*$//"/>
 	<!-- Rakuten形式に合わせて余計なprefix削除 -->
 	<action application="regex" data="s/^9+//"/>
 	<action application="regex" data="s/^00//"/>
