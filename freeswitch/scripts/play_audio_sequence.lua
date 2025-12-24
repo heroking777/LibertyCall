@@ -138,25 +138,32 @@ local loop_counter = 0
 freeswitch.consoleLog("INFO", "[CALLFLOW] Entering silence monitor loop\n")
 freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Initial state: session_ready=%s, elapsed=%d, prompt_count=%d\n", tostring(session:ready()), elapsed, prompt_count))
 
+-- RTPキープアライブ用の軽いトーン送信関数（別スレッドで実行）
+-- 相手側SIPゲートウェイがRTP無通信を検知してBYEを送信するのを防ぐため、
+-- 定期的にトーン信号を送信してRTPパケットを確実に流す
+local function send_rtp_keepalive()
+    while session:ready() do
+        local ok_keepalive, err_keepalive = pcall(function()
+            -- 1秒の軽いトーン信号を送信（RTPパケットが確実に流れる）
+            -- 350Hzと440Hzの2トーン（DTMF的な信号）で、無音ではなく実際のRTP payloadを送信
+            session:execute("playback", "tone_stream://%(1000,0,350,440)")
+        end)
+        if not ok_keepalive then
+            freeswitch.consoleLog("WARNING", "[CALLFLOW] RTP keepalive tone failed: " .. tostring(err_keepalive) .. "\n")
+        end
+        freeswitch.msleep(1000)  -- 1秒間隔で送信
+    end
+end
+
+-- RTPキープアライブスレッドを起動（非同期実行）
+freeswitch.consoleLog("INFO", "[CALLFLOW] Starting RTP keepalive thread\n")
+freeswitch.spawn(send_rtp_keepalive)
+
 -- 無音検知ループ（セッション維持ループ）
 while session:ready() do
     freeswitch.msleep(1000)  -- セッション状態に依存せず確実にスリープ
     elapsed = elapsed + 1
     loop_counter = loop_counter + 1
-    
-    -- RTPキープアライブ: 1秒ごとに短い無音を送信（相手側RTP監視維持）
-    -- 注意: silence_stream://200 は200msの無音で、非ブロッキング
-    -- ただし、playbackが完了する前に次のループが実行される可能性があるため、
-    -- 催促音再生時には待機時間を確保する
-    if loop_counter % 1 == 0 then  -- 毎回実行
-        local ok_keepalive, err_keepalive = pcall(function()
-            -- 非同期実行を試みる（ただし、FreeSWITCHの制約により同期になる可能性がある）
-            session:execute("playback", "silence_stream://200")
-        end)
-        if not ok_keepalive then
-            freeswitch.consoleLog("WARNING", "[CALLFLOW] RTP keepalive failed: " .. tostring(err_keepalive) .. "\n")
-        end
-    end
     
     -- デバッグ: 最初の数回は必ずログ出力
     if loop_counter <= 3 then
