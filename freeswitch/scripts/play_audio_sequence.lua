@@ -139,9 +139,17 @@ local start_time = os.time()
 freeswitch.consoleLog("INFO", "[CALLFLOW] Starting silence monitoring loop\n")
 
 -- 無音検知ループ（セッション維持ループ）
+local loop_count = 0
 while session:ready() do
     -- 1秒待機
     session:sleep(1000)
+    loop_count = loop_count + 1
+    
+    -- デバッグ: ループ実行状況を確認
+    if loop_count % 5 == 0 then
+        local elapsed_debug = os.difftime(os.time(), start_time)
+        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Loop iteration %d, elapsed=%d, session_ready=%s\n", loop_count, elapsed_debug, tostring(session:ready())))
+    end
     
     -- ASR検出タイムスタンプをチェック
     local asr_timestamp = 0
@@ -175,6 +183,11 @@ while session:ready() do
     
     -- 無音時間をチェック
     local elapsed = os.difftime(os.time(), start_time)
+    
+    -- デバッグ: タイムアウトチェック前の状態を確認
+    if elapsed >= silence_timeout - 1 then
+        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Approaching timeout: elapsed=%d, silence_timeout=%d, prompt_count=%d\n", elapsed, silence_timeout, prompt_count))
+    end
     
     if elapsed >= silence_timeout then
         prompt_count = prompt_count + 1
