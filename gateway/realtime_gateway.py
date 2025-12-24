@@ -1924,21 +1924,29 @@ class RealtimeGateway:
                     self.logger.error(f"ASR feed error: {e}", exc_info=True)
                 
                 # Google Streaming ASRへ音声を送信
+                # デバッグ: ASRハンドラーの状態を確認
+                self.logger.debug(f"[ASR_DEBUG] asr_handler_enabled={self.asr_handler_enabled}, get_or_create_handler={get_or_create_handler is not None}")
+                
                 if self.asr_handler_enabled and get_or_create_handler:
                     try:
                         # get_or_create_handlerで取得（プロセス間で共有されないため、自プロセス内で作成）
                         handler = get_or_create_handler(effective_call_id)
+                        self.logger.debug(f"[ASR_DEBUG] handler={handler}, handler.asr={handler.asr if handler else None}")
                         
                         # 初回のみon_incoming_call()を呼ぶ（asrがNoneの場合）
                         if handler and handler.asr is None:
+                            self.logger.info(f"[ASR_HOOK] Calling on_incoming_call() for call_id={effective_call_id}")
                             handler.on_incoming_call()
                             self.logger.info(f"[ASR_HOOK] ASR handler on_incoming_call() executed for call_id={effective_call_id}")
                         
                         # 音声データを送信
                         if handler and hasattr(handler, "on_audio_chunk"):
                             handler.on_audio_chunk(pcm16k_chunk)
+                            self.logger.debug(f"[ASR_DEBUG] Audio chunk sent to ASR handler (len={len(pcm16k_chunk)})")
                     except Exception as e:
-                        self.logger.debug(f"ASR handler feed error (non-fatal): {e}")
+                        self.logger.error(f"ASR handler feed error: {e}", exc_info=True)
+                else:
+                    self.logger.debug(f"[ASR_DEBUG] ASR handler disabled or not available (enabled={self.asr_handler_enabled}, available={get_or_create_handler is not None})")
                 
                 # ストリーミングモードではここで処理終了
                 # （従来のバッファリングロジックはスキップ）
