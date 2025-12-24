@@ -116,6 +116,17 @@ local reminders = {
 -- タイムアウト設定（秒）
 local silence_timeout = 10
 
+-- ==========================================
+-- 無音RTPストリームを送信（相手側RTP監視維持）
+-- ==========================================
+-- silence_stream://-1 は無限に無音RTP payloadを送り続ける
+-- これにより、相手側（SIPキャリア）がRTP無通信と判断せず、10秒タイムアウトが発生しない
+freeswitch.consoleLog("INFO", "[CALLFLOW] Starting background silence stream (keepalive RTP)\n")
+-- uuid_broadcastを使用して別スレッドで無音ストリームを再生（Luaロジックと競合しない）
+api = freeswitch.API()
+local broadcast_result = api:executeString("uuid_broadcast " .. uuid .. " silence_stream://-1 both")
+freeswitch.consoleLog("INFO", "[CALLFLOW] uuid_broadcast result: " .. (broadcast_result or "nil") .. "\n")
+
 -- 初回アナウンス再生後、ASRモニタ開始までの待機時間（10秒）
 freeswitch.consoleLog("INFO", "[CALLFLOW] Waiting 10 seconds after initial prompts before starting silence monitoring\n")
 session:sleep(10000)
