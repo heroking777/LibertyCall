@@ -224,7 +224,8 @@ def get_or_create_handler(call_id: str) -> ASRHandler:
     """
     if call_id not in _handlers:
         _handlers[call_id] = ASRHandler(call_id)
-        _handlers[call_id].start()
+        # on_incoming_call()は呼ばない（realtime_gateway.py側で呼ぶ）
+        # これにより、プロセス間で独立して動作できる
     
     return _handlers[call_id]
 

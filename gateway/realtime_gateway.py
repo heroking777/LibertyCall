@@ -2120,6 +2120,14 @@ class RealtimeGateway:
                     self.logger.warning(f"[SHUTDOWN] Error cancelling timer for call_id={call_id}: {e}")
         self._no_input_timers.clear()
         
+        # ASRハンドラーを停止
+        if self.call_id and remove_handler:
+            try:
+                remove_handler(self.call_id)
+                self.logger.info(f"[SHUTDOWN] ASR handler removed for call_id={self.call_id}")
+            except Exception as e:
+                self.logger.warning(f"[SHUTDOWN] Error removing ASR handler: {e}")
+        
         # シャットダウンイベントを設定
         self.shutdown_event.set()
         self.logger.info("[SHUTDOWN] Graceful shutdown completed")
