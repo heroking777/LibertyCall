@@ -69,11 +69,10 @@
 	<action application="uuid_rtp_stream" data="$${call_uuid} start 127.0.0.1:7002 codec=PCMU"/>
 	<!-- 録音ファイルが生成されるまで少し待機（2秒） -->
 	<action application="sleep" data="2000"/>
-<<<<<<< Current (Your changes)
+	<!-- execute_on_mediaを空に設定（古いffmpeg設定を無効化） -->
+	<action application="export" data="execute_on_media="/>
 	<!-- ASR開始通知 -->
 	<action application="system" data="curl -X POST http://127.0.0.1:8000/asr/start/${uuid}?client_id=000 &amp;"/>
-=======
->>>>>>> Incoming (Background Agent changes)
 
 	<!-- 通話維持（ASR反応待ち） -->
 	<!-- Dialplan途中終了防止：execute_on_media実行後もセッションを維持 -->
