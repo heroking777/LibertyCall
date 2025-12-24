@@ -140,12 +140,18 @@ local elapsed = 0
 local loop_counter = 0
 
 freeswitch.consoleLog("INFO", "[CALLFLOW] Entering silence monitor loop\n")
+freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Initial state: session_ready=%s, elapsed=%d, prompt_count=%d\n", tostring(session:ready()), elapsed, prompt_count))
 
 -- 無音検知ループ（セッション維持ループ）
 while session:ready() do
     freeswitch.msleep(1000)  -- セッション状態に依存せず確実にスリープ
     elapsed = elapsed + 1
     loop_counter = loop_counter + 1
+    
+    -- デバッグ: 最初の数回は必ずログ出力
+    if loop_counter <= 3 then
+        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Loop iteration=%d, elapsed=%d, session_ready=%s\n", loop_counter, elapsed, tostring(session:ready())))
+    end
     
     -- デバッグ: ループ実行状況を確認（5秒ごと）
     if loop_counter % 5 == 0 then
