@@ -156,7 +156,7 @@ while session:ready() do
         if f then
             io.close(f)
             freeswitch.consoleLog("INFO", "[CALLFLOW] Attempting reminder playback: " .. reminder_path .. "\n")
-            session:execute("answer")
+            session:execute("pre_answer")
             freeswitch.msleep(200)
             local result = session:execute("playback", reminder_path)
             freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback result: " .. tostring(result) .. "\n")
