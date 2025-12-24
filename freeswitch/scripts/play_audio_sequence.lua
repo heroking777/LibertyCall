@@ -170,8 +170,8 @@ while session:ready() do
 
             -- FreeSWITCH外部APIで再生を実行（Zombieでも有効）
             local api = freeswitch.API()
-            local cmd = string.format("uuid_broadcast %s playback %s both", call_uuid, reminder_path)
-            local result = api:execute("bgapi", cmd)
+            local cmd = string.format("bgapi uuid_broadcast %s playback %s both", call_uuid, reminder_path)
+            local result = api:executeString(cmd)
             freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (bgapi external) result: " .. tostring(result) .. "\n")
 
         else
