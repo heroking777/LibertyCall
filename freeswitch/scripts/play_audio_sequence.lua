@@ -37,9 +37,9 @@ session:setVariable("playback_terminators", "")
 -- AutoHangupを無効化（playback完了時に勝手にhangupするのを防ぐ）
 session:setAutoHangup(false)
 
--- A-legのセッションタイムアウトを完全に無効化
+-- A-legのセッションタイムアウト設定（催促やASR動作のための余裕を確保）
 session:setVariable("disable-timer", "true")
-session:setVariable("media_timeout", "0")
+session:setVariable("media_timeout", "60")  -- SIPプロファイルの設定と合わせて60秒に設定
 session:setVariable("session_timeout", "0")
 -- B-leg終了のA-leg伝搬を防止
 session:setVariable("hangup_after_bridge", "false")
