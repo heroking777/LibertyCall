@@ -50,6 +50,13 @@ if str(_PROJECT_ROOT) not in sys.path:
 from libertycall.client_loader import load_client_profile
 from libertycall.gateway.ai_core import AICore
 from libertycall.gateway.audio_utils import ulaw8k_to_pcm16k, pcm24k_to_ulaw8k
+
+# Google Streaming ASR統合
+try:
+    from asr_handler import get_or_create_handler, remove_handler
+    ASR_HANDLER_AVAILABLE = True
+except ImportError:
+    ASR_HANDLER_AVAILABLE = False
 from libertycall.gateway.intent_rules import normalize_text
 from libertycall.gateway.transcript_normalizer import normalize_transcript
 from libertycall.console_bridge import console_bridge
@@ -382,6 +389,13 @@ class RealtimeGateway:
         
         # ChatGPT音声風: TTS送信ループの即時flush用イベント
         self._tts_sender_wakeup = asyncio.Event()
+        
+        # Google Streaming ASRハンドラー（オプション）
+        self.asr_handler = None
+        if ASR_HANDLER_AVAILABLE:
+            self.logger.info("[INIT] Google Streaming ASR handler available")
+        else:
+            self.logger.warning("[INIT] Google Streaming ASR handler not available (asr_handler module not found)")
         
         # ASR プロバイダに応じたログ出力
         asr_provider = getattr(self.ai_core, 'asr_provider', 'google')
@@ -1905,6 +1919,17 @@ class RealtimeGateway:
                     self.ai_core.on_new_audio(effective_call_id, pcm16k_chunk)
                 except Exception as e:
                     self.logger.error(f"ASR feed error: {e}", exc_info=True)
+                
+                # Google Streaming ASRへ音声を送信
+                if ASR_HANDLER_AVAILABLE:
+                    try:
+                        if self.asr_handler is None:
+                            # 初回のみハンドラーを取得
+                            self.asr_handler = get_or_create_handler(effective_call_id)
+                        if hasattr(self.asr_handler, "on_audio_chunk"):
+                            self.asr_handler.on_audio_chunk(pcm16k_chunk)
+                    except Exception as e:
+                        self.logger.debug(f"Google ASR feed error (non-fatal): {e}")
                 
                 # ストリーミングモードではここで処理終了
                 # （従来のバッファリングロジックはスキップ）

@@ -197,7 +197,16 @@ def main():
                     handle_channel_create(uuid, e)
                 elif event_name == "CHANNEL_ANSWER":
                     logger.info(f"通話開始: ANSWER イベント UUID={uuid}")
-                    # CHANNEL_ANSWER時点ではまだRTP未確立のため、ここでは処理しない
+                    # Google Streaming ASRハンドラーを起動
+                    try:
+                        from asr_handler import get_or_create_handler
+                        handler = get_or_create_handler(uuid)
+                        handler.on_incoming_call()
+                        logger.info(f"[ASRHandler] Started for UUID={uuid}")
+                    except ImportError:
+                        logger.warning("[ASRHandler] asr_handler module not available")
+                    except Exception as e:
+                        logger.error(f"[ASRHandler] Failed to start: {e}", exc_info=True)
                     # 実際の通話処理はCHANNEL_EXECUTE (playback開始) で実行
                 elif event_name == "CHANNEL_EXECUTE":
                     # CHANNEL_EXECUTE: playback開始時（この時点でチャンネルが生きており、RTP確立済み）
@@ -254,6 +263,14 @@ def main():
                     logger.info(f"通話終了: HANGUP イベント UUID={uuid}")
                     # 処理完了したUUIDを削除
                     active_calls.discard(uuid)
+                    # ASRハンドラーを停止
+                    try:
+                        from asr_handler import remove_handler
+                        remove_handler(uuid)
+                    except ImportError:
+                        pass
+                    except Exception as e:
+                        logger.debug(f"[ASRHandler] Failed to remove handler: {e}")
                     handle_hangup(uuid, e)
             except Exception as e:
                 # 個別のイベント処理エラーをログに記録して続行
