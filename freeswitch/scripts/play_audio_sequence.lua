@@ -230,8 +230,19 @@ while session:ready() do
             end
             
             if session:ready() then
+                -- ファイル存在確認関数（freeswitch.FileExistsは存在しないため、io.openを使用）
+                local function file_exists(name)
+                    local f = io.open(name, "r")
+                    if f ~= nil then
+                        io.close(f)
+                        return true
+                    else
+                        return false
+                    end
+                end
+                
                 -- ファイル存在確認と安全な再生
-                if freeswitch.FileExists(reminder_path) then
+                if file_exists(reminder_path) then
                     local ok, err = pcall(function()
                         local result = session:execute("playback", reminder_path)
                         freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback result: " .. tostring(result) .. "\n")
@@ -243,7 +254,7 @@ while session:ready() do
                         freeswitch.consoleLog("ERROR", "[CALLFLOW] Reminder playback failed: " .. tostring(err) .. "\n")
                     end
                 else
-                    freeswitch.consoleLog("WARNING", "[CALLFLOW] Reminder file missing: " .. reminder_path .. "\n")
+                    freeswitch.consoleLog("ERR", "[CALLFLOW] Reminder file missing: " .. reminder_path .. "\n")
                 end
                 
                 -- playback後に通話が閉じていないか確認
