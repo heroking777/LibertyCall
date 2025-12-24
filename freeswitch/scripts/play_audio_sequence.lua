@@ -149,17 +149,26 @@ while session:ready() do
     if elapsed >= 10 then
         prompt_count = prompt_count + 1
         freeswitch.consoleLog("INFO", string.format("[CALLFLOW] Timeout %d, playing reminder %d\n", elapsed, prompt_count))
-
         local reminder_path = string.format("/opt/libertycall/clients/000/audio/000-00%d_8k.wav", prompt_count + 3)
 
         local f = io.open(reminder_path, "r")
         if f then
             io.close(f)
             freeswitch.consoleLog("INFO", "[CALLFLOW] Attempting reminder playback: " .. reminder_path .. "\n")
-            session:execute("pre_answer")
-            freeswitch.msleep(200)
-            local result = session:execute("playback", reminder_path)
-            freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback result: " .. tostring(result) .. "\n")
+
+            -- セッションがZombieなら強制復活
+            if not session:ready() then
+                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready, forcing rebind\n")
+                session = freeswitch.Session(session:get_uuid())
+                freeswitch.msleep(100)
+                session:execute("answer")
+                freeswitch.msleep(300)
+            end
+
+            -- 最後の安全策：Zombie状態でも再生実行
+            local result = freeswitch.API():executeString("uuid_broadcast " .. session:get_uuid() .. " playback " .. reminder_path)
+            freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback via uuid_broadcast result: " .. tostring(result) .. "\n")
+
         else
             freeswitch.consoleLog("ERR", "[CALLFLOW] Reminder file missing: " .. reminder_path .. "\n")
         end
@@ -168,7 +177,6 @@ while session:ready() do
             freeswitch.consoleLog("INFO", "[CALLFLOW] No response after 3 reminders, hanging up.\n")
             break
         end
-
         elapsed = 0
     end
 end
