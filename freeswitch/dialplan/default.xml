@@ -481,7 +481,8 @@
     -->
     <extension name="sip_uri">
       <condition field="destination_number" expression="^sip:(.*)$">
-	<action application="bridge" data="sofia/${use_profile}/$1"/>
+	<!-- LibertyCall: ゲートウェイ経由で外線発信（自サーバIPを指定しない） -->
+	<action application="bridge" data="sofia/gateway/rakuten/$1"/>
       </condition>
     </extension>
 
