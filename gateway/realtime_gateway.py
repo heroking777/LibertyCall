@@ -147,16 +147,27 @@ class FreeswitchRTPMonitor:
                 self.logger.warning(f"[FS_RTP_MONITOR] uuid_dump failed for {uuid}: {dump_result.stderr}")
                 return None
             
-            # local_media_port または rtp_local_media_port を検索
-            port_matches = re.findall(r"(?:local_media_port|rtp_local_media_port):\s+(\d+)", dump_result.stdout)
+            # variable_rtp_local_port を検索（FreeSWITCH 1.10.12以降の形式）
+            for line in dump_result.stdout.splitlines():
+                if "variable_rtp_local_port" in line:
+                    try:
+                        port = int(line.split("=")[-1].strip())
+                        self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH RTP port: {port} (from uuid_dump of {uuid})")
+                        return port
+                    except (ValueError, IndexError) as e:
+                        self.logger.warning(f"[FS_RTP_MONITOR] Failed to parse variable_rtp_local_port from line: {line}")
+                        continue
+            
+            # フォールバック: 旧形式の検索（後方互換性のため）
+            port_matches = re.findall(r"(?:local_media_port|rtp_local_media_port)[:=]\s*(\d+)", dump_result.stdout)
             if port_matches:
                 port = int(port_matches[0])
-                self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH RTP port: {port} (from uuid_dump of {uuid})")
+                self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH RTP port: {port} (from uuid_dump of {uuid}, fallback format)")
                 return port
-            else:
-                self.logger.warning(f"[FS_RTP_MONITOR] RTP port not found in uuid_dump output for {uuid}")
-                self.logger.debug(f"[FS_RTP_MONITOR] uuid_dump output: {dump_result.stdout[:500]}")
-                return None
+            
+            self.logger.warning(f"[FS_RTP_MONITOR] RTP port not found in uuid_dump output for {uuid}")
+            self.logger.debug(f"[FS_RTP_MONITOR] uuid_dump output: {dump_result.stdout[:500]}")
+            return None
         except Exception as e:
             self.logger.error(f"[FS_RTP_MONITOR] Error getting RTP port: {e}", exc_info=True)
             return None
