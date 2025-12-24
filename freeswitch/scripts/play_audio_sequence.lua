@@ -1,6 +1,26 @@
 -- LibertyCall: play_audio_sequence Luaスクリプト
 -- 同一チャンネル内で全アクションを実行（transferによる別チャンネル化を防止）
 
+-- socket モジュールをロード（FreeSWITCHイベントソケット経由でbgapi送信用）
+local socket = require("socket")
+
+-- FreeSWITCHイベントソケット経由でbgapiを送信する関数
+function send_bgapi(cmd)
+    local client = socket.tcp()
+    client:settimeout(2)
+    local ok, err = client:connect("127.0.0.1", 8021)
+    if not ok then
+        freeswitch.consoleLog("ERR", "[CALLFLOW] Socket connect failed: " .. tostring(err) .. "\n")
+        return nil
+    end
+    client:send("auth ClueCon\n")
+    client:receive("*l")
+    client:send("bgapi " .. cmd .. "\n\n")
+    local line = client:receive("*l")
+    client:close()
+    return line
+end
+
 -- UUID取得
 local uuid = session:getVariable("uuid")
 local client_id = session:getVariable("client_id") or "000"
