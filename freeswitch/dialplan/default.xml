@@ -490,19 +490,19 @@
     
     <!-- LibertyCall: 外線発信用extension（すべての電話番号をゲートウェイ経由で発信） -->
     <extension name="outbound_via_rakuten">
-      <!-- caller_dialed_number が確実に存在するのでそれを起点にする -->
-      <condition field="${caller_dialed_number}" expression="(.*)">
-	<!-- 一旦安全にorig_numberに保存 -->
-	<action application="set" data="orig_number=${caller_dialed_number}"/>
-	<!-- destination_numberへ代入（evalを含めて強制展開） -->
+      <!-- destination_number を直接評価。sip: や @ を含んでもOK -->
+      <condition field="destination_number" expression="^sip:(\d+)|^(\d+)|(\d+)@">
+	<!-- 元の番号を保存 -->
+	<action application="set" data="orig_number=${destination_number}"/>
+	<!-- 強制展開して安全に代入 -->
 	<action application="set" data="destination_number=${eval(${orig_number})}"/>
-	<!-- sip: と @以降削除 -->
+	<!-- 正規化: sip: と @以降を削除 -->
 	<action application="regex" data="s/^sip://"/>
 	<action application="regex" data="s/@.*$//"/>
-	<!-- Rakutenフォーマットに整形 -->
+	<!-- Rakuten形式に合わせて余計なprefix削除 -->
 	<action application="regex" data="s/^9+//"/>
 	<action application="regex" data="s/^00//"/>
-	<!-- 最終的に展開して再設定 -->
+	<!-- 二段階目の eval -->
 	<action application="set" data="destination_number=${eval(${destination_number})}"/>
 	<!-- 正規化後の番号が空でないことを確認 -->
 	<action application="set" data="effective_caller_id_number=$${outbound_caller_id_number}"/>
@@ -510,9 +510,9 @@
 	<action application="set" data="hangup_after_bridge=false"/>
 	<action application="set" data="continue_on_fail=true"/>
 	<action application="set" data="ignore_early_media=true"/>
-	<!-- デバッグ出力 -->
+	<!-- デバッグ用ログ -->
 	<action application="log" data="INFO OUTBOUND TO ${destination_number} (orig=${orig_number})"/>
-	<!-- 外線発信 -->
+	<!-- Rakutenゲートウェイに発信 -->
 	<action application="bridge" data="sofia/gateway/rakuten/${destination_number}"/>
 	<!-- セッション保持 -->
 	<action application="park"/>
@@ -521,29 +521,30 @@
     
     <!-- LibertyCall: フォールバック用extension（@を含まない番号のみ） -->
     <extension name="sip_uri">
-      <!-- caller_dialed_number が確実に存在するのでそれを起点にする -->
-      <condition field="${caller_dialed_number}" expression="(.*)">
-	<!-- 一旦安全にorig_numberに保存 -->
-	<action application="set" data="orig_number=${caller_dialed_number}"/>
-	<!-- destination_numberへ代入（evalを含めて強制展開） -->
+      <!-- destination_number を直接評価。sip: や @ を含んでもOK -->
+      <condition field="destination_number" expression="^sip:(\d+)|^(\d+)|(\d+)@">
+	<!-- 元の番号を保存 -->
+	<action application="set" data="orig_number=${destination_number}"/>
+	<!-- 強制展開して安全に代入 -->
 	<action application="set" data="destination_number=${eval(${orig_number})}"/>
-	<!-- sip: と @以降削除 -->
+	<!-- 正規化: sip: と @以降を削除 -->
 	<action application="regex" data="s/^sip://"/>
 	<action application="regex" data="s/@.*$//"/>
-	<!-- Rakutenフォーマットに整形 -->
+	<!-- Rakuten形式に合わせて余計なprefix削除 -->
 	<action application="regex" data="s/^9+//"/>
 	<action application="regex" data="s/^00//"/>
-	<!-- 最終的に展開して再設定 -->
+	<!-- 二段階目の eval -->
 	<action application="set" data="destination_number=${eval(${destination_number})}"/>
 	<!-- LibertyCall: 内部legの早期切断を防止 -->
 	<action application="set" data="hangup_after_bridge=false"/>
 	<action application="set" data="continue_on_fail=true"/>
 	<action application="set" data="ignore_early_media=true"/>
 	<action application="set" data="effective_caller_id_number=$${outbound_caller_id_number}"/>
-	<!-- ログ確認用（デバッグ中） -->
+	<!-- デバッグ用ログ -->
 	<action application="log" data="INFO OUTBOUND TO ${destination_number} (orig=${orig_number})"/>
-	<!-- LibertyCall: bridge後にparkでセッションを保持（即切断を防止） -->
+	<!-- Rakutenゲートウェイに発信 -->
 	<action application="bridge" data="sofia/gateway/rakuten/${destination_number}"/>
+	<!-- セッション保持 -->
 	<action application="park"/>
       </condition>
     </extension>
