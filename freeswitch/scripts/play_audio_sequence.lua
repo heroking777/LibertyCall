@@ -160,29 +160,36 @@ while session:ready() do
         if f then
             io.close(f)
             freeswitch.consoleLog("INFO", "[CALLFLOW] Attempting reminder playback: " .. reminder_path .. "\n")
-            freeswitch.consoleLog("INFO", "[CALLFLOW] DEBUG call_uuid=" .. tostring(call_uuid) .. "\n")
 
-            -- ここでUUIDを固定変数から利用
-            if not call_uuid then
-                freeswitch.consoleLog("ERROR", "[CALLFLOW] call_uuid is nil, cannot execute bgapi\n")
-            else
-                -- FreeSWITCHの内部ジョブスケジューラに登録（セッションに依存しない）
-                local api = freeswitch.API()
-                local cmd = string.format("uuid_broadcast %s playback %s both", call_uuid, reminder_path)
-                freeswitch.consoleLog("INFO", "[CALLFLOW] Executing bgapi command: " .. cmd .. "\n")
-                
-                -- sched_api +1 none で1秒後に独立ジョブとして実行（Luaセッションの生存に依存しない）
-                local sched_cmd = "sched_api +1 none " .. cmd
-                freeswitch.consoleLog("INFO", "[CALLFLOW] DEBUG sched_cmd: " .. sched_cmd .. "\n")
-                local ok, result = pcall(function() return api:executeString(sched_cmd) end)
+            -- RTP経路を強制的に再確立してから再生
+            local api = freeswitch.API()
+            local current_uuid = call_uuid or session:get_uuid()
+
+            if current_uuid then
+                freeswitch.consoleLog("INFO", "[CALLFLOW] Re-negotiating RTP for UUID: " .. current_uuid .. "\n")
+                local reneg = api:executeString("uuid_media_renegotiate " .. current_uuid)
+                freeswitch.consoleLog("INFO", "[CALLFLOW] RTP renegotiate result: " .. tostring(reneg) .. "\n")
+
+                -- 100ms待機してから再生ジョブを登録
+                freeswitch.msleep(100)
+                local cmd = string.format("uuid_broadcast %s playback %s both", current_uuid, reminder_path)
+                local sched_cmd = string.format("sched_api +1 none %s", cmd)
+                freeswitch.consoleLog("INFO", "[CALLFLOW] Executing sched_api command: " .. sched_cmd .. "\n")
+
+                local ok, result = pcall(function()
+                    return api:executeString(sched_cmd)
+                end)
+
                 if ok then
                     freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (sched_api) result: " .. tostring(result) .. "\n")
                 else
-                    freeswitch.consoleLog("ERROR", "[CALLFLOW] sched_api execution failed: " .. tostring(result) .. "\n")
+                    freeswitch.consoleLog("ERR", "[CALLFLOW] sched_api execution failed: " .. tostring(result) .. "\n")
                 end
-                
+
                 -- 送信後にLuaスレッドを1秒キープして即GCを防止
                 freeswitch.msleep(1000)
+            else
+                freeswitch.consoleLog("ERR", "[CALLFLOW] call_uuid is nil, cannot play reminder\n")
             end
 
         else
