@@ -492,8 +492,13 @@
     <extension name="outbound_via_rakuten">
       <condition field="destination_number" expression="^(\d+)$">
 	<!-- 電話番号のみを抽出してゲートウェイ経由で発信（@以降は既に削除済み） -->
+	<!-- LibertyCall: 内部legの早期切断を防止 -->
+	<action application="set" data="hangup_after_bridge=false"/>
+	<action application="set" data="continue_on_fail=true"/>
+	<action application="set" data="ignore_early_media=true"/>
 	<action application="set" data="effective_caller_id_number=$${outbound_caller_id_number}"/>
-	<action application="bridge" data="sofia/gateway/rakuten/$1"/>
+	<!-- LibertyCall: bridge後にparkでセッションを保持（即切断を防止） -->
+	<action application="bridge" data="sofia/gateway/rakuten/$1 &park()"/>
       </condition>
     </extension>
     
@@ -502,9 +507,14 @@
       <condition field="destination_number" expression="^(sip:)?([^@]+)$">
 	<!-- LibertyCall: ゲートウェイ経由で外線発信（自サーバIPを指定しない） -->
 	<!-- 電話番号部分だけを抽出（@を含まない番号のみ） -->
+	<!-- LibertyCall: 内部legの早期切断を防止 -->
+	<action application="set" data="hangup_after_bridge=false"/>
+	<action application="set" data="continue_on_fail=true"/>
+	<action application="set" data="ignore_early_media=true"/>
 	<action application="set" data="number_only=${regex_replace($2|@.*||)}"/>
 	<action application="set" data="effective_caller_id_number=$${outbound_caller_id_number}"/>
-	<action application="bridge" data="sofia/gateway/rakuten/${number_only}"/>
+	<!-- LibertyCall: bridge後にparkでセッションを保持（即切断を防止） -->
+	<action application="bridge" data="sofia/gateway/rakuten/${number_only} &park()"/>
       </condition>
     </extension>
 
