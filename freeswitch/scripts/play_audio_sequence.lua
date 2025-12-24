@@ -29,6 +29,13 @@ if not session:answered() then
     freeswitch.consoleLog("INFO", "[CALLFLOW] Call answered and RTP ready\n")
 end
 
+-- タイムアウト設定を明示的に設定（SIPプロファイルの設定を確実に適用）
+session:setVariable("media_timeout", "60")
+session:setVariable("rtp-timeout-sec", "60")
+session:setVariable("rtp-hold-timeout-sec", "300")
+session:setVariable("rtp-keepalive-ms", "500")
+freeswitch.consoleLog("INFO", "[CALLFLOW] Timeout settings applied: media_timeout=60, rtp-timeout-sec=60\n")
+
 -- hangup_after_bridgeをfalseにして勝手に切断されないようにする
 session:setVariable("hangup_after_bridge", "false")
 session:setVariable("ignore_display_updates", "true")

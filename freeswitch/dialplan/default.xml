@@ -37,9 +37,11 @@
       <!-- "play_audio_sequence a" にもマッチさせる -->
       <condition field="destination_number" expression="^play_audio_sequence">
 	<action application="answer"/>
-	<!-- A-legのセッションタイムアウトを完全に無効化 -->
+	<!-- A-legのセッションタイムアウト設定（催促やASR動作のための余裕を確保） -->
 	<action application="set" data="disable-timer=true"/>
-	<action application="set" data="media_timeout=0"/>
+	<action application="set" data="media_timeout=60"/>
+	<action application="set" data="rtp-timeout-sec=60"/>
+	<action application="set" data="rtp-hold-timeout-sec=300"/>
 	<action application="set" data="session_timeout=0"/>
 	<!-- メディア確立を確実に待つ -->
 	<action application="sleep" data="1500"/>
@@ -63,13 +65,9 @@
 	<action application="playback" data="/opt/libertycall/clients/000/audio/000_8k.wav"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/001_8k.wav"/>
 	<action application="playback" data="/opt/libertycall/clients/000/audio/002_8k.wav"/>
-	<!-- メディア確立後、RTPをGateway(7002)へミラー送信 -->
-	<!-- UUIDを明示的にセットしてから実行 -->
-	<action application="set" data="call_uuid=${uuid}"/>
-	<action application="uuid_rtp_stream" data="$${call_uuid} start 127.0.0.1:7002 codec=PCMU"/>
 	<!-- 録音ファイルが生成されるまで少し待機（2秒） -->
 	<action application="sleep" data="2000"/>
-	<!-- execute_on_mediaを空に設定（古いffmpeg設定を無効化） -->
+	<!-- execute_on_mediaを空に設定（古いffmpeg設定を無効化、Luaスクリプトでffmpegを実行） -->
 	<action application="export" data="execute_on_media="/>
 	<!-- ASR開始通知 -->
 	<action application="system" data="curl -X POST http://127.0.0.1:8000/asr/start/${uuid}?client_id=000 &amp;"/>
