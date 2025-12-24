@@ -152,19 +152,16 @@ while session:ready() do
         keepalive_logged = true
     end
     
-    local ok_keepalive, err_keepalive = pcall(function()
-        -- 1000msの無音ファイルを再生（実際のRTP UDPパケットが送信される）
-        session:execute("playback", silence_file)
-    end)
-    if not ok_keepalive then
-        freeswitch.consoleLog("WARNING", "[CALLFLOW] RTP keepalive silence file failed: " .. tostring(err_keepalive) .. "\n")
-    end
-    
-    -- 1秒単位でループを回す（ブロックしないよう50msごとにチェック）
-    local sleep_count = 0
-    while sleep_count < 20 and session:ready() do  -- 20回 × 50ms = 1000ms
-        freeswitch.msleep(50)
-        sleep_count = sleep_count + 1
+    -- 無音ファイルを再生（実際のRTP UDPパケットが送信される）
+    -- 注意: playbackは1秒ブロックするが、これは無音ファイルの長さに合わせている
+    -- 再生中もsession:ready()が監視される（playback内で自動的にチェックされる）
+    if session:ready() then
+        local ok_keepalive, err_keepalive = pcall(function()
+            session:execute("playback", silence_file)
+        end)
+        if not ok_keepalive then
+            freeswitch.consoleLog("WARNING", "[CALLFLOW] RTP keepalive silence file failed: " .. tostring(err_keepalive) .. "\n")
+        end
     end
     
     elapsed = elapsed + 1
