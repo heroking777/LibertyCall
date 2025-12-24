@@ -172,23 +172,21 @@ while session:ready() do
 
                 freeswitch.msleep(100)
 
-                -- uuid_displace による再生（確実に音声をセッションへ強制ミックス）
+                -- 即時に uuid_displace を実行（Lua実行中に確実にセッションへアタッチ）
                 local cmd = string.format("uuid_displace %s start %s", current_uuid, reminder_path)
-                local sched_cmd = string.format("sched_api +1 none %s", cmd)
-
-                freeswitch.consoleLog("INFO", "[CALLFLOW] Executing sched_api (displace) command: " .. sched_cmd .. "\n")
+                freeswitch.consoleLog("INFO", "[CALLFLOW] Executing uuid_displace command: " .. cmd .. "\n")
 
                 local ok, result = pcall(function()
-                    return api:executeString(sched_cmd)
+                    return api:executeString(cmd)
                 end)
 
                 if ok then
-                    freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (displace sched_api) result: " .. tostring(result) .. "\n")
+                    freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (displace immediate) result: " .. tostring(result) .. "\n")
                 else
-                    freeswitch.consoleLog("ERR", "[CALLFLOW] sched_api (displace) execution failed: " .. tostring(result) .. "\n")
+                    freeswitch.consoleLog("ERR", "[CALLFLOW] uuid_displace execution failed: " .. tostring(result) .. "\n")
                 end
 
-                -- Lua GC防止
+                -- Lua GC防止（再生完了まで待機）
                 freeswitch.msleep(1000)
             else
                 freeswitch.consoleLog("ERR", "[CALLFLOW] call_uuid is nil, cannot play reminder\n")
