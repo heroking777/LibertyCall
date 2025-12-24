@@ -12,6 +12,18 @@
 <!-- http://wiki.freeswitch.org/wiki/Dialplan_XML -->
 <include>
   <context name="public">
+    <!-- Google Streaming ASR統合用：socket接続でPythonハンドラーに転送（オプション） -->
+    <!-- 注意: このextensionは既存のforce_public_entryより優先度が高い（先に配置） -->
+    <!-- 使用する場合は、force_public_entryをコメントアウトするか、優先度を調整してください -->
+    <!--
+    <extension name="libertycall-asr-entry">
+      <condition field="destination_number" expression="^.*$">
+        <action application="answer"/>
+        <action application="socket" data="127.0.0.1:8021 async full"/>
+      </condition>
+    </extension>
+    -->
+    
     <!-- 外線呼び出し用：loopback self-bridge構成（A-leg: RTP tap, B-leg: playback） -->
     <!-- シンプル構成：音声再生を優先、RTP tapは最小限の設定 -->
     <extension name="force_public_entry">
