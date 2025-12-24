@@ -50,13 +50,16 @@ if str(_PROJECT_ROOT) not in sys.path:
 from libertycall.client_loader import load_client_profile
 from libertycall.gateway.ai_core import AICore
 from libertycall.gateway.audio_utils import ulaw8k_to_pcm16k, pcm24k_to_ulaw8k
-
-# Google Streaming ASR統合
+import sys
+from pathlib import Path
+# ASRハンドラーをインポート（プロジェクトルートから）
+sys.path.insert(0, str(Path(__file__).parent.parent))
 try:
     from asr_handler import get_or_create_handler, remove_handler
     ASR_HANDLER_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     ASR_HANDLER_AVAILABLE = False
+    # インポートエラーは警告のみ（オプション機能のため）
 from libertycall.gateway.intent_rules import normalize_text
 from libertycall.gateway.transcript_normalizer import normalize_transcript
 from libertycall.console_bridge import console_bridge
@@ -389,13 +392,6 @@ class RealtimeGateway:
         
         # ChatGPT音声風: TTS送信ループの即時flush用イベント
         self._tts_sender_wakeup = asyncio.Event()
-        
-        # Google Streaming ASRハンドラー（オプション）
-        self.asr_handler = None
-        if ASR_HANDLER_AVAILABLE:
-            self.logger.info("[INIT] Google Streaming ASR handler available")
-        else:
-            self.logger.warning("[INIT] Google Streaming ASR handler not available (asr_handler module not found)")
         
         # ASR プロバイダに応じたログ出力
         asr_provider = getattr(self.ai_core, 'asr_provider', 'google')
@@ -1923,22 +1919,8 @@ class RealtimeGateway:
                 # Google Streaming ASRへ音声を送信
                 if ASR_HANDLER_AVAILABLE:
                     try:
-                        if self.asr_handler is None:
-                            # 初回のみハンドラーを取得（call_idが確定した時点で）
-                            self.asr_handler = get_or_create_handler(effective_call_id)
-                            self.logger.info(f"[ASR_HOOK] ASR handler initialized for call_id={effective_call_id}")
-                            
-                            # ASRハンドラーの初期化（on_incoming_callを呼ぶ）
-                            # 注意: gateway_event_listener.pyでも呼ばれるが、プロセスが異なるため
-                            # realtime_gateway.pyのプロセス内でも呼ぶ必要がある
-                            if hasattr(self.asr_handler, "on_incoming_call"):
-                                # 既に呼ばれているか確認（asrがNoneでない場合は既に起動済み）
-                                if self.asr_handler.asr is None:
-                                    self.asr_handler.on_incoming_call()
-                                    self.logger.info(f"[ASR_HOOK] ASR handler on_incoming_call() executed")
-                        
-                        if self.asr_handler and hasattr(self.asr_handler, "on_audio_chunk"):
-                            self.asr_handler.on_audio_chunk(pcm16k_chunk)
+                        handler = get_or_create_handler(effective_call_id, self.ai_core.client_id)
+                        handler.on_audio_chunk(pcm16k_chunk)
                     except Exception as e:
                         self.logger.debug(f"Google ASR feed error (non-fatal): {e}")
                 
@@ -2121,17 +2103,6 @@ class RealtimeGateway:
                 except Exception as e:
                     self.logger.warning(f"[SHUTDOWN] Error cancelling timer for call_id={call_id}: {e}")
         self._no_input_timers.clear()
-        
-        # ASRハンドラーを停止
-        if self.asr_handler and ASR_HANDLER_AVAILABLE:
-            try:
-                if hasattr(self.asr_handler, "stop"):
-                    self.asr_handler.stop()
-                if self.call_id:
-                    remove_handler(self.call_id)
-                self.logger.info(f"[SHUTDOWN] ASR handler stopped for call_id={self.call_id}")
-            except Exception as e:
-                self.logger.warning(f"[SHUTDOWN] Error stopping ASR handler: {e}")
         
         # シャットダウンイベントを設定
         self.shutdown_event.set()
@@ -2671,6 +2642,14 @@ class RealtimeGateway:
             if hasattr(self.ai_core, 'on_call_end'):
                 self.ai_core.on_call_end(call_id_to_cleanup, source="_handle_hangup")
             self.logger.debug(f"[CALL_CLEANUP] Cleared state for call_id={call_id_to_cleanup}")
+            
+            # Google Streaming ASRハンドラーを削除
+            if ASR_HANDLER_AVAILABLE:
+                try:
+                    remove_handler(call_id_to_cleanup)
+                    self.logger.info(f"[ASR_HANDLER] Removed handler for call_id={call_id_to_cleanup}")
+                except Exception as e:
+                    self.logger.warning(f"[ASR_HANDLER] Failed to remove handler: {e}", exc_info=True)
         
         # Asterisk に hangup を依頼（非同期で実行）
         try:
@@ -2869,6 +2848,15 @@ class RealtimeGateway:
                     self.logger.exception(f"[CALL_START] Error calling on_call_start(): {e}")
             else:
                 print(f"[DEBUG_PRINT] on_call_start method not found in ai_core", flush=True)
+            
+            # Google Streaming ASRハンドラーの監視を開始
+            if ASR_HANDLER_AVAILABLE:
+                try:
+                    handler = get_or_create_handler(effective_call_id, effective_client_id)
+                    handler.start_monitoring(self)
+                    self.logger.info(f"[ASR_HANDLER] Started monitoring for call_id={effective_call_id}")
+                except Exception as e:
+                    self.logger.warning(f"[ASR_HANDLER] Failed to start monitoring: {e}", exc_info=True)
 
         try:
             audio_paths = self.audio_manager.play_incoming_sequence(effective_client_id)
