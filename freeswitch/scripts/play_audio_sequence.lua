@@ -60,6 +60,14 @@ freeswitch.consoleLog("INFO", "[RTP] Starting RTP mirror for call " .. uuid .. "
 api = freeswitch.API()
 local rtp_result = api:execute("uuid_rtp_stream", uuid .. " start 127.0.0.1:7002 codec=PCMU")
 freeswitch.consoleLog("INFO", "[RTP] uuid_rtp_stream result: " .. (rtp_result or "nil") .. "\n")
+<<<<<<< Current (Your changes)
+=======
+
+-- デバッグ用: ffmpegで強制的に音声をUDP送信（uuid_rtp_streamが動作しない場合のテスト）
+freeswitch.consoleLog("INFO", "[RTP_DEBUG] Starting ffmpeg test stream to 127.0.0.1:7002\n")
+api:execute("system", "ffmpeg -re -i /opt/libertycall/clients/000/audio/000_8k.wav -ar 8000 -ac 1 -acodec pcm_mulaw -f rtp udp://127.0.0.1:7002 > /tmp/ffmpeg_rtp_test.log 2>&1 &")
+freeswitch.consoleLog("INFO", "[RTP_DEBUG] ffmpeg test stream started\n")
+>>>>>>> Incoming (Background Agent changes)
 
 -- 通話維持（ASR反応待ち）
 -- Dialplan途中終了防止：execute_on_media実行後もセッションを維持
