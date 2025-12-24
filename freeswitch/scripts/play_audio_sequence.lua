@@ -217,23 +217,27 @@ while session:ready() do
             -- 催促を再生
             local reminder_path = reminders[prompt_count]
             
+            freeswitch.consoleLog("INFO", "[CALLFLOW] Attempting reminder playback\n")
+            
             -- RTPキープアライブのplaybackが完了するまで少し待機
             freeswitch.msleep(300)
             
-            -- 再answerチェック
+            -- 催促音再生前に強制的に通話状態を再確立
             if not session:ready() then
-                freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready, forcing re-answer\n")
-                session:answer()
-                freeswitch.msleep(500)
+                freeswitch.consoleLog("INFO", "[CALLFLOW] Session not ready, forcing re-answer before reminder\n")
+                session:execute("answer")
+                freeswitch.msleep(200)
             end
             
             if session:ready() then
                 -- ファイル存在確認と安全な再生
                 if freeswitch.FileExists(reminder_path) then
                     local ok, err = pcall(function()
-                        session:execute("playback", reminder_path)
+                        local result = session:execute("playback", reminder_path)
+                        freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback result: " .. tostring(result) .. "\n")
                     end)
                     if ok then
+                        freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback completed\n")
                         freeswitch.consoleLog("INFO", "[CALLFLOW] Playing reminder: " .. reminder_path .. "\n")
                     else
                         freeswitch.consoleLog("ERROR", "[CALLFLOW] Reminder playback failed: " .. tostring(err) .. "\n")
@@ -254,7 +258,7 @@ while session:ready() do
                 freeswitch.consoleLog("WARNING", "[CALLFLOW] Session not ready after re-answer, skipping reminder this cycle\n")
             end
         
-            elapsed = 0  -- 催促後、elapsedをリセット
+            elapsed = 0  -- 催促後、elapsedをリセット（失敗してもリセットして次ループへ）
         else
             -- 3回催促後も無反応：切断
             freeswitch.consoleLog("INFO", "[CALLFLOW] No response after 3 prompts → hangup\n")
