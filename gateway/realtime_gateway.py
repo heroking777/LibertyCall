@@ -1924,9 +1924,20 @@ class RealtimeGateway:
                 if ASR_HANDLER_AVAILABLE:
                     try:
                         if self.asr_handler is None:
-                            # 初回のみハンドラーを取得
+                            # 初回のみハンドラーを取得（call_idが確定した時点で）
                             self.asr_handler = get_or_create_handler(effective_call_id)
-                        if hasattr(self.asr_handler, "on_audio_chunk"):
+                            self.logger.info(f"[ASR_HOOK] ASR handler initialized for call_id={effective_call_id}")
+                            
+                            # ASRハンドラーの初期化（on_incoming_callを呼ぶ）
+                            # 注意: gateway_event_listener.pyでも呼ばれるが、プロセスが異なるため
+                            # realtime_gateway.pyのプロセス内でも呼ぶ必要がある
+                            if hasattr(self.asr_handler, "on_incoming_call"):
+                                # 既に呼ばれているか確認（asrがNoneでない場合は既に起動済み）
+                                if self.asr_handler.asr is None:
+                                    self.asr_handler.on_incoming_call()
+                                    self.logger.info(f"[ASR_HOOK] ASR handler on_incoming_call() executed")
+                        
+                        if self.asr_handler and hasattr(self.asr_handler, "on_audio_chunk"):
                             self.asr_handler.on_audio_chunk(pcm16k_chunk)
                     except Exception as e:
                         self.logger.debug(f"Google ASR feed error (non-fatal): {e}")
@@ -2110,6 +2121,17 @@ class RealtimeGateway:
                 except Exception as e:
                     self.logger.warning(f"[SHUTDOWN] Error cancelling timer for call_id={call_id}: {e}")
         self._no_input_timers.clear()
+        
+        # ASRハンドラーを停止
+        if self.asr_handler and ASR_HANDLER_AVAILABLE:
+            try:
+                if hasattr(self.asr_handler, "stop"):
+                    self.asr_handler.stop()
+                if self.call_id:
+                    remove_handler(self.call_id)
+                self.logger.info(f"[SHUTDOWN] ASR handler stopped for call_id={self.call_id}")
+            except Exception as e:
+                self.logger.warning(f"[SHUTDOWN] Error stopping ASR handler: {e}")
         
         # シャットダウンイベントを設定
         self.shutdown_event.set()
