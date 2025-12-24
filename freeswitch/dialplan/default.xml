@@ -479,16 +479,17 @@
 	 This extension is used by mod_portaudio so you can pa call sip:someone@example.com
 	 mod_portaudio will pass the entire string to the dialplan for routing.
     -->
-    <!-- LibertyCall: 外線発信用extension（@を含む電話番号を処理、優先度を上げる） -->
-    <extension name="outbound_call_cleanup" continue="true">
+    <!-- LibertyCall: 外線発信用extension（@を含む電話番号を処理、優先度1で最初に実行） -->
+    <extension name="outbound_call_cleanup" continue="true" priority="1">
       <condition field="destination_number" expression="^(.+)@.+$">
 	<!-- 電話番号部分だけを抽出（@以降を削除） -->
-	<action application="set" data="destination_number=$1"/>
+	<action application="set" data="clean_number=$1"/>
+	<action application="set" data="destination_number=${clean_number}"/>
       </condition>
     </extension>
     
-    <!-- LibertyCall: 外線発信用extension（すべての電話番号をゲートウェイ経由で発信） -->
-    <extension name="outbound_via_rakuten">
+    <!-- LibertyCall: 外線発信用extension（すべての電話番号をゲートウェイ経由で発信、優先度2） -->
+    <extension name="outbound_via_rakuten" priority="2">
       <condition field="destination_number" expression="^(\d+)$">
 	<!-- 電話番号のみを抽出してゲートウェイ経由で発信（@以降は既に削除済み） -->
 	<action application="set" data="effective_caller_id_number=$${outbound_caller_id_number}"/>
@@ -496,7 +497,8 @@
       </condition>
     </extension>
     
-    <extension name="sip_uri">
+    <!-- LibertyCall: フォールバック用extension（優先度3） -->
+    <extension name="sip_uri" priority="3">
       <condition field="destination_number" expression="^(sip:)?([^@]+)(@.*)?$">
 	<!-- LibertyCall: ゲートウェイ経由で外線発信（自サーバIPを指定しない） -->
 	<!-- 電話番号部分だけを抽出（$2 = @以前の部分のみ） -->
