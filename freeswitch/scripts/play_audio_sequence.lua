@@ -160,6 +160,7 @@ while session:ready() do
         if f then
             io.close(f)
             freeswitch.consoleLog("INFO", "[CALLFLOW] Attempting reminder playback: " .. reminder_path .. "\n")
+            freeswitch.consoleLog("INFO", "[CALLFLOW] DEBUG call_uuid=" .. tostring(call_uuid) .. "\n")
 
             -- ここでUUIDを固定変数から利用
             if not call_uuid then
@@ -171,8 +172,14 @@ while session:ready() do
                 freeswitch.consoleLog("INFO", "[CALLFLOW] Executing bgapi command: " .. cmd .. "\n")
                 
                 -- sched_api +1 none で1秒後に独立ジョブとして実行（Luaセッションの生存に依存しない）
-                local result = api:executeString("sched_api +1 none " .. cmd)
-                freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (sched_api) result: " .. tostring(result) .. "\n")
+                local sched_cmd = "sched_api +1 none " .. cmd
+                freeswitch.consoleLog("INFO", "[CALLFLOW] DEBUG sched_cmd: " .. sched_cmd .. "\n")
+                local ok, result = pcall(function() return api:executeString(sched_cmd) end)
+                if ok then
+                    freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (sched_api) result: " .. tostring(result) .. "\n")
+                else
+                    freeswitch.consoleLog("ERROR", "[CALLFLOW] sched_api execution failed: " .. tostring(result) .. "\n")
+                end
                 
                 -- 送信後にLuaスレッドを1秒キープして即GCを防止
                 freeswitch.msleep(1000)
