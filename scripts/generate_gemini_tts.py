@@ -39,14 +39,6 @@ GEMINI_MODEL = "gemini-2.5-flash-preview-tts"
 # 音声名（日本語対応）
 VOICE_NAME = "Kore"  # 固定: 一貫した声質を保つため（確定レシピ）
 
-# システムプロンプト（クライアント000専用 - 確定版）
-SYSTEM_PROMPT = """[設定: あなたはリバティーコールのプロの女性受付です。以下の『音声物理パラメーター』を厳守して読み上げてください。
-・声の高さ(Pitch): +2.0 (標準より高め)
-・話速(Rate): 1.05 (標準よりわずかに速く)
-・トーン: 明るく、一貫性を保つこと]
-
-読み上げるセリフ："""
-
 
 def check_credentials() -> bool:
     """認証情報の確認"""
@@ -103,13 +95,13 @@ def load_voice_list(skip_existing: bool = False) -> dict:
     return voice_texts
 
 
-def synthesize_with_gemini(text: str, api_key: str) -> Tuple[Optional[bytes], Optional[str]]:
+def synthesize_with_gemini(text: str, client) -> Tuple[Optional[bytes], Optional[str]]:
     """
     Gemini APIを使用してテキストから音声を合成する（1回のみ、リトライなし）
     
     Args:
-        text: 音声化するテキスト
-        api_key: APIキー
+        text: 音声化するテキスト（TSVのテキストをそのまま使用）
+        client: 再利用するgenai.Clientインスタンス
     
     Returns:
         (音声データ（bytes）または None, エラー理由（str）または None)
@@ -118,28 +110,7 @@ def synthesize_with_gemini(text: str, api_key: str) -> Tuple[Optional[bytes], Op
         if not GENAI_AVAILABLE:
             return None, "GENAI_NOT_AVAILABLE"
         
-        # クライアントの初期化
-        client = genai.Client(api_key=api_key)
-        
-        # システムプロンプトを固定して一貫した声質を保つ
-        # 短いセリフ（5文字以下）の場合は特別処理
-        is_short_text = len(text.strip()) <= 5
-        
-        if is_short_text:
-            # 短いセリフの場合：
-            # 1. テキストを少し長くして波形生成を安定させる
-            if text.strip() == "はい。":
-                enhanced_text = "はい、承知いたしました。"
-            elif text.strip() == "いいえ。":
-                enhanced_text = "いいえ、そのようではございません。"
-            else:
-                # その他の短いセリフは語尾に「。。。」を追加
-                enhanced_text = f"{text.strip()}。。。"
-            # 2. 通常のプロンプトを使用
-            prompt = f"{SYSTEM_PROMPT} {enhanced_text}"
-        else:
-            # 通常のセリフはそのまま
-            prompt = f"{SYSTEM_PROMPT} {text}"
+        # TSVのテキストをそのまま送る（システムプロンプトなし、余計な指示なし）
         
         # セーフティ設定を全開放（TTS APIでサポートされているテキスト用カテゴリのみ）
         safety_settings = [
@@ -161,7 +132,8 @@ def synthesize_with_gemini(text: str, api_key: str) -> Tuple[Optional[bytes], Op
             ),
         ]
         
-        # 生成リクエスト
+        # 生成リクエスト（シンプルに、余計な指示なし）
+        # PitchやRateの指示はテキストに混ぜず、speechConfigで制御（できない場合はデフォルト）
         config = types.GenerateContentConfig(
             responseModalities=["AUDIO"],
             temperature=0.0,
@@ -175,9 +147,10 @@ def synthesize_with_gemini(text: str, api_key: str) -> Tuple[Optional[bytes], Op
             )
         )
         
+        # TSVのテキストだけをcontentsに渡す（システムプロンプトなし）
         response = client.models.generate_content(
             model=GEMINI_MODEL,
-            contents=prompt,
+            contents=text,  # システムプロンプトなし、テキストだけ
             config=config
         )
         
@@ -244,7 +217,7 @@ def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
     return wav_buffer.getvalue()
 
 
-def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: float = 0.0) -> Tuple[bool, Optional[str]]:
+def generate_audio_file(audio_id: str, text: str, client) -> Tuple[bool, Optional[str]]:
     """Gemini APIを使用して音声ファイルを生成（1回のみ、リトライなし）"""
     try:
         output_wav = OUTPUT_DIR / f"{audio_id}.wav"
@@ -256,8 +229,8 @@ def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: f
         print(f"\n[開始] {audio_id}.wav の生成を開始します", flush=True)
         print(f"  テキスト: {text}", flush=True)
         
-        # Gemini APIで音声合成（1回のみ、リトライなし）
-        audio_data, error_reason = synthesize_with_gemini(text, api_key)
+        # Gemini APIで音声合成（1回のみ、リトライなし、再利用クライアント使用）
+        audio_data, error_reason = synthesize_with_gemini(text, client)
         
         if not audio_data:
             print(f"  ✗ {audio_id}: 音声合成に失敗しました (理由: {error_reason})", flush=True)
@@ -274,12 +247,6 @@ def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: f
         print(f"[完了] {audio_id}.wav の生成が完了しました", flush=True)
         print(f"  ファイルパス: {output_wav}", flush=True)
         print(f"  ファイルサイズ: {file_size:,} bytes ({file_size / 1024:.2f} KB)", flush=True)
-        
-        # レート制限対策: 指定秒数スリープ
-        if sleep_seconds > 0:
-            import time
-            print(f"  レート制限回避のため {sleep_seconds}秒待機中...", flush=True)
-            time.sleep(sleep_seconds)
         
         return True, None
         
@@ -347,26 +314,33 @@ def main():
     print(f"  出力形式: WAV")
     print(f"  出力ディレクトリ: {OUTPUT_DIR}")
     
-    # 音声ファイル生成（一撃必殺モード：リトライなし）
-    print(f"\n音声ファイル生成中（一撃必殺モード：リトライなし）...", flush=True)
-    print(f"  レート制限対策: 1件ごとに10秒スリープ（APIに優しい設定）", flush=True)
+    # 音声ファイル生成（完全放置・突破仕様：APIが拒絶できない形）
+    print(f"\n音声ファイル生成中（完全放置・突破仕様）...", flush=True)
     print(f"  リトライ: 無効（1回のみ実行、失敗したら即スキップ）", flush=True)
-    print(f"  429エラー対策: 429エラーの場合のみ3分待機してから次へ", flush=True)
-    print(f"  パラメータ: Model={GEMINI_MODEL}, Voice={VOICE_NAME}, Pitch=+2.0, Rate=1.05, Temperature=0.0", flush=True)
+    print(f"  ランダム待機: 15秒〜25秒のランダム待機（Bot判定回避）", flush=True)
+    print(f"  429エラー時: 20秒待って次へ（3分待機なし）", flush=True)
+    print(f"  クライアント: 1つのクライアントを使い回し（リコネクト削減）", flush=True)
+    print(f"  システムプロンプト: 完全削除（TSVテキストのみ）", flush=True)
+    print(f"  パラメータ: Model={GEMINI_MODEL}, Voice={VOICE_NAME}, Temperature=0.0", flush=True)
     print(f"", flush=True)
+    
+    # 1つのクライアントを作成して使い回す（リコネクトのオーバーヘッドを削る）
+    client = genai.Client(api_key=api_key)
+    print(f"✓ クライアント初期化完了（再利用モード）", flush=True)
     
     success_count = 0
     failed_list = {}  # {audio_id: error_reason}
     total_count = len(voice_texts)
     import time
+    import random
     
     for idx, audio_id in enumerate(sorted(voice_texts.keys()), 1):
         text = voice_texts[audio_id]
         print(f"\n[{idx}/{total_count}] {audio_id} を処理中...", flush=True)
         
         try:
-            # 一撃必殺モード：1回のみ実行
-            success, error_reason = generate_audio_file(audio_id, text, api_key, sleep_seconds=10.0)
+            # 一撃必殺モード：1回のみ実行（再利用クライアント使用）
+            success, error_reason = generate_audio_file(audio_id, text, client)
             
             if success:
                 success_count += 1
@@ -375,11 +349,10 @@ def main():
                 failed_list[audio_id] = error_reason
                 print(f"  ✗ {audio_id}: 生成失敗 (理由: {error_reason})", flush=True)
                 
-                # 429エラーの場合のみ3分待機
+                # 429エラーの場合のみ20秒待機（3分待機なし）
                 if error_reason == "429_QUOTA_EXCEEDED":
-                    print(f"  ⚠ 429エラー検出: クォータ回復を待つため3分間停止します...", flush=True)
-                    time.sleep(180)  # 3分 = 180秒
-                    print(f"  待機完了、次の番号へ進みます", flush=True)
+                    print(f"  ⚠ 429エラー検出: 20秒待機してから次へ進みます...", flush=True)
+                    time.sleep(20)
                 
         except KeyboardInterrupt:
             print(f"\n\n⚠ ユーザーによる中断が検出されました。", flush=True)
@@ -388,6 +361,11 @@ def main():
         except Exception as e:
             failed_list[audio_id] = f"EXCEPTION_{type(e).__name__}"
             print(f"  ✗ {audio_id}: 予期しないエラー - {e}", flush=True)
+        
+        # 成功・失敗に関わらず、15秒〜25秒のランダム待機（Bot判定回避）
+        wait_seconds = random.uniform(15, 25)
+        print(f"  {wait_seconds:.1f}秒待機中（ランダム）...", flush=True)
+        time.sleep(wait_seconds)
         
         # 各ファイル生成後に強制的にflush
         sys.stdout.flush()
