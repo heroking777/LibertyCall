@@ -156,48 +156,64 @@ def synthesize_with_gemini(text: str, api_key: str, max_retries: int = 3) -> Opt
                     )
                 )
             )
-        
-        # 音声データの取り出し
-        # ユーザー提供のコード例に基づく実装
-        # response.candidates[0].content.parts から inline_data を持つ part を探す
-        if hasattr(response, 'candidates') and len(response.candidates) > 0:
-            candidate = response.candidates[0]
             
-            if hasattr(candidate, 'content') and candidate.content is not None:
-                if hasattr(candidate.content, 'parts') and candidate.content.parts:
-                    # inline_dataを持つpartを探す
-                    audio_part = next(
-                        (part for part in candidate.content.parts if hasattr(part, 'inline_data') and part.inline_data is not None),
-                        None
-                    )
-                    
-                    if audio_part:
-                        audio_data = audio_part.inline_data.data
+            # 音声データの取り出し
+            # ユーザー提供のコード例に基づく実装
+            # response.candidates[0].content.parts から inline_data を持つ part を探す
+            audio_data = None
+            
+            if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                
+                if hasattr(candidate, 'content') and candidate.content is not None:
+                    if hasattr(candidate.content, 'parts') and candidate.content.parts:
+                        # inline_dataを持つpartを探す
+                        audio_part = next(
+                            (part for part in candidate.content.parts if hasattr(part, 'inline_data') and part.inline_data is not None),
+                            None
+                        )
+                        
+                        if audio_part:
+                            audio_data = audio_part.inline_data.data
+                            if audio_data and len(audio_data) > 0:
+                                # Base64エンコードされている場合はデコード
+                                if isinstance(audio_data, str):
+                                    return base64.b64decode(audio_data)
+                                return audio_data
+            
+            # response.partsからも確認（以前の成功時はこちらにあった）
+            if not audio_data and hasattr(response, 'parts') and response.parts:
+                for part in response.parts:
+                    if hasattr(part, 'inline_data') and part.inline_data is not None:
+                        audio_data = part.inline_data.data
                         if audio_data and len(audio_data) > 0:
                             # Base64エンコードされている場合はデコード
                             if isinstance(audio_data, str):
                                 return base64.b64decode(audio_data)
                             return audio_data
-        
-        # response.partsからも確認（以前の成功時はこちらにあった）
-        if hasattr(response, 'parts') and response.parts:
-            for part in response.parts:
-                if hasattr(part, 'inline_data') and part.inline_data is not None:
-                    audio_data = part.inline_data.data
-                    if audio_data and len(audio_data) > 0:
-                        # Base64エンコードされている場合はデコード
-                        if isinstance(audio_data, str):
-                            return base64.b64decode(audio_data)
-                        return audio_data
-        
-        print(f"警告: 音声データが見つかりませんでした。")
-        return None
-        
-    except Exception as e:
-        print(f"エラー: Gemini API音声合成に失敗しました: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
+            
+            # 音声データが空の場合はリトライ
+            if not audio_data or len(audio_data) == 0:
+                if attempt < max_retries:
+                    print(f"  警告: 音声データが空でした。リトライ {attempt + 1}/{max_retries}...")
+                    time.sleep(5)  # レート制限回避
+                    continue
+                else:
+                    print(f"警告: 音声データが見つかりませんでした（最大リトライ回数に達しました）。")
+                    return None
+                    
+        except Exception as e:
+            if attempt < max_retries:
+                print(f"  エラー: {e}。リトライ {attempt + 1}/{max_retries}...")
+                time.sleep(5)  # レート制限回避
+                continue
+            else:
+                print(f"エラー: Gemini API音声合成に失敗しました: {e}")
+                import traceback
+                traceback.print_exc()
+                return None
+    
+    return None
 
 
 def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
