@@ -182,12 +182,51 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             if infinite_retry and attempt <= 3:
                 print(f"  API呼び出し中...（{attempt}回目）", flush=True)
             
+            # セーフティ設定を全開放（全てのカテゴリでBLOCK_NONE）
+            safety_settings = []
+            try:
+                # 全てのHarmCategoryに対してBLOCK_NONEを設定
+                for category_attr in dir(types.HarmCategory):
+                    if not category_attr.startswith('_') and category_attr.isupper():
+                        category = getattr(types.HarmCategory, category_attr)
+                        safety_settings.append(
+                            types.SafetySetting(
+                                category=category,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE
+                            )
+                        )
+            except Exception as e:
+                print(f"  警告: セーフティ設定の作成に失敗: {e}", flush=True)
+                # 最低限の設定（主要カテゴリのみ）
+                try:
+                    safety_settings = [
+                        types.SafetySetting(
+                            category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                            threshold=types.HarmBlockThreshold.BLOCK_NONE
+                        ),
+                        types.SafetySetting(
+                            category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                            threshold=types.HarmBlockThreshold.BLOCK_NONE
+                        ),
+                        types.SafetySetting(
+                            category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                            threshold=types.HarmBlockThreshold.BLOCK_NONE
+                        ),
+                        types.SafetySetting(
+                            category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                            threshold=types.HarmBlockThreshold.BLOCK_NONE
+                        ),
+                    ]
+                except:
+                    safety_settings = []
+            
             response = client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     responseModalities=["AUDIO"],  # これが最重要（大文字、キャメルケース）
                     temperature=0.0,  # AIの演技の「ゆらぎ」を最小限に抑える
+                    safetySettings=safety_settings,  # セーフティ設定を全開放
                     speechConfig=types.SpeechConfig(
                         voiceConfig=types.VoiceConfig(
                             prebuiltVoiceConfig=types.PrebuiltVoiceConfig(
@@ -200,11 +239,18 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             
             if infinite_retry and attempt <= 3:
                 print(f"  API応答受信完了", flush=True)
+                # デバッグ: finish_reasonを確認
+                if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                    candidate = response.candidates[0]
+                    finish_reason = getattr(candidate, 'finish_reason', None)
+                    finish_message = getattr(candidate, 'finish_message', None)
+                    print(f"  デバッグ: finish_reason = {finish_reason}", flush=True)
+                    print(f"  デバッグ: finish_message = {finish_message}", flush=True)
+                    if finish_reason and 'SAFETY' in str(finish_reason).upper():
+                        print(f"  ⚠ 警告: セーフティフィルターでブロックされています！", flush=True)
                 # デバッグ: レスポンスの構造全体を表示
                 print(f"  デバッグ: response = {response}", flush=True)
                 print(f"  デバッグ: response type = {type(response)}", flush=True)
-                print(f"  デバッグ: response.__dict__ = {getattr(response, '__dict__', 'N/A')}", flush=True)
-                print(f"  デバッグ: response attributes = {[attr for attr in dir(response) if not attr.startswith('_')]}", flush=True)
             
             # 音声データの取り出し（修正版）
             # response.candidates[0].content.parts をループして、inline_data または data 属性があるパートから確実にバイトデータを取り出す
@@ -215,9 +261,10 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
                 
                 if infinite_retry and attempt <= 3:
                     print(f"  デバッグ: candidate type = {type(candidate)}", flush=True)
-                    print(f"  デバッグ: candidate attributes = {dir(candidate)}", flush=True)
                     print(f"  デバッグ: candidate.content = {candidate.content}", flush=True)
                 
+                # 音声データの取得パスを確実に指定
+                # パス1: response.candidates[0].content.parts[0].inline_data.data
                 if hasattr(candidate, 'content') and candidate.content is not None:
                     if hasattr(candidate.content, 'parts') and candidate.content.parts:
                         if infinite_retry and attempt <= 3:
@@ -227,43 +274,43 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
                         for i, part in enumerate(candidate.content.parts):
                             if infinite_retry and attempt <= 3:
                                 print(f"  デバッグ: part[{i}] type = {type(part)}", flush=True)
-                                print(f"  デバッグ: part[{i}] attributes = {dir(part)}", flush=True)
                             
-                            # inline_data 属性を確認
+                            # パス1: part.inline_data.data（TTS特有のバイナリデータ）
                             if hasattr(part, 'inline_data') and part.inline_data is not None:
                                 if infinite_retry and attempt <= 3:
                                     print(f"  デバッグ: part[{i}].inline_data が見つかりました", flush=True)
-                                    print(f"  デバッグ: part[{i}].inline_data type = {type(part.inline_data)}", flush=True)
-                                    print(f"  デバッグ: part[{i}].inline_data attributes = {dir(part.inline_data)}", flush=True)
                                 
-                                # inline_data.data を確認
+                                # inline_data.data を確認（確実に指定）
                                 if hasattr(part.inline_data, 'data'):
                                     audio_data = part.inline_data.data
                                     if infinite_retry and attempt <= 3:
                                         print(f"  デバッグ: part[{i}].inline_data.data が見つかりました (size: {len(audio_data) if audio_data else 0})", flush=True)
+                                    if audio_data and len(audio_data) > 0:
+                                        if isinstance(audio_data, str):
+                                            return base64.b64decode(audio_data)
+                                        return audio_data
+                                
                                 # inline_data 自体がデータの場合
-                                elif hasattr(part.inline_data, '__dict__'):
-                                    # 辞書形式の場合
+                                if hasattr(part.inline_data, '__dict__'):
                                     inline_dict = part.inline_data.__dict__
                                     if 'data' in inline_dict:
                                         audio_data = inline_dict['data']
                                         if infinite_retry and attempt <= 3:
                                             print(f"  デバッグ: part[{i}].inline_data.__dict__['data'] が見つかりました", flush=True)
+                                        if audio_data and len(audio_data) > 0:
+                                            if isinstance(audio_data, str):
+                                                return base64.b64decode(audio_data)
+                                            return audio_data
                             
-                            # data 属性を直接確認
+                            # パス2: part.data（直接データ属性）
                             if not audio_data and hasattr(part, 'data'):
                                 audio_data = part.data
                                 if infinite_retry and attempt <= 3:
                                     print(f"  デバッグ: part[{i}].data が見つかりました", flush=True)
-                            
-                            # 音声データが見つかった場合は処理
-                            if audio_data and len(audio_data) > 0:
-                                if infinite_retry and attempt <= 3:
-                                    print(f"  デバッグ: 音声データ取得成功 (size: {len(audio_data)} bytes)", flush=True)
-                                # Base64エンコードされている場合はデコード
-                                if isinstance(audio_data, str):
-                                    return base64.b64decode(audio_data)
-                                return audio_data
+                                if audio_data and len(audio_data) > 0:
+                                    if isinstance(audio_data, str):
+                                        return base64.b64decode(audio_data)
+                                    return audio_data
             
             # response.partsからも確認（以前の成功時はこちらにあった）
             if not audio_data and hasattr(response, 'parts') and response.parts:
@@ -441,8 +488,19 @@ def main():
         return 1
     
     # 音声リスト読み込み（既存ファイルをスキップ）
+    # テストモード: 003と005のみを処理
+    TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
+    
     print(f"\n音声リスト読み込み中...")
-    voice_texts = load_voice_list(skip_existing=True)
+    if TEST_MODE:
+        print(f"  テストモード: 003と005のみを処理します", flush=True)
+        voice_texts = {}
+        all_texts = load_voice_list(skip_existing=False)
+        for test_id in ["003", "005"]:
+            if test_id in all_texts:
+                voice_texts[test_id] = all_texts[test_id]
+    else:
+        voice_texts = load_voice_list(skip_existing=True)
     
     if not voice_texts:
         print("✓ すべての音声ファイルが既に生成済みです。")
