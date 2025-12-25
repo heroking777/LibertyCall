@@ -60,7 +60,8 @@ GEMINI_MODEL = "gemini-2.5-flash-preview-tts"
 VOICE_NAME = "Aoede"  # 固定: 一貫した声質を保つため
 
 # システムプロンプト（固定）
-SYSTEM_PROMPT = """[設定: あなたはリバティーコールの明るくハキハキとした女性受付スタッフです。常に口角を上げ、20代後半の落ち着きつつも華やかなトーンで、一貫した声質を保って話してください。]
+# Pitch: 2.0, Speed: 1.05 の設定をプロンプトに含める
+SYSTEM_PROMPT = """[設定: あなたはリバティーコールの明るくハキハキとした女性受付スタッフです。常に口角を上げ、20代後半の落ち着きつつも華やかなトーンで、一貫した声質を保って話してください。声の高さは少し高め（Pitch: 2.0相当）、話す速度はやや速め（Speed: 1.05相当）で話してください。]
 以下のセリフだけを読み上げてください："""
 
 
@@ -141,18 +142,22 @@ def synthesize_with_gemini(text: str, api_key: str, max_retries: int = 3) -> Opt
             
             # 生成リクエスト
             # Gemini 2.0 Flash は 'AUDIO' モダリティを指定する必要があります
+            # 注意: SpeechConfigにはpitch/speaking_rateパラメータがサポートされていないため、
+            # プロンプト内で指示しています（Pitch: 2.0, Speed: 1.05相当）
             response = client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_modalities=["AUDIO"],  # これが最重要（大文字）
-                    temperature=0.0,  # AIの演技の「ゆらぎ」を最小限に抑える
                     speech_config=types.SpeechConfig(
                         voice_config=types.VoiceConfig(
                             prebuilt_voice_config=types.PrebuiltVoiceConfig(
                                 voice_name=VOICE_NAME
                             )
                         )
+                    ),
+                    generation_config=types.GenerationConfig(
+                        temperature=0.0  # AIの演技の「ゆらぎ」を最小限に抑える
                     )
                 )
             )
@@ -195,20 +200,20 @@ def synthesize_with_gemini(text: str, api_key: str, max_retries: int = 3) -> Opt
             # 音声データが空の場合はリトライ
             if not audio_data or len(audio_data) == 0:
                 if attempt < max_retries:
-                    print(f"  警告: 音声データが空でした。リトライ {attempt + 1}/{max_retries}...")
+                    print(f"  警告: 音声データが空でした。リトライ {attempt + 1}/{max_retries}...", flush=True)
                     time.sleep(5)  # レート制限回避
                     continue
                 else:
-                    print(f"警告: 音声データが見つかりませんでした（最大リトライ回数に達しました）。")
+                    print(f"警告: 音声データが見つかりませんでした（最大リトライ回数に達しました）。", flush=True)
                     return None
                     
         except Exception as e:
             if attempt < max_retries:
-                print(f"  エラー: {e}。リトライ {attempt + 1}/{max_retries}...")
+                print(f"  エラー: {e}。リトライ {attempt + 1}/{max_retries}...", flush=True)
                 time.sleep(5)  # レート制限回避
                 continue
             else:
-                print(f"エラー: Gemini API音声合成に失敗しました: {e}")
+                print(f"エラー: Gemini API音声合成に失敗しました: {e}", flush=True)
                 import traceback
                 traceback.print_exc()
                 return None
@@ -259,20 +264,22 @@ def generate_audio_file(audio_id: str, text: str, api_key: str) -> bool:
         output_wav = OUTPUT_DIR / f"{audio_id}.wav"
         
         if not text:
-            print(f"  ⚠ {audio_id}: テキストが空のためスキップ")
+            print(f"  ⚠ {audio_id}: テキストが空のためスキップ", flush=True)
             return False
         
-        print(f"\n音声生成中... ({audio_id}.wav)")
-        print(f"  テキスト: {text}")
-        print(f"  モデル: {GEMINI_MODEL}")
-        print(f"  ボイス: {VOICE_NAME}")
-        print(f"  サンプリングレート: {SAMPLE_RATE}Hz")
+        # 開始ログ
+        print(f"\n[開始] {audio_id}.wav の生成を開始します", flush=True)
+        print(f"  テキスト: {text}", flush=True)
+        print(f"  モデル: {GEMINI_MODEL}", flush=True)
+        print(f"  ボイス: {VOICE_NAME}", flush=True)
+        print(f"  Pitch: 2.0, Speed: 1.05", flush=True)
+        print(f"  サンプリングレート: {SAMPLE_RATE}Hz", flush=True)
         
         # Gemini APIで音声合成
         audio_data = synthesize_with_gemini(text, api_key)
         
         if not audio_data:
-            print(f"  ✗ {audio_id}: 音声合成に失敗しました")
+            print(f"  ✗ {audio_id}: 音声合成に失敗しました", flush=True)
             return False
         
         # WAV形式に変換（必要に応じて）
@@ -283,12 +290,14 @@ def generate_audio_file(audio_id: str, text: str, api_key: str) -> bool:
             f.write(wav_data)
         
         file_size = output_wav.stat().st_size
-        print(f"✓ 音声ファイル生成完了: {output_wav}")
-        print(f"  ファイルサイズ: {file_size:,} bytes")
+        # 完了ログ（サイズ含む）
+        print(f"[完了] {audio_id}.wav の生成が完了しました", flush=True)
+        print(f"  ファイルパス: {output_wav}", flush=True)
+        print(f"  ファイルサイズ: {file_size:,} bytes ({file_size / 1024:.2f} KB)", flush=True)
         return True
         
     except Exception as e:
-        print(f"  ✗ {audio_id}: エラー - {e}")
+        print(f"  ✗ {audio_id}: エラー - {e}", flush=True)
         import traceback
         traceback.print_exc()
         return False
@@ -342,7 +351,7 @@ def main():
     print(f"  出力ディレクトリ: {OUTPUT_DIR}")
     
     # 音声ファイル生成
-    print(f"\n音声ファイル生成中...")
+    print(f"\n音声ファイル生成中...", flush=True)
     success_count = 0
     failed_count = 0
     
@@ -352,6 +361,8 @@ def main():
             success_count += 1
         else:
             failed_count += 1
+        # 各ファイル生成後に強制的にflush
+        sys.stdout.flush()
     
     # 結果表示
     print(f"\n" + "=" * 60)
