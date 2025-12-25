@@ -76,7 +76,7 @@ SYSTEM_PROMPT = """[設定: あなたはリバティーコールのプロの女�
 読み上げるセリフ："""
 
 # 短いセリフ用の簡略化プロンプト
-SHORT_TEXT_PROMPT = """[設定: Pitch:+2.0, Rate:1.05] 以下の言葉を話して："""
+SHORT_TEXT_PROMPT = """[設定: Pitch:+2.0, Rate:1.05]"""
 
 
 def check_credentials() -> bool:
@@ -187,9 +187,8 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
                 else:
                     # その他の短いセリフは語尾に「。。。」を追加
                     enhanced_text = f"{text.strip()}。。。"
-                # 2. プロンプトを簡略化
+                # 2. プロンプトを簡略化（テキストのみ）
                 prompt = f"{SHORT_TEXT_PROMPT} {enhanced_text}"
-                print(f"  デバッグ: 短いセリフ - プロンプト = {prompt}", flush=True)
             else:
                 # 通常のセリフはそのまま
                 prompt = f"{SYSTEM_PROMPT} {text}"
