@@ -3140,6 +3140,15 @@ class RealtimeGateway:
         # 以降は正規化されたテキストを使用
         text = normalized_text
         
+        # ASR反応を検出したらフラグファイルを作成（Luaスクリプト用）
+        if effective_call_id and text.strip():
+            try:
+                flag_file = Path(f"/tmp/asr_response_{effective_call_id}.flag")
+                flag_file.touch()
+                self.logger.info(f"[ASR_RESPONSE] Created ASR response flag: {flag_file} (text: {text[:50]})")
+            except Exception as e:
+                self.logger.warning(f"[ASR_RESPONSE] Failed to create ASR response flag: {e}")
+        
         # 🔹 リアルタイム更新: ユーザー発話をConsoleに送信
         if effective_call_id and text.strip():
             try:

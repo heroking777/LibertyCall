@@ -117,8 +117,8 @@ freeswitch.consoleLog("INFO", "[RTP_DEBUG] ffmpeg launch result: " .. (result or
 -- 無音監視と催促制御（Lua側で完結）
 -- ========================================
 
--- ASR検出タイムスタンプファイル
-local asr_timestamp_file = "/tmp/asr_last.txt"
+-- ASR反応フラグファイルパス
+local asr_response_flag_file = string.format("/tmp/asr_response_%s.flag", uuid)
 
 -- 催促音声ファイル
 local reminders = {
@@ -130,83 +130,103 @@ local reminders = {
 -- タイムアウト設定（秒）
 local silence_timeout = 10
 
--- 初回アナウンス再生後、ASRモニタ開始までの待機時間（10秒）
-freeswitch.consoleLog("INFO", "[CALLFLOW] Waiting 10 seconds after initial prompts before starting silence monitoring\n")
-session:sleep(10000)
+-- 初回アナウンス再生後、ASR反応をチェック開始
+freeswitch.consoleLog("INFO", "[CALLFLOW] Starting ASR response monitoring after initial prompts\n")
 
 -- ==========================================
--- 無音監視ループ: 10秒ごとに催促再生
+-- 無音監視ループ: 10秒ごとにASR反応をチェックし、反応がなければ催促再生
 -- ==========================================
-freeswitch.consoleLog("INFO", "[CALLFLOW] Entering silence monitor loop\n")
+freeswitch.consoleLog("INFO", "[CALLFLOW] Entering ASR response monitor loop\n")
 local elapsed = 0
 local prompt_count = 0
+local asr_response_detected = false
 
-while session:ready() do
+while session:ready() and not asr_response_detected and prompt_count < 3 do
     freeswitch.msleep(1000)
     -- RTPを継続的に送信してセッション維持（1秒ごとに再送信を明示）
     session:execute("start_dtmf_generate")
     elapsed = elapsed + 1
+    
+    -- ASR反応フラグファイルをチェック
+    local flag_file = io.open(asr_response_flag_file, "r")
+    if flag_file then
+        io.close(flag_file)
+        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] ASR response detected! Flag file exists: %s\n", asr_response_flag_file))
+        asr_response_detected = true
+        break
+    end
+    
     if elapsed % 5 == 0 then
-        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Loop iteration=%d, elapsed=%d, session_ready=%s\n",
-            elapsed, elapsed, tostring(session:ready())))
+        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] DEBUG Loop iteration=%d, elapsed=%d, session_ready=%s, prompt_count=%d\n",
+            elapsed, elapsed, tostring(session:ready()), prompt_count))
     end
 
+    -- 10秒経過したら催促アナウンスを再生
     if elapsed >= 10 then
         prompt_count = prompt_count + 1
-        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] Timeout %d, playing reminder %d\n", elapsed, prompt_count))
-        local reminder_path = string.format("/opt/libertycall/clients/000/audio/000-00%d_8k.wav", prompt_count + 3)
+        freeswitch.consoleLog("INFO", string.format("[CALLFLOW] Timeout %d seconds, playing reminder %d\n", elapsed, prompt_count))
+        
+        -- 催促アナウンスを再生
+        if prompt_count <= #reminders then
+            local reminder_path = reminders[prompt_count]
+            
+            local f = io.open(reminder_path, "r")
+            if f then
+                io.close(f)
+                freeswitch.consoleLog("INFO", "[CALLFLOW] Attempting reminder playback: " .. reminder_path .. "\n")
 
-        local f = io.open(reminder_path, "r")
-        if f then
-            io.close(f)
-            freeswitch.consoleLog("INFO", "[CALLFLOW] Attempting reminder playback: " .. reminder_path .. "\n")
+                -- RTP経路を強制的に再確立してから再生
+                local api = freeswitch.API()
+                local current_uuid = call_uuid or session:get_uuid()
 
-            -- RTP経路を強制的に再確立してから再生
-            local api = freeswitch.API()
-            local current_uuid = call_uuid or session:get_uuid()
+                if current_uuid then
+                    freeswitch.consoleLog("INFO", "[CALLFLOW] Re-inviting inbound leg to media path for UUID: " .. current_uuid .. "\n")
+                    local reneg = api:executeString("uuid_media " .. current_uuid)
+                    freeswitch.consoleLog("INFO", "[CALLFLOW] RTP media reinvite result: " .. tostring(reneg) .. "\n")
 
-            if current_uuid then
-                freeswitch.consoleLog("INFO", "[CALLFLOW] Re-inviting inbound leg to media path for UUID: " .. current_uuid .. "\n")
-                local reneg = api:executeString("uuid_media " .. current_uuid)
-                freeswitch.consoleLog("INFO", "[CALLFLOW] RTP media reinvite result: " .. tostring(reneg) .. "\n")
+                    freeswitch.msleep(100)
 
-                freeswitch.msleep(100)
+                    -- 即時に uuid_displace を実行（Lua実行中に確実にセッションへアタッチ）
+                    local cmd = string.format("uuid_displace %s start %s", current_uuid, reminder_path)
+                    freeswitch.consoleLog("INFO", "[CALLFLOW] Executing uuid_displace command: " .. cmd .. "\n")
 
-                -- 即時に uuid_displace を実行（Lua実行中に確実にセッションへアタッチ）
-                local cmd = string.format("uuid_displace %s start %s", current_uuid, reminder_path)
-                freeswitch.consoleLog("INFO", "[CALLFLOW] Executing uuid_displace command: " .. cmd .. "\n")
+                    local ok, result = pcall(function()
+                        return api:executeString(cmd)
+                    end)
 
-                local ok, result = pcall(function()
-                    return api:executeString(cmd)
-                end)
+                    if ok then
+                        freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (displace immediate) result: " .. tostring(result) .. "\n")
+                    else
+                        freeswitch.consoleLog("ERR", "[CALLFLOW] uuid_displace execution failed: " .. tostring(result) .. "\n")
+                    end
 
-                if ok then
-                    freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (displace immediate) result: " .. tostring(result) .. "\n")
+                    -- Lua GC防止（再生完了まで待機）
+                    freeswitch.msleep(1000)
                 else
-                    freeswitch.consoleLog("ERR", "[CALLFLOW] uuid_displace execution failed: " .. tostring(result) .. "\n")
+                    freeswitch.consoleLog("ERR", "[CALLFLOW] call_uuid is nil, cannot play reminder\n")
                 end
-
-                -- Lua GC防止（再生完了まで待機）
-                freeswitch.msleep(1000)
             else
-                freeswitch.consoleLog("ERR", "[CALLFLOW] call_uuid is nil, cannot play reminder\n")
+                freeswitch.consoleLog("ERR", "[CALLFLOW] Reminder file missing: " .. reminder_path .. "\n")
             end
-
-        else
-            freeswitch.consoleLog("ERR", "[CALLFLOW] Reminder file missing: " .. reminder_path .. "\n")
         end
-
-        if prompt_count >= 3 then
-            freeswitch.consoleLog("INFO", "[CALLFLOW] No response after 3 reminders, hanging up.\n")
-            break
-        end
+        
+        -- 経過時間をリセット（次の10秒カウントを開始）
         elapsed = 0
     end
 end
 
-if session:ready() then
-    session:hangup()
+-- ASR反応が検出された場合、または3回の催促後も反応がなかった場合の処理
+if asr_response_detected then
+    freeswitch.consoleLog("INFO", "[CALLFLOW] ASR response detected, continuing call flow\n")
+    -- ASR反応が検出された場合は切断せず、通常の通話フローを継続
+elseif prompt_count >= 3 then
+    freeswitch.consoleLog("INFO", "[CALLFLOW] No response after 3 reminders, hanging up.\n")
+    -- 3回の催促後も反応がなければ切断
+    if session:ready() then
+        session:hangup("NORMAL_CLEARING")
+    end
 end
 
 freeswitch.consoleLog("INFO", string.format("[LUA] play_audio_sequence end uuid=%s\n", uuid))
+
 
