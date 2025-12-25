@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Gemini 2.5 APIを使用した日本語TTS（音声合成）スクリプト
+Gemini 2.0/2.5 APIを使用した日本語TTS（音声合成）スクリプト
 
-google.genaiパッケージとspeech_configを使用して音声を生成します。
+google-generativeaiパッケージとspeech_configを使用して音声を生成します。
 
 voice_list_000.tsvから000-003の音声ファイルを生成します。
 
 使い方:
     export GOOGLE_API_KEY="your-api-key"
     # または
-    export GOOGLE_APPLICATION_CREDENTIALS="/path/to/credentials.json"
+    export GEMINI_API_KEY="your-api-key"
     
     python scripts/generate_gemini_tts.py
 
@@ -21,7 +21,7 @@ voice_list_000.tsvから000-003の音声ファイルを生成します。
     - clients/000/audio/003.wav
 
 依存パッケージ:
-    - google-genai: pip install google-genai
+    - google-generativeai: pip install google-generativeai
 """
 
 import os
@@ -52,8 +52,11 @@ SAMPLE_RATE = 24000  # 24kHz
 BIT_DEPTH = 16  # 16bit
 CHANNELS = 1  # モノラル
 
-# Gemini 2.5 モデル名
-GEMINI_MODEL = "gemini-2.5-flash"
+# Gemini 2.0/2.5 モデル名
+GEMINI_MODEL = "gemini-2.0-flash"
+
+# 音声名（日本語対応）
+VOICE_NAME = "Aoede"  # 落ち着いた女性の声（他: Charon, Kore, Puck, Fenrir）
 
 
 def check_credentials() -> bool:
@@ -105,13 +108,15 @@ def load_voice_list() -> dict:
     return voice_texts
 
 
-def synthesize_with_gemini_2_5(text: str, api_key: Optional[str] = None) -> Optional[bytes]:
+def synthesize_with_gemini(text: str, api_key: Optional[str] = None, project_id: Optional[str] = None, location: str = "us-central1") -> Optional[bytes]:
     """
-    Gemini 2.5 APIを使用してテキストから音声を合成する
+    Gemini APIを使用してテキストから音声を合成する
     
     Args:
         text: 音声化するテキスト
-        api_key: APIキー（Noneの場合は環境変数から取得）
+        api_key: APIキー（Noneの場合はサービスアカウント認証を使用）
+        project_id: プロジェクトID（サービスアカウント認証の場合）
+        location: リージョン（サービスアカウント認証の場合）
     
     Returns:
         音声データ（bytes）または None
@@ -125,85 +130,87 @@ def synthesize_with_gemini_2_5(text: str, api_key: Optional[str] = None) -> Opti
         if api_key:
             client = genai.Client(api_key=api_key)
         else:
-            # 環境変数からAPIキーを取得
-            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                # サービスアカウントキーを使用する場合（Vertex AI）
-                creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-                project_id = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT")
-                location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-                
-                if creds_path and project_id:
-                    import vertexai
-                    vertexai.init(project=project_id, location=location)
-                    client = genai.Client(vertexai=True)
-                else:
-                    print("エラー: APIキーまたは認証情報（プロジェクトID含む）が見つかりません。")
-                    return None
-            else:
-                client = genai.Client(api_key=api_key)
+            # サービスアカウントキーを使用する場合（Vertex AI）
+            if not project_id:
+                print("エラー: プロジェクトIDが必要です。")
+                return None
+            import vertexai
+            vertexai.init(project=project_id, location=location)
+            client = genai.Client(vertexai=True)
         
-        # 音声生成リクエスト
-        # speech_configを使用して音声を生成
+        # 音声生成の設定
         # ユーザー提供のコード例に基づく実装
-        try:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=text,
-                config=types.GenerateContentConfig(
-                    speech_config=types.SpeechConfig(
-                        voice_config=types.VoiceConfig(
-                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name='Charon'  # 日本語対応ボイス
-                            )
-                        )
+        config = types.GenerateContentConfig(
+            speech_config=types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                        voice_name=VOICE_NAME
                     )
-                )
-            )
-        except Exception as config_error:
-            print(f"警告: speech_configの設定でエラーが発生しました: {config_error}")
-            print(f"代替方法を試します...")
-            # シンプルな方法を試す
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=text
-            )
+                ),
+                language_code='ja-JP'  # 日本語を明示的に指定
+            ),
+            response_modalities=['audio']  # 音声レスポンスを要求
+        )
         
-        # 音声データを取得（ユーザー提供のコード例に基づく）
+        print(f"デバッグ: config設定完了 - speech_config={config.speech_config is not None}")
+        
+        # プロンプト（テキスト）を投げて音声を生成
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=text,
+            config=config
+        )
+        
+        print(f"デバッグ: レスポンス取得完了 - type={type(response)}")
+        
+        # 生成された音声データを取得
         # response.candidates[0].content.parts[0].inline_data.data
-        try:
-            if hasattr(response, 'candidates') and len(response.candidates) > 0:
-                candidate = response.candidates[0]
-                
-                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                    if len(candidate.content.parts) > 0:
-                        part = candidate.content.parts[0]
+        if hasattr(response, 'candidates') and len(response.candidates) > 0:
+            candidate = response.candidates[0]
+            
+            if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                for i, part in enumerate(candidate.content.parts):
+                    print(f"デバッグ: part[{i}]の型: {type(part)}")
+                    print(f"デバッグ: part[{i}]の属性: {[attr for attr in dir(part) if not attr.startswith('_')]}")
+                    
+                    if hasattr(part, 'inline_data') and part.inline_data is not None:
+                        inline_data = part.inline_data
+                        print(f"デバッグ: inline_dataの型: {type(inline_data)}")
+                        print(f"デバッグ: inline_dataの属性: {[attr for attr in dir(inline_data) if not attr.startswith('_')]}")
                         
-                        # inline_dataから音声データを取得
-                        if hasattr(part, 'inline_data') and part.inline_data is not None:
-                            inline_data = part.inline_data
-                            if hasattr(inline_data, 'data') and inline_data.data:
-                                # Base64エンコードされた音声データ
-                                audio_data = inline_data.data
-                                print(f"✓ 音声データを取得しました (Base64サイズ: {len(audio_data)} bytes)")
-                                decoded_data = base64.b64decode(audio_data)
-                                print(f"✓ デコード後のサイズ: {len(decoded_data)} bytes")
-                                return decoded_data
-                        
-                        # テキストが返された場合は警告
-                        if hasattr(part, 'text') and part.text:
-                            print(f"警告: テキストが返されました（音声データではありません）: {part.text[:100]}")
-                            print(f"speech_configが正しく適用されていない可能性があります。")
-        except Exception as e:
-            print(f"エラー: 音声データの取得中にエラーが発生しました: {e}")
-            import traceback
-            traceback.print_exc()
+                        if hasattr(inline_data, 'data') and inline_data.data:
+                            # 音声データを取得
+                            audio_data = inline_data.data
+                            print(f"デバッグ: 音声データを取得しました (型: {type(audio_data)}, サイズ: {len(audio_data) if hasattr(audio_data, '__len__') else 'N/A'})")
+                            # Base64エンコードされている場合はデコード
+                            if isinstance(audio_data, str):
+                                return base64.b64decode(audio_data)
+                            return audio_data
+                    elif hasattr(part, 'text'):
+                        print(f"デバッグ: テキストが返されました: {part.text[:100]}")
+        
+        # response.partsからも確認
+        if hasattr(response, 'parts'):
+            print(f"デバッグ: response.partsがあります: {len(response.parts)}")
+            for i, part in enumerate(response.parts):
+                print(f"デバッグ: response.parts[{i}]の型: {type(part)}")
+                print(f"デバッグ: response.parts[{i}]の属性: {[attr for attr in dir(part) if not attr.startswith('_') and 'data' in attr.lower()]}")
+                if hasattr(part, 'inline_data') and part.inline_data is not None:
+                    inline_data = part.inline_data
+                    print(f"デバッグ: response.parts[{i}].inline_dataの型: {type(inline_data)}")
+                    if hasattr(inline_data, 'data') and inline_data.data:
+                        audio_data = inline_data.data
+                        print(f"デバッグ: response.partsから音声データを取得しました")
+                        if isinstance(audio_data, str):
+                            return base64.b64decode(audio_data)
+                        return audio_data
         
         print(f"警告: 音声データが見つかりませんでした。")
+        print(f"レスポンス構造を確認してください。")
         return None
         
     except Exception as e:
-        print(f"エラー: Gemini 2.5 API音声合成に失敗しました: {e}")
+        print(f"エラー: Gemini API音声合成に失敗しました: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -236,14 +243,14 @@ def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
     return wav_buffer.getvalue()
 
 
-def generate_audio_file(audio_id: str, text: str, api_key: Optional[str] = None) -> bool:
+def generate_audio_file(audio_id: str, text: str, api_key: Optional[str] = None, project_id: Optional[str] = None, location: str = "us-central1") -> bool:
     """
-    Gemini 2.5 APIを使用して音声ファイルを生成
+    Gemini APIを使用して音声ファイルを生成
     
     Args:
         audio_id: 音声ID（例: "000"）
         text: 音声化するテキスト
-        api_key: APIキー（Noneの場合は環境変数から取得）
+        api_key: APIキー
     
     Returns:
         成功した場合True
@@ -258,16 +265,17 @@ def generate_audio_file(audio_id: str, text: str, api_key: Optional[str] = None)
         print(f"\n音声生成中... ({audio_id}.wav)")
         print(f"  テキスト: {text}")
         print(f"  モデル: {GEMINI_MODEL}")
+        print(f"  ボイス: {VOICE_NAME}")
         print(f"  サンプリングレート: {SAMPLE_RATE}Hz")
         
-        # Gemini 2.5 APIで音声合成
-        audio_data = synthesize_with_gemini_2_5(text, api_key)
+        # Gemini APIで音声合成
+        audio_data = synthesize_with_gemini(text, api_key, project_id, location)
         
         if not audio_data:
             print(f"  ✗ {audio_id}: 音声合成に失敗しました")
             return False
         
-        # WAV形式に変換
+        # WAV形式に変換（必要に応じて）
         wav_data = convert_to_wav(audio_data, SAMPLE_RATE)
         
         # WAVファイルとして保存
@@ -289,7 +297,7 @@ def generate_audio_file(audio_id: str, text: str, api_key: Optional[str] = None)
 def main():
     """メイン処理"""
     print("=" * 60)
-    print("Gemini 2.5 API 日本語TTS音声生成")
+    print("Gemini 2.0/2.5 API 日本語TTS音声生成")
     print("=" * 60)
     
     # 認証情報確認
@@ -299,21 +307,35 @@ def main():
     # ディレクトリ確認
     ensure_directories()
     
-    # APIキーを取得
+    # 認証情報を取得
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     google_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT")
+    location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+    
+    # プロジェクトIDが未設定の場合は認証ファイルから取得
+    if not project_id and google_creds:
+        import json
+        try:
+            with open(google_creds, 'r') as f:
+                creds = json.load(f)
+                project_id = creds.get('project_id')
+        except:
+            pass
     
     if api_key:
         print(f"\n✓ APIキー認証を使用")
-    elif google_creds:
+    elif google_creds and project_id:
         print(f"\n✓ サービスアカウント認証を使用")
+        print(f"  プロジェクトID: {project_id}")
+        print(f"  リージョン: {location}")
     else:
-        print(f"\n✗ 認証情報が見つかりません")
+        print("エラー: 認証情報が見つかりません。")
         return 1
     
     if not GENAI_AVAILABLE:
-        print("エラー: google-genai がインストールされていません。")
-        print("インストール: pip install google-genai")
+        print("エラー: google-generativeai がインストールされていません。")
+        print("インストール: pip install google-generativeai")
         return 1
     
     # 音声リスト読み込み
@@ -329,7 +351,7 @@ def main():
     # TTS設定表示
     print(f"\nTTS設定:")
     print(f"  モデル: {GEMINI_MODEL}")
-    print(f"  ボイス: Charon (日本語対応)")
+    print(f"  ボイス: {VOICE_NAME}")
     print(f"  サンプリングレート: {SAMPLE_RATE}Hz")
     print(f"  ビット深度: {BIT_DEPTH}bit")
     print(f"  チャンネル: {CHANNELS} (モノラル)")
@@ -343,7 +365,7 @@ def main():
     
     for audio_id in sorted(voice_texts.keys()):
         text = voice_texts[audio_id]
-        if generate_audio_file(audio_id, text, api_key):
+        if generate_audio_file(audio_id, text, api_key, project_id, location):
             success_count += 1
         else:
             failed_count += 1
