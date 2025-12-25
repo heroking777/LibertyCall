@@ -2211,49 +2211,6 @@ class AICore:
             self.logger.exception(f"Gemini TTS synthesis failed: {e}")
             return None
     
-    def _synthesize_text_with_google_tts(self, text: str, voice_name: str = "ja-JP-Neural2-B", 
-                                          speaking_rate: float = 1.0, pitch: float = 0.0) -> Optional[bytes]:
-        """
-        従来のGoogle Cloud TTS APIを使用してテキストから音声を合成する
-        
-        :param text: 音声化するテキスト
-        :param voice_name: 音声名
-        :param speaking_rate: 話す速度
-        :param pitch: ピッチ
-        :return: 音声データ（bytes）または None
-        """
-        if not self.tts_client or texttospeech is None:
-            return None
-        
-        try:
-            # voice_name から language_code を抽出
-            language_code = "ja-JP"
-            if "-" in voice_name:
-                parts = voice_name.split("-")
-                if len(parts) >= 2:
-                    language_code = f"{parts[0]}-{parts[1]}"
-            
-            synthesis_input = texttospeech.SynthesisInput(text=text)
-            voice_params = texttospeech.VoiceSelectionParams(
-                language_code=language_code,
-                name=voice_name
-            )
-            audio_config = texttospeech.AudioConfig(
-                audio_encoding=texttospeech.AudioEncoding.LINEAR16,
-                sample_rate_hertz=24000,
-                speaking_rate=speaking_rate,
-                pitch=pitch
-            )
-            response = self.tts_client.synthesize_speech(
-                input=synthesis_input,
-                voice=voice_params,
-                audio_config=audio_config
-            )
-            return response.audio_content
-        except Exception as e:
-            self.logger.exception(f"Google TTS synthesis failed: {e}")
-            return None
-    
     def _synthesize_template_audio(self, template_id: str) -> Optional[bytes]:
         """
         テンプレIDから音声を合成する
