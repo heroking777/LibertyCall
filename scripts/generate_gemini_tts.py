@@ -318,7 +318,7 @@ def main():
     print(f"\n音声ファイル生成中（完全放置・突破仕様）...", flush=True)
     print(f"  リトライ: 無効（1回のみ実行、失敗したら即スキップ）", flush=True)
     print(f"  ランダム待機: 15秒〜25秒のランダム待機（Bot判定回避）", flush=True)
-    print(f"  429エラー時: 20秒待って次へ（3分待機なし）", flush=True)
+    print(f"  429エラー時: 即座にシステム停止（無駄なAPI呼び出しを防止）", flush=True)
     print(f"  クライアント: 1つのクライアントを使い回し（リコネクト削減）", flush=True)
     print(f"  システムプロンプト: 完全削除（TSVテキストのみ）", flush=True)
     print(f"  パラメータ: Model={GEMINI_MODEL}, Voice={VOICE_NAME}, Temperature=0.0", flush=True)
@@ -349,10 +349,15 @@ def main():
                 failed_list[audio_id] = error_reason
                 print(f"  ✗ {audio_id}: 生成失敗 (理由: {error_reason})", flush=True)
                 
-                # 429エラーの場合のみ20秒待機（3分待機なし）
+                # 429エラー（API制限）が検出されたら即座にシステムを停止
                 if error_reason == "429_QUOTA_EXCEEDED":
-                    print(f"  ⚠ 429エラー検出: 20秒待機してから次へ進みます...", flush=True)
-                    time.sleep(20)
+                    print(f"\n" + "=" * 60, flush=True)
+                    print(f"⚠ API制限エラー（429 RESOURCE_EXHAUSTED）が検出されました", flush=True)
+                    print(f"  1日の上限（100回）を超えた可能性があります", flush=True)
+                    print(f"  無駄なAPI呼び出し（入力トークン課金）を防ぐため、システムを即座に停止します", flush=True)
+                    print(f"  成功: {success_count}件 / 処理済み: {idx}件 / 残り: {total_count - idx}件", flush=True)
+                    print("=" * 60, flush=True)
+                    sys.exit(1)
                 
         except KeyboardInterrupt:
             print(f"\n\n⚠ ユーザーによる中断が検出されました。", flush=True)
