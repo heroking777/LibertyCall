@@ -53,7 +53,8 @@ BIT_DEPTH = 16  # 16bit
 CHANNELS = 1  # モノラル
 
 # Gemini 2.0/2.5 モデル名
-GEMINI_MODEL = "gemini-2.0-flash"
+# TTS専用モデルを使用（音声生成に特化）
+GEMINI_MODEL = "gemini-2.5-flash-preview-tts"
 
 # 音声名（日本語対応）
 VOICE_NAME = "Aoede"  # 落ち着いた女性の声（他: Charon, Kore, Puck, Fenrir）
@@ -145,19 +146,32 @@ def synthesize_with_gemini(text: str, api_key: str) -> Optional[bytes]:
         )
         
         # 音声データの取り出し
+        # ユーザー提供のコード例に基づく実装
         # response.candidates[0].content.parts から inline_data を持つ part を探す
         if hasattr(response, 'candidates') and len(response.candidates) > 0:
             candidate = response.candidates[0]
             
-            if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                # inline_dataを持つpartを探す
-                audio_part = next(
-                    (part for part in candidate.content.parts if hasattr(part, 'inline_data') and part.inline_data is not None),
-                    None
-                )
-                
-                if audio_part:
-                    audio_data = audio_part.inline_data.data
+            if hasattr(candidate, 'content') and candidate.content is not None:
+                if hasattr(candidate.content, 'parts') and candidate.content.parts:
+                    # inline_dataを持つpartを探す
+                    audio_part = next(
+                        (part for part in candidate.content.parts if hasattr(part, 'inline_data') and part.inline_data is not None),
+                        None
+                    )
+                    
+                    if audio_part:
+                        audio_data = audio_part.inline_data.data
+                        if audio_data and len(audio_data) > 0:
+                            # Base64エンコードされている場合はデコード
+                            if isinstance(audio_data, str):
+                                return base64.b64decode(audio_data)
+                            return audio_data
+        
+        # response.partsからも確認（以前の成功時はこちらにあった）
+        if hasattr(response, 'parts') and response.parts:
+            for part in response.parts:
+                if hasattr(part, 'inline_data') and part.inline_data is not None:
+                    audio_data = part.inline_data.data
                     if audio_data and len(audio_data) > 0:
                         # Base64エンコードされている場合はデコード
                         if isinstance(audio_data, str):
@@ -165,8 +179,6 @@ def synthesize_with_gemini(text: str, api_key: str) -> Optional[bytes]:
                         return audio_data
         
         print(f"警告: 音声データが見つかりませんでした。")
-        if hasattr(response, 'candidates') and len(response.candidates) > 0:
-            print(f"Response parts: {response.candidates[0].content.parts}")
         return None
         
     except Exception as e:
