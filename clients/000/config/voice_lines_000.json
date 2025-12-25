@@ -19,7 +19,8 @@
   },
   "003": {
     "text": "はい。",
-    "voice": "ja-JP-Neural2-B",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Aoede",
     "rate": 1.1
   },
   "004": {
