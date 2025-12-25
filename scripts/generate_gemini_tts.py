@@ -178,11 +178,10 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             
             if is_short_text:
                 # 短いセリフの場合：
-                # 1. 語尾に「。。。。。」を追加して波形生成時間を稼ぐ
-                enhanced_text = f"{text.strip()}。。。。"
+                # 1. 語尾に「。。。」を追加して波形生成時間を稼ぐ（5つは多すぎる可能性があるため3つに）
+                enhanced_text = f"{text.strip()}。。。"
                 # 2. プロンプトを簡略化
                 prompt = f"{SHORT_TEXT_PROMPT} {enhanced_text}"
-                print(f"  デバッグ: 短いセリフ検出 - プロンプト = {prompt}", flush=True)
             else:
                 # 通常のセリフはそのまま
                 prompt = f"{SYSTEM_PROMPT} {text}"
