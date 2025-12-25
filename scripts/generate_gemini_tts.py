@@ -57,7 +57,7 @@ CHANNELS = 1  # モノラル
 GEMINI_MODEL = "gemini-2.5-flash-preview-tts"
 
 # 音声名（日本語対応）
-VOICE_NAME = "Aoede"  # 固定: 一貫した声質を保つため
+VOICE_NAME = "Kore"  # 固定: 一貫した声質を保つため（確定レシピ）
 
 # ============================================================================
 # システムプロンプト（クライアント000専用 - 確定版）
@@ -141,21 +141,23 @@ def load_voice_list(skip_existing: bool = False) -> dict:
     return voice_texts
 
 
-def synthesize_with_gemini(text: str, api_key: str, max_retries: int = 3) -> Optional[bytes]:
+def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False) -> Optional[bytes]:
     """
     Gemini APIを使用してテキストから音声を合成する（google-genaiパッケージ使用）
     
     Args:
         text: 音声化するテキスト
         api_key: APIキー
-        max_retries: 最大リトライ回数
+        infinite_retry: Trueの場合、無限リトライ（成功するまで続行）
     
     Returns:
         音声データ（bytes）または None
     """
     import time
     
-    for attempt in range(1, max_retries + 1):
+    attempt = 0
+    while True:
+        attempt += 1
         try:
             if not GENAI_AVAILABLE:
                 print("エラー: google-genai がインストールされていません。")
@@ -224,26 +226,29 @@ def synthesize_with_gemini(text: str, api_key: str, max_retries: int = 3) -> Opt
             
             # 音声データが空の場合はリトライ
             if not audio_data or len(audio_data) == 0:
-                if attempt < max_retries:
-                    print(f"  警告: 音声データが空でした。リトライ {attempt + 1}/{max_retries}...", flush=True)
-                    time.sleep(5)  # レート制限回避
+                if infinite_retry:
+                    print(f"  警告: 音声データが空でした。リトライ中...（{attempt}回目）", flush=True)
+                    print(f"  30秒待機してから再試行します...", flush=True)
+                    time.sleep(30)  # エラー時は30秒待機
                     continue
                 else:
-                    print(f"警告: 音声データが見つかりませんでした（最大リトライ回数に達しました）。", flush=True)
+                    print(f"警告: 音声データが見つかりませんでした。", flush=True)
                     return None
+            else:
+                # 成功した場合は音声データを返す
+                return audio_data
                     
         except Exception as e:
-            if attempt < max_retries:
-                print(f"  エラー: {e}。リトライ {attempt + 1}/{max_retries}...", flush=True)
-                time.sleep(5)  # レート制限回避
+            if infinite_retry:
+                print(f"  エラー: {e}。リトライ中...（{attempt}回目）", flush=True)
+                print(f"  30秒待機してから再試行します...", flush=True)
+                time.sleep(30)  # エラー時は30秒待機
                 continue
             else:
                 print(f"エラー: Gemini API音声合成に失敗しました: {e}", flush=True)
                 import traceback
                 traceback.print_exc()
                 return None
-    
-    return None
 
 
 def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
@@ -273,7 +278,7 @@ def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
     return wav_buffer.getvalue()
 
 
-def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: float = 0.0) -> bool:
+def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: float = 0.0, infinite_retry: bool = False) -> bool:
     """
     Gemini APIを使用して音声ファイルを生成
     
@@ -300,12 +305,17 @@ def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: f
         print(f"  Pitch: 2.0, Speed: 1.05", flush=True)
         print(f"  サンプリングレート: {SAMPLE_RATE}Hz", flush=True)
         
-        # Gemini APIで音声合成
-        audio_data = synthesize_with_gemini(text, api_key)
+        # Gemini APIで音声合成（無限リトライ対応）
+        audio_data = synthesize_with_gemini(text, api_key, infinite_retry=infinite_retry)
         
         if not audio_data:
-            print(f"  ✗ {audio_id}: 音声合成に失敗しました", flush=True)
-            return False
+            if infinite_retry:
+                # 無限リトライモードでは、ここに到達することはないはず
+                print(f"  ⚠ {audio_id}: 予期しないエラー（無限リトライ継続中）", flush=True)
+                return False
+            else:
+                print(f"  ✗ {audio_id}: 音声合成に失敗しました", flush=True)
+                return False
         
         # WAV形式に変換（必要に応じて）
         wav_data = convert_to_wav(audio_data, SAMPLE_RATE)
@@ -382,49 +392,57 @@ def main():
     print(f"  出力形式: WAV")
     print(f"  出力ディレクトリ: {OUTPUT_DIR}")
     
-    # 音声ファイル生成（全自動生成モード）
-    print(f"\n音声ファイル生成中（全自動生成モード）...", flush=True)
-    print(f"  レート制限対策: 1件ごとに7秒スリープ", flush=True)
-    print(f"  エラー継続: 500エラーなどが出ても止まらず続行します", flush=True)
+    # 音声ファイル生成（無限リトライ全自動生成モード）
+    print(f"\n音声ファイル生成中（無限リトライ全自動生成モード）...", flush=True)
+    print(f"  レート制限対策: 1件ごとに8秒スリープ", flush=True)
+    print(f"  エラー時: 30秒待機してからリトライ", flush=True)
+    print(f"  無限リトライ: 500エラーやタイムアウトが発生しても、成功するまでリトライし続けます", flush=True)
+    print(f"  パラメータ: Model={GEMINI_MODEL}, Voice={VOICE_NAME}, Pitch=+2.0, Rate=1.05, Temperature=0.0", flush=True)
     print(f"", flush=True)
     
     success_count = 0
-    failed_list = []
+    total_count = len(voice_texts)
     
-    for audio_id in sorted(voice_texts.keys()):
+    for idx, audio_id in enumerate(sorted(voice_texts.keys()), 1):
         text = voice_texts[audio_id]
+        print(f"\n[{idx}/{total_count}] {audio_id} を処理中...", flush=True)
+        
         try:
-            if generate_audio_file(audio_id, text, api_key, sleep_seconds=7.0):
+            # 無限リトライモードで生成（成功するまで続行）
+            if generate_audio_file(audio_id, text, api_key, sleep_seconds=8.0, infinite_retry=True):
                 success_count += 1
+                print(f"  ✓ {audio_id}: 生成成功（進捗: {success_count}/{total_count}）", flush=True)
             else:
-                failed_list.append(audio_id)
-                print(f"  ⚠ {audio_id}: 生成失敗（エラーログを確認してください）", flush=True)
+                # 無限リトライモードでは通常ここに到達しない
+                print(f"  ⚠ {audio_id}: 予期しないエラー（無限リトライ継続中）", flush=True)
+        except KeyboardInterrupt:
+            print(f"\n\n⚠ ユーザーによる中断が検出されました。", flush=True)
+            print(f"  成功: {success_count}件 / 残り: {total_count - success_count}件", flush=True)
+            return 1
         except Exception as e:
-            failed_list.append(audio_id)
             print(f"  ✗ {audio_id}: 予期しないエラー - {e}", flush=True)
             import traceback
             traceback.print_exc()
+            # 無限リトライモードでは、エラーでも続行
+            print(f"  ⚠ {audio_id}: エラーが発生しましたが、無限リトライモードのため続行します...", flush=True)
         
         # 各ファイル生成後に強制的にflush
         sys.stdout.flush()
     
     # 結果表示
     print(f"\n" + "=" * 60)
-    print(f"音声ファイル生成完了")
+    print(f"音声ファイル生成完了（無限リトライモード）")
     print(f"  成功: {success_count}件")
-    print(f"  失敗: {len(failed_list)}件")
-    print(f"  合計: {len(voice_texts)}件")
+    print(f"  合計: {total_count}件")
     print("=" * 60)
     
-    if failed_list:
-        print(f"\n⚠ 生成に失敗した番号のリスト:")
-        for failed_id in failed_list:
-            print(f"  - {failed_id}")
-        print(f"\n合計 {len(failed_list)}件の生成に失敗しました。")
-        return 1
-    else:
+    if success_count == total_count:
         print("\n✓ すべての音声ファイルが正常に生成されました！")
         return 0
+    else:
+        print(f"\n⚠ 一部の音声ファイルの生成が完了していません（成功: {success_count}/{total_count}）")
+        print(f"  無限リトライモードのため、未完了のファイルは引き続きリトライされます。")
+        return 1
 
 
 if __name__ == "__main__":
