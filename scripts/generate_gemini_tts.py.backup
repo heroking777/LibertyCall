@@ -2,7 +2,26 @@
 # -*- coding: utf-8 -*-
 """
 Gemini 2.0/2.5 APIを使用した日本語TTS（音声合成）スクリプト
-一撃必殺モード：リトライなし、失敗したら即スキップ
+
+google-generativeaiパッケージとspeech_configを使用して音声を生成します。
+
+voice_list_000.tsvから000-003の音声ファイルを生成します。
+
+使い方:
+    export GOOGLE_API_KEY="your-api-key"
+    # または
+    export GEMINI_API_KEY="your-api-key"
+    
+    python scripts/generate_gemini_tts.py
+
+生成されるファイル:
+    - clients/000/audio/000.wav
+    - clients/000/audio/001.wav
+    - clients/000/audio/002.wav
+    - clients/000/audio/003.wav
+
+依存パッケージ:
+    - google-genai: pip install google-genai
 """
 
 import os
@@ -11,7 +30,7 @@ import wave
 import io
 import base64
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 try:
     from google import genai
@@ -34,18 +53,30 @@ BIT_DEPTH = 16  # 16bit
 CHANNELS = 1  # モノラル
 
 # Gemini 2.0/2.5 モデル名
+# TTS専用モデルを使用（音声生成に特化）
 GEMINI_MODEL = "gemini-2.5-flash-preview-tts"
 
 # 音声名（日本語対応）
 VOICE_NAME = "Kore"  # 固定: 一貫した声質を保つため（確定レシピ）
 
+# ============================================================================
 # システムプロンプト（クライアント000専用 - 確定版）
+# ============================================================================
+# 注意: 将来的にはクライアントごとに異なるプロンプトを設定できるように
+#       拡張する予定です（例: CLIENT_PROMPTS = {"000": "...", "001": "..."}）
+# ============================================================================
+# クライアント000の音声生成では、毎回このプロンプトを使用します。
+# Pitch: +2.0, Rate: 1.05 の設定を数値として明示的にプロンプトに含めています。
+# ============================================================================
 SYSTEM_PROMPT = """[設定: あなたはリバティーコールのプロの女性受付です。以下の『音声物理パラメーター』を厳守して読み上げてください。
 ・声の高さ(Pitch): +2.0 (標準より高め)
 ・話速(Rate): 1.05 (標準よりわずかに速く)
 ・トーン: 明るく、一貫性を保つこと]
 
 読み上げるセリフ："""
+
+# 短いセリフ用の簡略化プロンプト
+SHORT_TEXT_PROMPT = """[設定: Pitch:+2.0, Rate:1.05]"""
 
 
 def check_credentials() -> bool:
@@ -59,6 +90,8 @@ def check_credentials() -> bool:
         print("  export GOOGLE_API_KEY=\"your-api-key\"")
         print("  または")
         print("  export GEMINI_API_KEY=\"your-api-key\"")
+        print("  または")
+        print("  export GOOGLE_APPLICATION_CREDENTIALS=\"/path/to/credentials.json\"")
         return False
     return True
 
@@ -70,7 +103,15 @@ def ensure_directories():
 
 
 def load_voice_list(skip_existing: bool = False) -> dict:
-    """voice_list_000.tsvから音声テキストを読み込む"""
+    """
+    voice_list_000.tsvから音声テキストを読み込む
+    
+    Args:
+        skip_existing: Trueの場合、既に生成済みのファイルをスキップ
+    
+    Returns:
+        音声テキストの辞書 {audio_id: text}
+    """
     voice_texts = {}
     
     if not TSV_FILE.exists():
@@ -103,9 +144,10 @@ def load_voice_list(skip_existing: bool = False) -> dict:
     return voice_texts
 
 
-def synthesize_with_gemini(text: str, api_key: str) -> Tuple[Optional[bytes], Optional[str]]:
+def synthesize_with_gemini(text: str, api_key: str) -> tuple[Optional[bytes], Optional[str]]:
     """
-    Gemini APIを使用してテキストから音声を合成する（1回のみ、リトライなし）
+    Gemini APIを使用してテキストから音声を合成する（google-genaiパッケージ使用）
+    リトライなし、1回のみ実行
     
     Args:
         text: 音声化するテキスト
@@ -116,71 +158,77 @@ def synthesize_with_gemini(text: str, api_key: str) -> Tuple[Optional[bytes], Op
     """
     try:
         if not GENAI_AVAILABLE:
+            print("エラー: google-genai がインストールされていません。", flush=True)
             return None, "GENAI_NOT_AVAILABLE"
         
         # クライアントの初期化
         client = genai.Client(api_key=api_key)
-        
-        # システムプロンプトを固定して一貫した声質を保つ
-        # 短いセリフ（5文字以下）の場合は特別処理
-        is_short_text = len(text.strip()) <= 5
-        
-        if is_short_text:
-            # 短いセリフの場合：
-            # 1. テキストを少し長くして波形生成を安定させる
-            if text.strip() == "はい。":
-                enhanced_text = "はい、承知いたしました。"
-            elif text.strip() == "いいえ。":
-                enhanced_text = "いいえ、そのようではございません。"
+            
+            # システムプロンプトを固定して一貫した声質を保つ
+            # 短いセリフ（5文字以下）の場合は特別処理
+            is_short_text = len(text.strip()) <= 5
+            
+            if is_short_text:
+                # 短いセリフの場合：
+                # 1. テキストを少し長くして波形生成を安定させる
+                # 「はい。」→「はい、承知いたしました。」のように自然に拡張
+                if text.strip() == "はい。":
+                    enhanced_text = "はい、承知いたしました。"
+                elif text.strip() == "いいえ。":
+                    enhanced_text = "いいえ、そのようではございません。"
+                else:
+                    # その他の短いセリフは語尾に「。。。」を追加
+                    enhanced_text = f"{text.strip()}。。。"
+                # 2. 通常のプロンプトを使用（簡略化プロンプトは使わない）
+                prompt = f"{SYSTEM_PROMPT} {enhanced_text}"
             else:
-                # その他の短いセリフは語尾に「。。。」を追加
-                enhanced_text = f"{text.strip()}。。。"
-            # 2. 通常のプロンプトを使用
-            prompt = f"{SYSTEM_PROMPT} {enhanced_text}"
-        else:
-            # 通常のセリフはそのまま
-            prompt = f"{SYSTEM_PROMPT} {text}"
-        
-        # セーフティ設定を全開放（TTS APIでサポートされているテキスト用カテゴリのみ）
-        safety_settings = [
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE
-            ),
-        ]
-        
-        # 生成リクエスト
-        config = types.GenerateContentConfig(
-            responseModalities=["AUDIO"],
-            temperature=0.0,
-            safetySettings=safety_settings,
-            speechConfig=types.SpeechConfig(
-                voiceConfig=types.VoiceConfig(
-                    prebuiltVoiceConfig=types.PrebuiltVoiceConfig(
-                        voiceName=VOICE_NAME
+                # 通常のセリフはそのまま
+                prompt = f"{SYSTEM_PROMPT} {text}"
+            
+            # セーフティ設定を全開放（TTS APIでサポートされているテキスト用カテゴリのみ）
+            # IMAGE関連とJAILBREAK、CIVIC_INTEGRITYはTTS APIではサポートされていないため除外
+            safety_settings = [
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE
+                ),
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE
+                ),
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE
+                ),
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE
+                ),
+            ]
+            
+            # 生成リクエスト
+            # Gemini 2.0 Flash は 'AUDIO' モダリティを指定する必要があります
+            # 注意: SpeechConfigにはpitch/speaking_rateパラメータがサポートされていないため、
+            # プロンプト内で数値として明示的に指示しています（Pitch: +2.0, Rate: 1.05）
+            config = types.GenerateContentConfig(
+                responseModalities=["AUDIO"],
+                temperature=0.0,
+                safetySettings=safety_settings,
+                speechConfig=types.SpeechConfig(
+                    voiceConfig=types.VoiceConfig(
+                        prebuiltVoiceConfig=types.PrebuiltVoiceConfig(
+                            voiceName=VOICE_NAME
+                        )
                     )
                 )
             )
-        )
-        
+            
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
             config=config
         )
-        
+            
         # 音声データの取り出し（パス固定版）
         # response.candidates[0].content.parts[0].inline_data.data から直接バイナリを取得
         audio_data = None
@@ -210,6 +258,7 @@ def synthesize_with_gemini(text: str, api_key: str) -> Tuple[Optional[bytes], Op
         error_reason = "EMPTY_DATA"
         if finish_reason:
             error_reason = f"{finish_reason}"
+        print(f"  警告: 音声データが見つかりませんでした (finish_reason: {finish_reason})", flush=True)
         return None, error_reason
                     
     except Exception as e:
@@ -226,14 +275,27 @@ def synthesize_with_gemini(text: str, api_key: str) -> Tuple[Optional[bytes], Op
         else:
             error_reason = f"ERROR_{type(e).__name__}"
         
+        print(f"  エラー: Gemini API音声合成に失敗しました: {error_reason}", flush=True)
         return None, error_reason
 
 
 def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
-    """音声データをWAV形式に変換する"""
+    """
+    音声データをWAV形式に変換する
+    
+    Args:
+        audio_data: 元の音声データ（PCMまたはWAV）
+        sample_rate: サンプリングレート
+    
+    Returns:
+        WAV形式の音声データ
+    """
+    # 音声データがすでにWAV形式の場合はそのまま返す
     if audio_data[:4] == b'RIFF':
         return audio_data
     
+    # PCMデータの場合は、WAVヘッダーを付けて変換
+    # Gemini APIから返ってくるデータは生のPCMデータ（16bit、24kHz、モノラル）
     wav_buffer = io.BytesIO()
     with wave.open(wav_buffer, 'wb') as wf:
         wf.setnchannels(CHANNELS)
@@ -244,26 +306,54 @@ def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
     return wav_buffer.getvalue()
 
 
-def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: float = 0.0) -> Tuple[bool, Optional[str]]:
-    """Gemini APIを使用して音声ファイルを生成（1回のみ、リトライなし）"""
+def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: float = 0.0) -> tuple[bool, Optional[str]]:
+    """
+    Gemini APIを使用して音声ファイルを生成
+    
+    Args:
+        audio_id: 音声ID（例: "000"）
+        text: 音声化するテキスト
+        api_key: APIキー
+    
+    Returns:
+        成功した場合True
+    """
     try:
         output_wav = OUTPUT_DIR / f"{audio_id}.wav"
         
         if not text:
-            return False, "EMPTY_TEXT"
+            print(f"  ⚠ {audio_id}: テキストが空のためスキップ", flush=True)
+            return False
+        
+        # デバッグ: 003のテキストを強制的に書き換え
+        if audio_id == "003":
+            original_text = text
+            text = "今日はとても天気がいいので、散歩に行きたいですね。"
+            print(f"  デバッグ: 003のテキストを強制的に書き換えました", flush=True)
+            print(f"  元のテキスト: {original_text}", flush=True)
+            print(f"  新しいテキスト: {text}", flush=True)
         
         # 開始ログ
         print(f"\n[開始] {audio_id}.wav の生成を開始します", flush=True)
         print(f"  テキスト: {text}", flush=True)
+        print(f"  モデル: {GEMINI_MODEL}", flush=True)
+        print(f"  ボイス: {VOICE_NAME}", flush=True)
+        print(f"  Pitch: 2.0, Speed: 1.05", flush=True)
+        print(f"  サンプリングレート: {SAMPLE_RATE}Hz", flush=True)
         
-        # Gemini APIで音声合成（1回のみ、リトライなし）
-        audio_data, error_reason = synthesize_with_gemini(text, api_key)
+        # Gemini APIで音声合成（無限リトライ無効、1回のみ）
+        audio_data = synthesize_with_gemini(text, api_key, infinite_retry=False, max_attempts=1)
         
         if not audio_data:
-            print(f"  ✗ {audio_id}: 音声合成に失敗しました (理由: {error_reason})", flush=True)
-            return False, error_reason
+            if infinite_retry:
+                # 無限リトライモードでは、ここに到達することはないはず
+                print(f"  ⚠ {audio_id}: 予期しないエラー（無限リトライ継続中）", flush=True)
+                return False
+            else:
+                print(f"  ✗ {audio_id}: 音声合成に失敗しました", flush=True)
+                return False
         
-        # WAV形式に変換
+        # WAV形式に変換（必要に応じて）
         wav_data = convert_to_wav(audio_data, SAMPLE_RATE)
         
         # WAVファイルとして保存
@@ -271,6 +361,7 @@ def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: f
             f.write(wav_data)
         
         file_size = output_wav.stat().st_size
+        # 完了ログ（サイズ含む）
         print(f"[完了] {audio_id}.wav の生成が完了しました", flush=True)
         print(f"  ファイルパス: {output_wav}", flush=True)
         print(f"  ファイルサイズ: {file_size:,} bytes ({file_size / 1024:.2f} KB)", flush=True)
@@ -286,13 +377,15 @@ def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: f
     except Exception as e:
         error_reason = f"EXCEPTION_{type(e).__name__}"
         print(f"  ✗ {audio_id}: エラー - {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         return False, error_reason
 
 
 def main():
     """メイン処理"""
     print("=" * 60)
-    print("Gemini 2.0/2.5 API 日本語TTS音声生成（一撃必殺モード）")
+    print("Gemini 2.0/2.5 API 日本語TTS音声生成")
     print("=" * 60)
     
     # 認証情報確認
@@ -316,20 +409,32 @@ def main():
         print("インストール: pip install google-genai")
         return 1
     
-    # 音声リスト読み込み（006以降の未生成分をすべて処理）
+    # 音声リスト読み込み（既存ファイルをスキップ）
+    # テストモード: 003と005のみを処理
+    TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
+    
     print(f"\n音声リスト読み込み中...")
-    all_texts = load_voice_list(skip_existing=True)
-    voice_texts = {}
-    for audio_id, text in all_texts.items():
-        # 006以降のみ処理（000-005は除外）
-        try:
-            audio_id_int = int(audio_id)
-            if audio_id_int >= 6:
-                voice_texts[audio_id] = text
-        except ValueError:
-            # 数値でないID（例: 006_SYS）も処理
-            if not audio_id.startswith(("000", "001", "002", "003", "004", "005")):
-                voice_texts[audio_id] = text
+    if TEST_MODE:
+        print(f"  テストモード: 003と005のみを処理します", flush=True)
+        voice_texts = {}
+        all_texts = load_voice_list(skip_existing=False)
+        for test_id in ["003", "005"]:
+            if test_id in all_texts:
+                voice_texts[test_id] = all_texts[test_id]
+    else:
+        # 006以降の未生成分をすべて処理
+        all_texts = load_voice_list(skip_existing=True)
+        voice_texts = {}
+        for audio_id, text in all_texts.items():
+            # 006以降のみ処理（000-005は除外）
+            try:
+                audio_id_int = int(audio_id)
+                if audio_id_int >= 6:
+                    voice_texts[audio_id] = text
+            except ValueError:
+                # 数値でないID（例: 006_SYS）も処理
+                if not audio_id.startswith(("000", "001", "002", "003", "004", "005")):
+                    voice_texts[audio_id] = text
     
     if not voice_texts:
         print("✓ すべての音声ファイルが既に生成済みです。")
@@ -415,4 +520,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
