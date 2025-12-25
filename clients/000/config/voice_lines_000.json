@@ -1,17 +1,20 @@
 {
   "000": {
     "text": "この通話は品質向上のため録音させて戴きます",
-    "voice": "ja-JP-Neural2-B",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Aoede",
     "rate": 1.1
   },
   "001": {
     "text": "お電話ありがとうございます",
-    "voice": "ja-JP-Neural2-B",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Aoede",
     "rate": 1.1
   },
   "002": {
     "text": "リバティーコールです。",
-    "voice": "ja-JP-Neural2-B",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Aoede",
     "rate": 1.1
   },
   "003": {
