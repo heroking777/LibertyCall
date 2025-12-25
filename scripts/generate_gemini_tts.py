@@ -265,6 +265,11 @@ def synthesize_with_gemini(text: str, client) -> Tuple[Optional[bytes], Optional
         else:
             error_reason = f"ERROR_{type(e).__name__}"
         
+        # エラー時もレスポンス構造を出力（可能な場合）
+        print(f"\n[デバッグ] エラー発生時の情報:", flush=True)
+        print(f"  エラー種別: {error_reason}", flush=True)
+        print(f"  エラーメッセージ: {error_str}", flush=True)
+        
         return None, error_reason
 
 
@@ -349,8 +354,14 @@ def main():
         print("インストール: pip install google-genai")
         return 1
     
+    # テストモードの確認（1件だけ処理してレスポンス構造を表示して停止）
+    TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true" or os.getenv("TEST_MODE") == "1"
+    
     # 音声リスト読み込み（006以降の未生成分をすべて処理）
     print(f"\n音声リスト読み込み中...")
+    if TEST_MODE:
+        print(f"  ⚠ テストモード: 最初の1件だけ処理してレスポンス構造を表示します", flush=True)
+    
     all_texts = load_voice_list(skip_existing=True)
     voice_texts = {}
     for audio_id, text in all_texts.items():
@@ -363,6 +374,12 @@ def main():
             # 数値でないID（例: 006_SYS）も処理
             if not audio_id.startswith(("000", "001", "002", "003", "004", "005")):
                 voice_texts[audio_id] = text
+    
+    # テストモードの場合、最初の1件だけに制限
+    if TEST_MODE and voice_texts:
+        first_key = sorted(voice_texts.keys())[0]
+        voice_texts = {first_key: voice_texts[first_key]}
+        print(f"  テスト対象: {first_key} - {voice_texts[first_key]}", flush=True)
     
     if not voice_texts:
         print("✓ すべての音声ファイルが既に生成済みです。")
@@ -384,7 +401,9 @@ def main():
     print(f"\n音声ファイル生成中（無料枠対応：Free Tier制限）...", flush=True)
     print(f"  リトライ: 無効（1回のみ実行、失敗したら即スキップ）", flush=True)
     print(f"  1日の上限: {MAX_REQUESTS_PER_DAY}リクエスト（無料枠）", flush=True)
-    print(f"  RPM制限対策: {SLEEP_MIN}秒〜{SLEEP_MAX}秒のランダム待機（{RPM_LIMIT} RPMを守る）", flush=True)
+    print(f"  RPM制限対策: {SLEEP_MIN}秒〜{SLEEP_MAX}秒のランダム待機（{RPM_LIMIT} RPMを守る、効率化）", flush=True)
+    if TEST_MODE:
+        print(f"  テストモード: 有効（1件のみ処理してレスポンス構造を表示）", flush=True)
     print(f"  429エラー時: 即座にシステム停止（無駄なAPI呼び出しを防止）", flush=True)
     print(f"  クライアント: 1つのクライアントを使い回し（リコネクト削減）", flush=True)
     print(f"  システムプロンプト: 完全削除（TSVテキストのみ）", flush=True)
@@ -450,7 +469,15 @@ def main():
             failed_list[audio_id] = f"EXCEPTION_{type(e).__name__}"
             print(f"  ✗ {audio_id}: 予期しないエラー - {e}", flush=True)
         
-        # 成功・失敗に関わらず、12秒〜15秒のランダム待機（15 RPM制限を守る）
+        # テストモードの場合、ここで停止
+        if TEST_MODE:
+            print(f"\n" + "=" * 60, flush=True)
+            print(f"⚠ テストモード: 1件処理完了。レスポンス構造を確認してください。", flush=True)
+            print(f"  成功: {success_count}件, 失敗: {len(failed_list)}件", flush=True)
+            print("=" * 60, flush=True)
+            return 0
+        
+        # 成功・失敗に関わらず、4秒〜5秒のランダム待機（15 RPM制限を守る、効率化）
         wait_seconds = random.uniform(SLEEP_MIN, SLEEP_MAX)
         print(f"  {wait_seconds:.1f}秒待機中（ランダム、RPM制限対策）...", flush=True)
         time.sleep(wait_seconds)
