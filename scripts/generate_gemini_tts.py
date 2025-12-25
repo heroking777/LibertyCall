@@ -75,6 +75,9 @@ SYSTEM_PROMPT = """[設定: あなたはリバティーコールのプロの女�
 
 読み上げるセリフ："""
 
+# 短いセリフ用の簡略化プロンプト
+SHORT_TEXT_PROMPT = """[設定: Pitch:+2.0, Rate:1.05] 以下の言葉を話して："""
+
 
 def check_credentials() -> bool:
     """認証情報の確認"""
@@ -170,17 +173,19 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             client = genai.Client(api_key=api_key)
             
             # システムプロンプトを固定して一貫した声質を保つ
-            # 短いセリフの場合は肉付けして生成を安定させる
-            if len(text.strip()) <= 5:  # 短いセリフ（5文字以下）
-                enhanced_text = f"少し間を置いてから、丁寧に「{text}」と言ってください"
+            # 短いセリフ（5文字以下）の場合は特別処理
+            is_short_text = len(text.strip()) <= 5
+            
+            if is_short_text:
+                # 短いセリフの場合：
+                # 1. 語尾に「。。。。。」を追加して波形生成時間を稼ぐ
+                enhanced_text = f"{text.strip()}。。。。"
+                # 2. プロンプトを簡略化
+                prompt = f"{SHORT_TEXT_PROMPT} {enhanced_text}"
+                print(f"  デバッグ: 短いセリフ検出 - プロンプト = {prompt}", flush=True)
             else:
-                enhanced_text = text
-            
-            prompt = f"{SYSTEM_PROMPT} {enhanced_text}"
-            
-            # デバッグ: プロンプト全体を表示
-            print(f"  デバッグ: プロンプト全体 = {prompt}", flush=True)
-            print(f"  デバッグ: プロンプト長 = {len(prompt)} 文字", flush=True)
+                # 通常のセリフはそのまま
+                prompt = f"{SYSTEM_PROMPT} {text}"
             
             # セーフティ設定を全開放（TTS APIでサポートされているテキスト用カテゴリのみ）
             # IMAGE関連とJAILBREAK、CIVIC_INTEGRITYはTTS APIではサポートされていないため除外
@@ -207,10 +212,6 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             # Gemini 2.0 Flash は 'AUDIO' モダリティを指定する必要があります
             # 注意: SpeechConfigにはpitch/speaking_rateパラメータがサポートされていないため、
             # プロンプト内で数値として明示的に指示しています（Pitch: +2.0, Rate: 1.05）
-            if infinite_retry and attempt <= 3:
-                print(f"  API呼び出し中...（{attempt}回目）", flush=True)
-            
-            # デバッグ: GenerateContentConfigを表示
             config = types.GenerateContentConfig(
                 responseModalities=["AUDIO"],
                 temperature=0.0,
@@ -223,8 +224,6 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
                     )
                 )
             )
-            print(f"  デバッグ: GenerateContentConfig = {config}", flush=True)
-            print(f"  デバッグ: safetySettings = {safety_settings}", flush=True)
             
             # セーフティ設定を全開放（TTS APIでサポートされているテキスト用カテゴリのみ）
             # IMAGE関連とJAILBREAK、CIVIC_INTEGRITYはTTS APIではサポートされていないため除外
@@ -253,45 +252,6 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
                 config=config
             )
             
-            # デバッグ: responseオブジェクト全体を表示
-            print(f"  デバッグ: response オブジェクト全体 = {response}", flush=True)
-            print(f"  デバッグ: response type = {type(response)}", flush=True)
-            print(f"  デバッグ: response attributes = {[attr for attr in dir(response) if not attr.startswith('_')]}", flush=True)
-            
-            # デバッグ: prompt_feedbackを確認
-            if hasattr(response, 'prompt_feedback'):
-                prompt_feedback = response.prompt_feedback
-                print(f"  デバッグ: prompt_feedback = {prompt_feedback}", flush=True)
-                if prompt_feedback:
-                    print(f"  デバッグ: prompt_feedback type = {type(prompt_feedback)}", flush=True)
-                    print(f"  デバッグ: prompt_feedback attributes = {[attr for attr in dir(prompt_feedback) if not attr.startswith('_')]}", flush=True)
-                    if hasattr(prompt_feedback, 'block_reason'):
-                        print(f"  デバッグ: prompt_feedback.block_reason = {prompt_feedback.block_reason}", flush=True)
-                    if hasattr(prompt_feedback, 'safety_ratings'):
-                        print(f"  デバッグ: prompt_feedback.safety_ratings = {prompt_feedback.safety_ratings}", flush=True)
-            
-            # デバッグ: finish_reasonとsafety_ratingsを確認
-            if hasattr(response, 'candidates') and len(response.candidates) > 0:
-                candidate = response.candidates[0]
-                finish_reason = getattr(candidate, 'finish_reason', None)
-                finish_message = getattr(candidate, 'finish_message', None)
-                print(f"  デバッグ: finish_reason = {finish_reason}", flush=True)
-                print(f"  デバッグ: finish_message = {finish_message}", flush=True)
-                
-                # safety_ratingsを確認
-                if hasattr(candidate, 'safety_ratings'):
-                    safety_ratings = candidate.safety_ratings
-                    print(f"  デバッグ: candidate.safety_ratings = {safety_ratings}", flush=True)
-                    if safety_ratings:
-                        for i, rating in enumerate(safety_ratings):
-                            print(f"  デバッグ: safety_ratings[{i}] = {rating}", flush=True)
-                            if hasattr(rating, 'category'):
-                                print(f"  デバッグ: safety_ratings[{i}].category = {rating.category}", flush=True)
-                            if hasattr(rating, 'probability'):
-                                print(f"  デバッグ: safety_ratings[{i}].probability = {rating.probability}", flush=True)
-                
-                if finish_reason and 'SAFETY' in str(finish_reason).upper():
-                    print(f"  ⚠ 警告: セーフティフィルターでブロックされています！", flush=True)
             
             # 音声データの取り出し（パス固定版）
             # response.candidates[0].content.parts[0].inline_data.data から直接バイナリを取得
@@ -300,35 +260,19 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             if hasattr(response, 'candidates') and len(response.candidates) > 0:
                 candidate = response.candidates[0]
                 
-                # finish_reasonを確認
-                finish_reason = getattr(candidate, 'finish_reason', None)
-                print(f"  デバッグ: finish_reason = {finish_reason}", flush=True)
-                
                 if hasattr(candidate, 'content') and candidate.content is not None:
                     if hasattr(candidate.content, 'parts') and len(candidate.content.parts) > 0:
                         # パス固定: parts[0].inline_data.data
                         part = candidate.content.parts[0]
-                        print(f"  デバッグ: part[0] type = {type(part)}", flush=True)
                         
                         if hasattr(part, 'inline_data') and part.inline_data is not None:
-                            print(f"  デバッグ: part[0].inline_data が見つかりました", flush=True)
-                            
                             if hasattr(part.inline_data, 'data'):
                                 audio_data = part.inline_data.data
-                                print(f"  デバッグ: part[0].inline_data.data 取得成功 (size: {len(audio_data) if audio_data else 0} bytes)", flush=True)
                                 
                                 if audio_data and len(audio_data) > 0:
                                     if isinstance(audio_data, str):
                                         return base64.b64decode(audio_data)
                                     return audio_data
-                            else:
-                                print(f"  エラー: part[0].inline_data.data が見つかりません", flush=True)
-                        else:
-                            print(f"  エラー: part[0].inline_data が見つかりません", flush=True)
-                    else:
-                        print(f"  エラー: candidate.content.parts が空です", flush=True)
-                else:
-                    print(f"  エラー: candidate.content が None です", flush=True)
             
             # 音声データが空の場合はリトライ
             if not audio_data or len(audio_data) == 0:
