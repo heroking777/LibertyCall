@@ -193,7 +193,7 @@ def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
     音声データをWAV形式に変換する
     
     Args:
-        audio_data: 元の音声データ
+        audio_data: 元の音声データ（PCMまたはWAV）
         sample_rate: サンプリングレート
     
     Returns:
@@ -203,8 +203,8 @@ def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
     if audio_data[:4] == b'RIFF':
         return audio_data
     
-    # その他の形式の場合は、WAVヘッダーを付けて変換
-    # 注: 実際の音声データ形式に合わせて変換処理を実装する必要があります
+    # PCMデータの場合は、WAVヘッダーを付けて変換
+    # Gemini APIから返ってくるデータは生のPCMデータ（16bit、24kHz、モノラル）
     wav_buffer = io.BytesIO()
     with wave.open(wav_buffer, 'wb') as wf:
         wf.setnchannels(CHANNELS)
