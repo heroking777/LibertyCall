@@ -747,7 +747,8 @@ class RealtimeGateway:
                     self.is_speaking_tts = True
                     self._tts_sender_wakeup.set()
             return
-        elif reply_text and self.ai_core.tts_client and self.ai_core.voice_params and self.ai_core.audio_config:
+        elif reply_text and ((hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts) or 
+                              (self.ai_core.tts_client and self.ai_core.voice_params and self.ai_core.audio_config)):
             # デバッグログ拡張: TTS_REPLY
             self.logger.info(f"[TTS_REPLY] \"{reply_text}\"")
             # 文節単位再生が有効な場合は非同期タスクで処理
@@ -757,13 +758,7 @@ class RealtimeGateway:
                     loop.create_task(self._send_tts_segmented(call_id, reply_text))
                 else:
                     # フォールバック: 同期実行（文節単位再生はスキップ）
-                    synthesis_input = texttospeech.SynthesisInput(text=reply_text)
-                    response = self.ai_core.tts_client.synthesize_speech(
-                        input=synthesis_input,
-                        voice=self.ai_core.voice_params,
-                        audio_config=self.ai_core.audio_config
-                    )
-                    tts_audio_24k = response.audio_content
+                    tts_audio_24k = self._synthesize_text_sync(reply_text)
                     if tts_audio_24k:
                         ulaw_response = pcm24k_to_ulaw8k(tts_audio_24k)
                         chunk_size = 160
@@ -913,11 +908,28 @@ class RealtimeGateway:
     def _synthesize_text_sync(self, text: str) -> Optional[bytes]:
         """
         ChatGPT音声風: テキストのTTS合成を同期実行（ThreadPoolExecutor用）
+        Gemini APIまたは従来のGoogle Cloud TTS APIを使用
         
         :param text: テキスト
         :return: 音声データ（bytes）または None
         """
         try:
+            # Gemini APIが有効な場合はそれを使用
+            if hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts:
+                # TTS設定からパラメータを取得
+                tts_conf = getattr(self.ai_core, 'tts_config', {})
+                speaking_rate = tts_conf.get('speaking_rate', 1.2)
+                pitch = tts_conf.get('pitch', 0.0)
+                audio = self.ai_core._synthesize_text_with_gemini(text, speaking_rate, pitch)
+                if audio:
+                    return audio
+                # Gemini APIが失敗した場合は従来のTTS APIにフォールバック
+                self.logger.debug(f"[TTS] Gemini API failed, falling back to Google Cloud TTS for text={text[:50]}...")
+            
+            # 従来のGoogle Cloud TTS APIを使用
+            if not self.ai_core.tts_client or not self.ai_core.voice_params or not self.ai_core.audio_config:
+                return None
+            
             synthesis_input = texttospeech.SynthesisInput(text=text)
             response = self.ai_core.tts_client.synthesize_speech(
                 input=synthesis_input,
@@ -997,11 +1009,28 @@ class RealtimeGateway:
     def _synthesize_segment_sync(self, segment: str) -> Optional[bytes]:
         """
         ChatGPT音声風: 文節のTTS合成を同期実行（ThreadPoolExecutor用）
+        Gemini APIまたは従来のGoogle Cloud TTS APIを使用
         
         :param segment: 文節テキスト
         :return: 音声データ（bytes）または None
         """
         try:
+            # Gemini APIが有効な場合はそれを使用
+            if hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts:
+                # TTS設定からパラメータを取得
+                tts_conf = getattr(self.ai_core, 'tts_config', {})
+                speaking_rate = tts_conf.get('speaking_rate', 1.2)
+                pitch = tts_conf.get('pitch', 0.0)
+                audio = self.ai_core._synthesize_text_with_gemini(segment, speaking_rate, pitch)
+                if audio:
+                    return audio
+                # Gemini APIが失敗した場合は従来のTTS APIにフォールバック
+                self.logger.debug(f"[TTS] Gemini API failed, falling back to Google Cloud TTS for segment={segment[:50]}...")
+            
+            # 従来のGoogle Cloud TTS APIを使用
+            if not self.ai_core.tts_client or not self.ai_core.voice_params or not self.ai_core.audio_config:
+                return None
+            
             synthesis_input = texttospeech.SynthesisInput(text=segment)
             response = self.ai_core.tts_client.synthesize_speech(
                 input=synthesis_input,
@@ -3218,14 +3247,9 @@ class RealtimeGateway:
         
         # TTS生成
         tts_audio_24k = None
-        if self.ai_core.tts_client and self.ai_core.voice_params and self.ai_core.audio_config:
-            synthesis_input = texttospeech.SynthesisInput(text=resp_text)
-            response = self.ai_core.tts_client.synthesize_speech(
-                input=synthesis_input,
-                voice=self.ai_core.voice_params,
-                audio_config=self.ai_core.audio_config
-            )
-            tts_audio_24k = response.audio_content
+        if (hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts) or \
+           (self.ai_core.tts_client and self.ai_core.voice_params and self.ai_core.audio_config):
+            tts_audio_24k = self._synthesize_text_sync(resp_text)
         
         # TTSキューに追加
         if tts_audio_24k:

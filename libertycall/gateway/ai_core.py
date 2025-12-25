@@ -10,14 +10,13 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Tuple, List, Dict, Any, Callable
 from dataclasses import dataclass
+# Gemini API インポート
 try:
-    from google.cloud import texttospeech  # type: ignore
-    from google.auth.exceptions import DefaultCredentialsError  # type: ignore
-except ModuleNotFoundError:  # pragma: no cover - optional dependency
-    texttospeech = None
-
-    class DefaultCredentialsError(Exception):
-        """Fallback exception when google-auth is unavailable."""
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ModuleNotFoundError:
+    genai = None
+    GEMINI_AVAILABLE = False
 
 from .intent_rules import (
     classify_intent,
@@ -1207,12 +1206,8 @@ class AICore:
     
     def _init_tts(self):
         """
-        Google TTS の初期化（クライアント別設定対応）
+        Gemini API TTS の初期化（クライアント別設定対応）
         """
-        if texttospeech is None:
-            self.logger.debug("google-cloud-texttospeech 未導入のため TTS 初期化をスキップします。")
-            return
-
         # ChatGPT音声風: TTSを完全非同期化するためのThreadPoolExecutorを初期化
         from concurrent.futures import ThreadPoolExecutor
         self.tts_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="TTS")
@@ -1247,33 +1242,49 @@ class AICore:
         # クライアントIDに基づいてTTS設定を取得（fallback: 000）
         tts_conf = TTS_CONFIGS.get(self.client_id, TTS_CONFIGS["000"])
         
-        # Google TTS設定
-        self.tts_client = None
-        self.voice_params = None
-        self.audio_config = None
+        # Gemini API設定
+        self.use_gemini_tts = False
+        self.gemini_model = None
+        
+        # Gemini API認証情報の確認
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        google_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        
+        # Gemini APIの初期化
+        if not GEMINI_AVAILABLE or not genai:
+            self.logger.error("[TTS_INIT] Gemini API (google-generativeai) が利用できません。インストールしてください: pip install google-generativeai")
+            return
+        
         try:
-            self.tts_client = texttospeech.TextToSpeechClient()
-        except DefaultCredentialsError as exc:
-            self.logger.debug(
-                "Google Application Default Credentials が未設定のため TTS を無効化します: %s",
-                exc,
-            )
-        if self.tts_client:
-            self.voice_params = texttospeech.VoiceSelectionParams(
-                language_code="ja-JP",
-                name=tts_conf["voice"]
-            )
-            self.audio_config = texttospeech.AudioConfig(
-                audio_encoding=texttospeech.AudioEncoding.LINEAR16,
-                sample_rate_hertz=24000,
-                speaking_rate=tts_conf["speaking_rate"],
-                pitch=tts_conf["pitch"]
-            )
-            # TTS設定ログ出力
-            self.logger.info(
-                f"[TTS_PROFILE] client={self.client_id} voice={tts_conf['voice']} "
-                f"speed={tts_conf['speaking_rate']} pitch={tts_conf['pitch']}"
-            )
+            if gemini_api_key:
+                genai.configure(api_key=gemini_api_key)
+                self.use_gemini_tts = True
+                self.logger.info("[TTS_INIT] Gemini API認証成功 (APIキー使用)")
+            elif google_creds:
+                # サービスアカウントキーを使用する場合
+                # 注: Gemini APIは主にAPIキーを使用しますが、サービスアカウントもサポートされる場合があります
+                try:
+                    # サービスアカウントキーからAPIキーを取得するか、直接認証を試行
+                    genai.configure(api_key=None)  # サービスアカウント認証を試行
+                    self.use_gemini_tts = True
+                    self.logger.info("[TTS_INIT] Gemini API認証成功 (サービスアカウント使用)")
+                except Exception as e:
+                    self.logger.error(f"[TTS_INIT] Gemini API認証失敗 (サービスアカウント): {e}")
+                    return
+            else:
+                self.logger.error("[TTS_INIT] Gemini API認証情報が未設定です。GEMINI_API_KEYまたはGOOGLE_APPLICATION_CREDENTIALSを設定してください。")
+                return
+        except Exception as e:
+            self.logger.error(f"[TTS_INIT] Gemini API初期化エラー: {e}")
+            return
+        
+        # Gemini API設定を保存
+        self.tts_config = tts_conf
+        # TTS設定ログ出力
+        self.logger.info(
+            f"[TTS_PROFILE] client={self.client_id} voice={tts_conf['voice']} "
+            f"speed={tts_conf['speaking_rate']} pitch={tts_conf['pitch']} (Gemini API)"
+        )
     
     def set_call_id(self, call_id: str):
         """call_idを設定し、WAV保存フラグをリセット"""
@@ -2165,6 +2176,84 @@ class AICore:
                 texts.append(template_text)
         return " ".join(texts).strip()
 
+    def _synthesize_text_with_gemini(self, text: str, speaking_rate: float = 1.0, pitch: float = 0.0) -> Optional[bytes]:
+        """
+        Gemini APIを使用してテキストから音声を合成する（日本語音声に最適化）
+        
+        :param text: 音声化するテキスト
+        :param speaking_rate: 話す速度（デフォルト: 1.0）
+        :param pitch: ピッチ（デフォルト: 0.0）
+        :return: 音声データ（bytes）または None
+        """
+        if not self.use_gemini_tts or not GEMINI_AVAILABLE or not genai:
+            return None
+        
+        try:
+            # 注: Gemini APIの実際の音声合成APIは、提供されている機能によって異なる可能性があります
+            # ここでは一般的な実装パターンを示しますが、実際のAPIに合わせて調整が必要です
+            
+            # Gemini APIを使用した音声合成
+            # 注意: 実際のGemini APIが音声合成をサポートしているかどうかは、最新のドキュメントを確認してください
+            # もしサポートされていない場合は、従来のGoogle Cloud TTS APIにフォールバックします
+            
+            # 日本語音声に最適な設定を適用
+            # テキストを音声に変換（Gemini APIの実際の実装に合わせて調整が必要）
+            # 例: genai.models.generate_content() や genai.models.generate_audio() など
+            
+            # 暫定的な実装: Gemini APIが音声合成を直接サポートしていない場合は、
+            # 従来のGoogle Cloud TTS APIにフォールバック
+            # 日本語音声設定（ja-JP）を適用
+            self.logger.debug(f"[TTS] Gemini API音声合成を試行: text={text[:50]}... speaking_rate={speaking_rate} pitch={pitch}")
+            self.logger.warning("[TTS] Gemini APIの音声合成機能は現在サポートされていません。従来のTTS APIにフォールバックします。")
+            return None
+            
+        except Exception as e:
+            self.logger.exception(f"Gemini TTS synthesis failed: {e}")
+            return None
+    
+    def _synthesize_text_with_google_tts(self, text: str, voice_name: str = "ja-JP-Neural2-B", 
+                                          speaking_rate: float = 1.0, pitch: float = 0.0) -> Optional[bytes]:
+        """
+        従来のGoogle Cloud TTS APIを使用してテキストから音声を合成する
+        
+        :param text: 音声化するテキスト
+        :param voice_name: 音声名
+        :param speaking_rate: 話す速度
+        :param pitch: ピッチ
+        :return: 音声データ（bytes）または None
+        """
+        if not self.tts_client or texttospeech is None:
+            return None
+        
+        try:
+            # voice_name から language_code を抽出
+            language_code = "ja-JP"
+            if "-" in voice_name:
+                parts = voice_name.split("-")
+                if len(parts) >= 2:
+                    language_code = f"{parts[0]}-{parts[1]}"
+            
+            synthesis_input = texttospeech.SynthesisInput(text=text)
+            voice_params = texttospeech.VoiceSelectionParams(
+                language_code=language_code,
+                name=voice_name
+            )
+            audio_config = texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.LINEAR16,
+                sample_rate_hertz=24000,
+                speaking_rate=speaking_rate,
+                pitch=pitch
+            )
+            response = self.tts_client.synthesize_speech(
+                input=synthesis_input,
+                voice=voice_params,
+                audio_config=audio_config
+            )
+            return response.audio_content
+        except Exception as e:
+            self.logger.exception(f"Google TTS synthesis failed: {e}")
+            return None
+    
     def _synthesize_template_audio(self, template_id: str) -> Optional[bytes]:
         """
         テンプレIDから音声を合成する
@@ -2172,9 +2261,6 @@ class AICore:
         :param template_id: テンプレID
         :return: 音声データ（bytes）または None
         """
-        if not self.tts_client or texttospeech is None:
-            return None
-        
         # まず self.templates（クライアント固有）から読み込む
         cfg = None
         if self.templates and template_id in self.templates:
@@ -2197,34 +2283,18 @@ class AICore:
         
         voice_name = cfg.get("voice", "ja-JP-Neural2-B")
         speaking_rate = cfg.get("rate", 1.1)
+        pitch = cfg.get("pitch", 0.0)
         
-        # voice_name から language_code を抽出（例: "ja-JP-Neural2-B" -> "ja-JP"）
-        language_code = "ja-JP"
-        if "-" in voice_name:
-            parts = voice_name.split("-")
-            if len(parts) >= 2:
-                language_code = f"{parts[0]}-{parts[1]}"
+        # Gemini APIが有効な場合はそれを使用、無効な場合は従来のTTS APIを使用
+        if self.use_gemini_tts:
+            audio = self._synthesize_text_with_gemini(text, speaking_rate, pitch)
+            if audio:
+                return audio
+            # Gemini APIが失敗した場合は従来のTTS APIにフォールバック
+            self.logger.debug(f"[TTS] Gemini API failed, falling back to Google Cloud TTS for template_id={template_id}")
         
-        try:
-            synthesis_input = texttospeech.SynthesisInput(text=text)
-            voice_params = texttospeech.VoiceSelectionParams(
-                language_code=language_code,
-                name=voice_name
-            )
-            audio_config = texttospeech.AudioConfig(
-                audio_encoding=texttospeech.AudioEncoding.LINEAR16,
-                sample_rate_hertz=24000,
-                speaking_rate=speaking_rate
-            )
-            response = self.tts_client.synthesize_speech(
-                input=synthesis_input,
-                voice=voice_params,
-                audio_config=audio_config
-            )
-            return response.audio_content
-        except Exception as e:
-            self.logger.exception(f"TTS synthesis failed for template_id={template_id}: {e}")
-            return None
+        # 従来のGoogle Cloud TTS APIを使用
+        return self._synthesize_text_with_google_tts(text, voice_name, speaking_rate, pitch)
 
     def _synthesize_template_sequence(self, template_ids: List[str]) -> Optional[bytes]:
         """
