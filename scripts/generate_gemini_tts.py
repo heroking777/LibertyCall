@@ -148,7 +148,7 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
     Args:
         text: 音声化するテキスト
         api_key: APIキー
-        infinite_retry: Trueの場合、無限リトライ（成功するまで続行）
+        infinite_retry: Trueの場合、無限リトライ（成功するまで続行、指数バックオフ適用）
     
     Returns:
         音声データ（bytes）または None
