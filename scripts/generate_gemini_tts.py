@@ -169,6 +169,8 @@ def synthesize_with_gemini(text: str, api_key: str) -> Optional[bytes]:
                         # 音声データを取得
                         if hasattr(inline_data, 'data'):
                             audio_data = inline_data.data
+                            mime_type = inline_data.mime_type if hasattr(inline_data, 'mime_type') else 'N/A'
+                            print(f"デバッグ: mime_type: {mime_type}")
                             print(f"デバッグ: audio_data型: {type(audio_data)}, サイズ: {len(audio_data) if hasattr(audio_data, '__len__') else 'N/A'}")
                             
                             if audio_data and len(audio_data) > 0:
@@ -177,7 +179,8 @@ def synthesize_with_gemini(text: str, api_key: str) -> Optional[bytes]:
                                     return base64.b64decode(audio_data)
                                 return audio_data
                             else:
-                                print(f"警告: inline_data.dataが空です")
+                                print(f"警告: inline_data.dataが空です (mime_type: {mime_type})")
+                                print(f"警告: speech_configが正しく適用されていない可能性があります")
                         else:
                             print(f"警告: inline_dataにdata属性がありません")
         
