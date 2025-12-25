@@ -1086,9 +1086,6 @@ class AICore:
         self.session_states: Dict[str, Dict[str, Any]] = {}
         # 【追加】partial transcripts を保持（call_id ごとに管理）
         self.partial_transcripts: Dict[str, Dict[str, Any]] = {}
-        self.tts_client = None
-        self.voice_params = None
-        self.audio_config = None
         self.debug_save_wav = False
         self.call_id = None
         self._wav_saved = False
@@ -2238,20 +2235,15 @@ class AICore:
         if not text:
             return None
         
-        voice_name = cfg.get("voice", "ja-JP-Neural2-B")
         speaking_rate = cfg.get("rate", 1.1)
         pitch = cfg.get("pitch", 0.0)
         
-        # Gemini APIが有効な場合はそれを使用、無効な場合は従来のTTS APIを使用
-        if self.use_gemini_tts:
-            audio = self._synthesize_text_with_gemini(text, speaking_rate, pitch)
-            if audio:
-                return audio
-            # Gemini APIが失敗した場合は従来のTTS APIにフォールバック
-            self.logger.debug(f"[TTS] Gemini API failed, falling back to Google Cloud TTS for template_id={template_id}")
+        # Gemini APIを使用して音声を合成
+        if not self.use_gemini_tts:
+            self.logger.warning(f"[TTS] Gemini APIが無効です。template_id={template_id}の音声合成をスキップします。")
+            return None
         
-        # 従来のGoogle Cloud TTS APIを使用
-        return self._synthesize_text_with_google_tts(text, voice_name, speaking_rate, pitch)
+        return self._synthesize_text_with_gemini(text, speaking_rate, pitch)
 
     def _synthesize_template_sequence(self, template_ids: List[str]) -> Optional[bytes]:
         """
@@ -3235,7 +3227,7 @@ class AICore:
 
         # 4. 音声合成 (TTS) - template_ids ベースで合成
         tts_audio = None
-        if template_ids and self.tts_client:
+        if template_ids and self.use_gemini_tts:
             tts_audio = self._synthesize_template_sequence(template_ids)
             if not tts_audio:
                 self.logger.debug("TTS synthesis failed for template_ids=%s", template_ids)

@@ -53,7 +53,6 @@ from libertycall.gateway.audio_utils import ulaw8k_to_pcm16k, pcm24k_to_ulaw8k
 from libertycall.gateway.intent_rules import normalize_text
 from libertycall.gateway.transcript_normalizer import normalize_transcript
 from libertycall.console_bridge import console_bridge
-from google.cloud import texttospeech
 
 # Google Streaming ASR統合
 try:
@@ -729,7 +728,7 @@ class RealtimeGateway:
             self.logger.warning("[TTS_ASYNC] Event loop not running, falling back to sync execution")
             loop = None
         
-        if template_ids and self.ai_core.tts_client:
+        if template_ids and hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts:
             # デバッグログ拡張: TTS_REPLY
             template_text = self.ai_core._render_templates(template_ids)
             self.logger.info(f"[TTS_REPLY] \"{template_text}\"")
@@ -747,8 +746,7 @@ class RealtimeGateway:
                     self.is_speaking_tts = True
                     self._tts_sender_wakeup.set()
             return
-        elif reply_text and ((hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts) or 
-                              (self.ai_core.tts_client and self.ai_core.voice_params and self.ai_core.audio_config)):
+        elif reply_text and hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts:
             # デバッグログ拡張: TTS_REPLY
             self.logger.info(f"[TTS_REPLY] \"{reply_text}\"")
             # 文節単位再生が有効な場合は非同期タスクで処理
@@ -840,7 +838,7 @@ class RealtimeGateway:
         """
         tts_audio_24k = None
         
-        if template_ids and self.ai_core.tts_client:
+        if template_ids and hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts:
             # ChatGPT音声風: ThreadPoolExecutorで非同期TTS合成
             if hasattr(self.ai_core, 'tts_executor') and self.ai_core.tts_executor:
                 # 非同期でTTS合成を実行
@@ -853,7 +851,7 @@ class RealtimeGateway:
             else:
                 # フォールバック: 同期実行
                 tts_audio_24k = self.ai_core._synthesize_template_sequence(template_ids)
-        elif reply_text and self.ai_core.tts_client and self.ai_core.voice_params and self.ai_core.audio_config:
+        elif reply_text and hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts:
             # ChatGPT音声風: ThreadPoolExecutorで非同期TTS合成
             if hasattr(self.ai_core, 'tts_executor') and self.ai_core.tts_executor:
                 # 非同期でTTS合成を実行
@@ -908,35 +906,22 @@ class RealtimeGateway:
     def _synthesize_text_sync(self, text: str) -> Optional[bytes]:
         """
         ChatGPT音声風: テキストのTTS合成を同期実行（ThreadPoolExecutor用）
-        Gemini APIまたは従来のGoogle Cloud TTS APIを使用
+        Gemini APIを使用
         
         :param text: テキスト
         :return: 音声データ（bytes）または None
         """
         try:
-            # Gemini APIが有効な場合はそれを使用
-            if hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts:
-                # TTS設定からパラメータを取得
-                tts_conf = getattr(self.ai_core, 'tts_config', {})
-                speaking_rate = tts_conf.get('speaking_rate', 1.2)
-                pitch = tts_conf.get('pitch', 0.0)
-                audio = self.ai_core._synthesize_text_with_gemini(text, speaking_rate, pitch)
-                if audio:
-                    return audio
-                # Gemini APIが失敗した場合は従来のTTS APIにフォールバック
-                self.logger.debug(f"[TTS] Gemini API failed, falling back to Google Cloud TTS for text={text[:50]}...")
-            
-            # 従来のGoogle Cloud TTS APIを使用
-            if not self.ai_core.tts_client or not self.ai_core.voice_params or not self.ai_core.audio_config:
+            # Gemini APIが有効でない場合はエラー
+            if not hasattr(self.ai_core, 'use_gemini_tts') or not self.ai_core.use_gemini_tts:
+                self.logger.warning(f"[TTS] Gemini APIが無効です。text={text[:50]}...の音声合成をスキップします。")
                 return None
             
-            synthesis_input = texttospeech.SynthesisInput(text=text)
-            response = self.ai_core.tts_client.synthesize_speech(
-                input=synthesis_input,
-                voice=self.ai_core.voice_params,
-                audio_config=self.ai_core.audio_config
-            )
-            return response.audio_content
+            # TTS設定からパラメータを取得
+            tts_conf = getattr(self.ai_core, 'tts_config', {})
+            speaking_rate = tts_conf.get('speaking_rate', 1.2)
+            pitch = tts_conf.get('pitch', 0.0)
+            return self.ai_core._synthesize_text_with_gemini(text, speaking_rate, pitch)
         except Exception as e:
             self.logger.exception(f"[TTS_SYNTHESIS_ERROR] text={text!r} error={e}")
             return None
@@ -1009,35 +994,22 @@ class RealtimeGateway:
     def _synthesize_segment_sync(self, segment: str) -> Optional[bytes]:
         """
         ChatGPT音声風: 文節のTTS合成を同期実行（ThreadPoolExecutor用）
-        Gemini APIまたは従来のGoogle Cloud TTS APIを使用
+        Gemini APIを使用
         
         :param segment: 文節テキスト
         :return: 音声データ（bytes）または None
         """
         try:
-            # Gemini APIが有効な場合はそれを使用
-            if hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts:
-                # TTS設定からパラメータを取得
-                tts_conf = getattr(self.ai_core, 'tts_config', {})
-                speaking_rate = tts_conf.get('speaking_rate', 1.2)
-                pitch = tts_conf.get('pitch', 0.0)
-                audio = self.ai_core._synthesize_text_with_gemini(segment, speaking_rate, pitch)
-                if audio:
-                    return audio
-                # Gemini APIが失敗した場合は従来のTTS APIにフォールバック
-                self.logger.debug(f"[TTS] Gemini API failed, falling back to Google Cloud TTS for segment={segment[:50]}...")
-            
-            # 従来のGoogle Cloud TTS APIを使用
-            if not self.ai_core.tts_client or not self.ai_core.voice_params or not self.ai_core.audio_config:
+            # Gemini APIが有効でない場合はエラー
+            if not hasattr(self.ai_core, 'use_gemini_tts') or not self.ai_core.use_gemini_tts:
+                self.logger.warning(f"[TTS] Gemini APIが無効です。segment={segment[:50]}...の音声合成をスキップします。")
                 return None
             
-            synthesis_input = texttospeech.SynthesisInput(text=segment)
-            response = self.ai_core.tts_client.synthesize_speech(
-                input=synthesis_input,
-                voice=self.ai_core.voice_params,
-                audio_config=self.ai_core.audio_config
-            )
-            return response.audio_content
+            # TTS設定からパラメータを取得
+            tts_conf = getattr(self.ai_core, 'tts_config', {})
+            speaking_rate = tts_conf.get('speaking_rate', 1.2)
+            pitch = tts_conf.get('pitch', 0.0)
+            return self.ai_core._synthesize_text_with_gemini(segment, speaking_rate, pitch)
         except Exception as e:
             self.logger.exception(f"[TTS_SYNTHESIS_ERROR] segment={segment!r} error={e}")
             return None
@@ -3247,8 +3219,7 @@ class RealtimeGateway:
         
         # TTS生成
         tts_audio_24k = None
-        if (hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts) or \
-           (self.ai_core.tts_client and self.ai_core.voice_params and self.ai_core.audio_config):
+        if hasattr(self.ai_core, 'use_gemini_tts') and self.ai_core.use_gemini_tts:
             tts_audio_24k = self._synthesize_text_sync(resp_text)
         
         # TTSキューに追加
