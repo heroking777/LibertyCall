@@ -482,8 +482,6 @@ class RealtimeGateway:
         # ユーザー発話のturn_index管理（補正用）
         self.user_turn_index = 0  # ユーザー発話のカウンター（1始まり）
         self.call_start_time = None  # 通話開始時刻
-        # 最大通話時間（デフォルト30分）
-        self.max_call_duration_sec = float(os.getenv("LC_MAX_CALL_DURATION_SEC", "1800"))
         
         # RTP受信ログ用カウンター（50パケットに1回だけINFO）
         self.rtp_packet_count = 0
@@ -1724,18 +1722,6 @@ class RealtimeGateway:
             if effective_call_id not in self._last_tts_end_time:
                 self._last_tts_end_time[effective_call_id] = time.monotonic()
             
-        # 最大通話時間チェック
-        if self.call_start_time is not None:
-            elapsed = time.time() - self.call_start_time
-            if elapsed > self.max_call_duration_sec:
-                self.logger.warning(
-                    f"[CALL_TIMEOUT] 最大通話時間({self.max_call_duration_sec}秒)を超過。"
-                    f"通話を終了します: call_id={self.call_id}, elapsed={elapsed:.1f}秒"
-                )
-                # 非同期処理なので、タスクとして実行
-                asyncio.create_task(self._handle_hangup(self.call_id, reason="max_duration_exceeded"))
-                return
-        
         # RTPパケット受信ログ（Google使用時は毎回INFO、それ以外は50パケットに1回）
         self.rtp_packet_count += 1
         asr_provider = getattr(self.ai_core, 'asr_provider', 'google')
