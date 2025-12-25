@@ -227,9 +227,11 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             # 音声データが空の場合はリトライ
             if not audio_data or len(audio_data) == 0:
                 if infinite_retry:
+                    # 指数バックオフ: 1回目30秒、2回目60秒、3回目120秒...（最大300秒）
+                    backoff_seconds = min(30 * (2 ** (attempt - 1)), 300)
                     print(f"  警告: 音声データが空でした。リトライ中...（{attempt}回目）", flush=True)
-                    print(f"  30秒待機してから再試行します...", flush=True)
-                    time.sleep(30)  # エラー時は30秒待機
+                    print(f"  {backoff_seconds}秒待機してから再試行します（指数バックオフ）...", flush=True)
+                    time.sleep(backoff_seconds)
                     continue
                 else:
                     print(f"警告: 音声データが見つかりませんでした。", flush=True)
@@ -240,9 +242,11 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
                     
         except Exception as e:
             if infinite_retry:
+                # 指数バックオフ: 1回目30秒、2回目60秒、3回目120秒...（最大300秒）
+                backoff_seconds = min(30 * (2 ** (attempt - 1)), 300)
                 print(f"  エラー: {e}。リトライ中...（{attempt}回目）", flush=True)
-                print(f"  30秒待機してから再試行します...", flush=True)
-                time.sleep(30)  # エラー時は30秒待機
+                print(f"  {backoff_seconds}秒待機してから再試行します（指数バックオフ）...", flush=True)
+                time.sleep(backoff_seconds)
                 continue
             else:
                 print(f"エラー: Gemini API音声合成に失敗しました: {e}", flush=True)
@@ -394,8 +398,8 @@ def main():
     
     # 音声ファイル生成（無限リトライ全自動生成モード）
     print(f"\n音声ファイル生成中（無限リトライ全自動生成モード）...", flush=True)
-    print(f"  レート制限対策: 1件ごとに8秒スリープ", flush=True)
-    print(f"  エラー時: 30秒待機してからリトライ", flush=True)
+    print(f"  レート制限対策: 1件ごとに10秒スリープ（APIに優しい設定）", flush=True)
+    print(f"  エラー時: 指数バックオフ（30秒→60秒→120秒→...最大300秒）", flush=True)
     print(f"  無限リトライ: 500エラーやタイムアウトが発生しても、成功するまでリトライし続けます", flush=True)
     print(f"  パラメータ: Model={GEMINI_MODEL}, Voice={VOICE_NAME}, Pitch=+2.0, Rate=1.05, Temperature=0.0", flush=True)
     print(f"", flush=True)
@@ -409,7 +413,7 @@ def main():
         
         try:
             # 無限リトライモードで生成（成功するまで続行）
-            if generate_audio_file(audio_id, text, api_key, sleep_seconds=8.0, infinite_retry=True):
+            if generate_audio_file(audio_id, text, api_key, sleep_seconds=10.0, infinite_retry=True):
                 success_count += 1
                 print(f"  ✓ {audio_id}: 生成成功（進捗: {success_count}/{total_count}）", flush=True)
             else:
