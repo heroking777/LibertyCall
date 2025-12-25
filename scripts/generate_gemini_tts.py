@@ -33,8 +33,8 @@ SAMPLE_RATE = 24000  # 24kHz
 BIT_DEPTH = 16  # 16bit
 CHANNELS = 1  # モノラル
 
-# Gemini 2.0/2.5 モデル名
-GEMINI_MODEL = "gemini-2.5-flash-preview-tts"
+# Gemini 2.0/2.5 モデル名（最新仕様：preview-ttsサフィックスを削除）
+GEMINI_MODEL = "gemini-2.0-flash"
 
 # 音声名（日本語対応）
 VOICE_NAME = "Kore"  # 固定: 一貫した声質を保つため（確定レシピ）
@@ -42,8 +42,8 @@ VOICE_NAME = "Kore"  # 固定: 一貫した声質を保つため（確定レシ�
 # 無料枠（Free Tier）の制限設定
 MAX_REQUESTS_PER_DAY = 1500  # 1日の最大リクエスト数
 RPM_LIMIT = 15  # 1分あたりのリクエスト制限（無料枠）
-SLEEP_MIN = 12  # 最小スリープ時間（秒）
-SLEEP_MAX = 15  # 最大スリープ時間（秒）- 15 RPMを守るため（60秒 / 15 = 4秒間隔、余裕を持って12〜15秒）
+SLEEP_MIN = 4  # 最小スリープ時間（秒）- 15 RPM制限に対応（60秒 / 15 = 4秒間隔）
+SLEEP_MAX = 5  # 最大スリープ時間（秒）- 効率を上げるため短縮
 
 
 def check_credentials() -> bool:
@@ -138,10 +138,9 @@ def synthesize_with_gemini(text: str, client) -> Tuple[Optional[bytes], Optional
             ),
         ]
         
-        # 生成リクエスト（シンプルに、余計な指示なし）
-        # PitchやRateの指示はテキストに混ぜず、speechConfigで制御（できない場合はデフォルト）
+        # 生成リクエスト（最新仕様：responseModalitiesを削除、speechConfigのみで音声生成）
+        # responseModalities=["AUDIO"] を削除（speechConfigさえ設定されていれば音声は生成される）
         config = types.GenerateContentConfig(
-            responseModalities=["AUDIO"],
             temperature=0.0,
             safetySettings=safety_settings,
             speechConfig=types.SpeechConfig(
@@ -160,8 +159,60 @@ def synthesize_with_gemini(text: str, client) -> Tuple[Optional[bytes], Optional
             config=config
         )
         
-        # 音声データの取り出し（パス固定版）
-        # response.candidates[0].content.parts[0].inline_data.data から直接バイナリを取得
+        # レスポンス構造のデバッグ出力（JSON形式で全出力）
+        import json
+        print(f"\n[デバッグ] レスポンス構造の全出力:", flush=True)
+        try:
+            # レスポンスオブジェクトを辞書に変換して出力
+            response_dict = {
+                'candidates': [],
+                'model': getattr(response, 'model', None),
+                'usage_metadata': str(getattr(response, 'usage_metadata', None)) if hasattr(response, 'usage_metadata') else None,
+            }
+            
+            if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                for idx, candidate in enumerate(response.candidates):
+                    candidate_dict = {
+                        'index': idx,
+                        'content': None,
+                        'finish_reason': str(getattr(candidate, 'finish_reason', None)),
+                        'safety_ratings': str(getattr(candidate, 'safety_ratings', None)) if hasattr(candidate, 'safety_ratings') else None,
+                    }
+                    
+                    if hasattr(candidate, 'content') and candidate.content is not None:
+                        content_dict = {
+                            'parts': [],
+                            'role': getattr(candidate.content, 'role', None),
+                        }
+                        
+                        if hasattr(candidate.content, 'parts') and len(candidate.content.parts) > 0:
+                            for part_idx, part in enumerate(candidate.content.parts):
+                                part_dict = {
+                                    'index': part_idx,
+                                    'text': getattr(part, 'text', None),
+                                    'inline_data': None,
+                                    'audio': getattr(part, 'audio', None) if hasattr(part, 'audio') else None,
+                                }
+                                
+                                if hasattr(part, 'inline_data') and part.inline_data is not None:
+                                    part_dict['inline_data'] = {
+                                        'mime_type': getattr(part.inline_data, 'mime_type', None),
+                                        'data_length': len(getattr(part.inline_data, 'data', b'')) if hasattr(part.inline_data, 'data') else 0,
+                                        'data_preview': str(getattr(part.inline_data, 'data', b''))[:100] if hasattr(part.inline_data, 'data') else None,
+                                    }
+                                
+                                content_dict['parts'].append(part_dict)
+                        
+                        candidate_dict['content'] = content_dict
+                    
+                    response_dict['candidates'].append(candidate_dict)
+            
+            print(json.dumps(response_dict, indent=2, ensure_ascii=False), flush=True)
+        except Exception as debug_e:
+            print(f"  デバッグ出力エラー: {debug_e}", flush=True)
+            print(f"  レスポンスオブジェクト: {response}", flush=True)
+        
+        # 音声データの取り出し（柔軟な取得方法）
         audio_data = None
         
         if hasattr(response, 'candidates') and len(response.candidates) > 0:
@@ -169,14 +220,23 @@ def synthesize_with_gemini(text: str, client) -> Tuple[Optional[bytes], Optional
             
             if hasattr(candidate, 'content') and candidate.content is not None:
                 if hasattr(candidate.content, 'parts') and len(candidate.content.parts) > 0:
-                    # パス固定: parts[0].inline_data.data
-                    part = candidate.content.parts[0]
-                    
-                    if hasattr(part, 'inline_data') and part.inline_data is not None:
-                        if hasattr(part.inline_data, 'data'):
-                            audio_data = part.inline_data.data
-                            
+                    # 複数のパスを試す
+                    for part in candidate.content.parts:
+                        # パス1: parts[].inline_data.data
+                        if hasattr(part, 'inline_data') and part.inline_data is not None:
+                            if hasattr(part.inline_data, 'data'):
+                                audio_data = part.inline_data.data
+                                if audio_data and len(audio_data) > 0:
+                                    print(f"  [デバッグ] 音声データを inline_data.data から取得（サイズ: {len(audio_data)} bytes）", flush=True)
+                                    if isinstance(audio_data, str):
+                                        return base64.b64decode(audio_data), None
+                                    return audio_data, None
+                        
+                        # パス2: parts[].audio（もし存在すれば）
+                        if hasattr(part, 'audio') and part.audio is not None:
+                            audio_data = part.audio
                             if audio_data and len(audio_data) > 0:
+                                print(f"  [デバッグ] 音声データを audio フィールドから取得（サイズ: {len(audio_data)} bytes）", flush=True)
                                 if isinstance(audio_data, str):
                                     return base64.b64decode(audio_data), None
                                 return audio_data, None
