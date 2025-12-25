@@ -389,8 +389,7 @@ def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: f
         print(f"  Pitch: 2.0, Speed: 1.05", flush=True)
         print(f"  サンプリングレート: {SAMPLE_RATE}Hz", flush=True)
         
-        # Gemini APIで音声合成（テストモードでは無限リトライを無効化、1回のみ）
-        test_mode = os.getenv("TEST_MODE", "false").lower() == "true"
+        # Gemini APIで音声合成（無限リトライ無効、1回のみ）
         audio_data = synthesize_with_gemini(text, api_key, infinite_retry=False, max_attempts=1)
         
         if not audio_data:
