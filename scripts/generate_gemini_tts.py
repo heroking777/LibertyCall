@@ -21,7 +21,7 @@ voice_list_000.tsvから000-003の音声ファイルを生成します。
     - clients/000/audio/003.wav
 
 依存パッケージ:
-    - google-generativeai: pip install google-generativeai
+    - google-genai: pip install google-genai
 """
 
 import os
@@ -33,12 +33,13 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
-    print("エラー: google-generativeai がインストールされていません。")
-    print("インストール: pip install google-generativeai")
+    print("エラー: google-genai がインストールされていません。")
+    print("インストール: pip install google-genai")
 
 # プロジェクトルートのパスを取得
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -109,7 +110,7 @@ def load_voice_list() -> dict:
 
 def synthesize_with_gemini(text: str, api_key: str) -> Optional[bytes]:
     """
-    Gemini APIを使用してテキストから音声を合成する（google-generativeaiパッケージ使用）
+    Gemini APIを使用してテキストから音声を合成する（google-genaiパッケージ使用）
     
     Args:
         text: 音声化するテキスト
@@ -120,71 +121,52 @@ def synthesize_with_gemini(text: str, api_key: str) -> Optional[bytes]:
     """
     try:
         if not GENAI_AVAILABLE:
-            print("エラー: google-generativeai がインストールされていません。")
+            print("エラー: google-genai がインストールされていません。")
             return None
         
-        # APIキーを設定
-        genai.configure(api_key=api_key)
+        # クライアントの初期化
+        client = genai.Client(api_key=api_key)
         
-        # モデルの設定（音声出力に対応したモデルを選択）
-        model = genai.GenerativeModel(model_name=GEMINI_MODEL)
-        
-        # 音声生成の設定（ユーザー提供のコード例に基づく）
-        config = {
-            "speech_config": {
-                "voice_config": {
-                    "prebuilt_voice_config": {
-                        "voice_name": VOICE_NAME
-                    }
-                }
-            }
-        }
-        
-        # プロンプト（テキスト）を投げて音声を生成
-        response = model.generate_content(
-            text,
-            generation_config=config
+        # 生成リクエスト
+        # Gemini 2.0 Flash は 'AUDIO' モダリティを指定する必要があります
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=text,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],  # これが最重要（大文字）
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=VOICE_NAME
+                        )
+                    )
+                )
+            )
         )
         
-        # 生成された音声データを取得
-        # response.candidates[0].content.parts[0].inline_data.data
-        print(f"デバッグ: レスポンス型: {type(response)}")
-        
+        # 音声データの取り出し
+        # response.candidates[0].content.parts から inline_data を持つ part を探す
         if hasattr(response, 'candidates') and len(response.candidates) > 0:
             candidate = response.candidates[0]
-            print(f"デバッグ: candidate型: {type(candidate)}")
             
             if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                print(f"デバッグ: parts数: {len(candidate.content.parts)}")
-                for i, part in enumerate(candidate.content.parts):
-                    print(f"デバッグ: part[{i}]型: {type(part)}")
-                    print(f"デバッグ: part[{i}].inline_data: {part.inline_data if hasattr(part, 'inline_data') else 'N/A'}")
-                    print(f"デバッグ: part[{i}].text: {part.text[:100] if hasattr(part, 'text') and part.text else 'N/A'}")
-                    
-                    if hasattr(part, 'inline_data') and part.inline_data is not None:
-                        inline_data = part.inline_data
-                        print(f"デバッグ: inline_data型: {type(inline_data)}")
-                        print(f"デバッグ: inline_data属性: {[attr for attr in dir(inline_data) if not attr.startswith('_')]}")
-                        
-                        # 音声データを取得
-                        if hasattr(inline_data, 'data'):
-                            audio_data = inline_data.data
-                            mime_type = inline_data.mime_type if hasattr(inline_data, 'mime_type') else 'N/A'
-                            print(f"デバッグ: mime_type: {mime_type}")
-                            print(f"デバッグ: audio_data型: {type(audio_data)}, サイズ: {len(audio_data) if hasattr(audio_data, '__len__') else 'N/A'}")
-                            
-                            if audio_data and len(audio_data) > 0:
-                                # Base64エンコードされている場合はデコード
-                                if isinstance(audio_data, str):
-                                    return base64.b64decode(audio_data)
-                                return audio_data
-                            else:
-                                print(f"警告: inline_data.dataが空です (mime_type: {mime_type})")
-                                print(f"警告: speech_configが正しく適用されていない可能性があります")
-                        else:
-                            print(f"警告: inline_dataにdata属性がありません")
+                # inline_dataを持つpartを探す
+                audio_part = next(
+                    (part for part in candidate.content.parts if hasattr(part, 'inline_data') and part.inline_data is not None),
+                    None
+                )
+                
+                if audio_part:
+                    audio_data = audio_part.inline_data.data
+                    if audio_data and len(audio_data) > 0:
+                        # Base64エンコードされている場合はデコード
+                        if isinstance(audio_data, str):
+                            return base64.b64decode(audio_data)
+                        return audio_data
         
         print(f"警告: 音声データが見つかりませんでした。")
+        if hasattr(response, 'candidates') and len(response.candidates) > 0:
+            print(f"Response parts: {response.candidates[0].content.parts}")
         return None
         
     except Exception as e:
@@ -295,8 +277,8 @@ def main():
     print(f"\n✓ APIキー認証を使用")
     
     if not GENAI_AVAILABLE:
-        print("エラー: google-generativeai がインストールされていません。")
-        print("インストール: pip install google-generativeai")
+        print("エラー: google-genai がインストールされていません。")
+        print("インストール: pip install google-genai")
         return 1
     
     # 音声リスト読み込み
