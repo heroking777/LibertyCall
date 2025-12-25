@@ -487,15 +487,15 @@ def main():
     print(f"  出力形式: WAV")
     print(f"  出力ディレクトリ: {OUTPUT_DIR}")
     
-    # 音声ファイル生成（無限リトライ全自動生成モード）
-    print(f"\n音声ファイル生成中（無限リトライ全自動生成モード）...", flush=True)
+    # 音声ファイル生成（リトライ無効モード）
+    print(f"\n音声ファイル生成中（リトライ無効モード）...", flush=True)
     print(f"  レート制限対策: 1件ごとに10秒スリープ（APIに優しい設定）", flush=True)
-    print(f"  エラー時: 指数バックオフ（30秒→60秒→120秒→...最大300秒）", flush=True)
-    print(f"  無限リトライ: 500エラーやタイムアウトが発生しても、成功するまでリトライし続けます", flush=True)
+    print(f"  リトライ: 無効（1回のみ実行）", flush=True)
     print(f"  パラメータ: Model={GEMINI_MODEL}, Voice={VOICE_NAME}, Pitch=+2.0, Rate=1.05, Temperature=0.0", flush=True)
     print(f"", flush=True)
     
     success_count = 0
+    failed_list = []
     total_count = len(voice_texts)
     
     for idx, audio_id in enumerate(sorted(voice_texts.keys()), 1):
@@ -503,40 +503,44 @@ def main():
         print(f"\n[{idx}/{total_count}] {audio_id} を処理中...", flush=True)
         
         try:
-            # 無限リトライモードで生成（成功するまで続行）
-            if generate_audio_file(audio_id, text, api_key, sleep_seconds=10.0, infinite_retry=True):
+            # リトライ無効モードで生成（1回のみ）
+            if generate_audio_file(audio_id, text, api_key, sleep_seconds=10.0, infinite_retry=False):
                 success_count += 1
                 print(f"  ✓ {audio_id}: 生成成功（進捗: {success_count}/{total_count}）", flush=True)
             else:
-                # 無限リトライモードでは通常ここに到達しない
-                print(f"  ⚠ {audio_id}: 予期しないエラー（無限リトライ継続中）", flush=True)
+                failed_list.append(audio_id)
+                print(f"  ✗ {audio_id}: 生成失敗", flush=True)
         except KeyboardInterrupt:
             print(f"\n\n⚠ ユーザーによる中断が検出されました。", flush=True)
             print(f"  成功: {success_count}件 / 残り: {total_count - success_count}件", flush=True)
             return 1
         except Exception as e:
+            failed_list.append(audio_id)
             print(f"  ✗ {audio_id}: 予期しないエラー - {e}", flush=True)
             import traceback
             traceback.print_exc()
-            # 無限リトライモードでは、エラーでも続行
-            print(f"  ⚠ {audio_id}: エラーが発生しましたが、無限リトライモードのため続行します...", flush=True)
         
         # 各ファイル生成後に強制的にflush
         sys.stdout.flush()
     
     # 結果表示
     print(f"\n" + "=" * 60)
-    print(f"音声ファイル生成完了（無限リトライモード）")
+    print(f"音声ファイル生成完了")
     print(f"  成功: {success_count}件")
+    print(f"  失敗: {len(failed_list)}件")
     print(f"  合計: {total_count}件")
     print("=" * 60)
+    
+    if failed_list:
+        print(f"\n⚠ 生成に失敗した番号のリスト:")
+        for failed_id in failed_list:
+            print(f"  - {failed_id}")
     
     if success_count == total_count:
         print("\n✓ すべての音声ファイルが正常に生成されました！")
         return 0
     else:
-        print(f"\n⚠ 一部の音声ファイルの生成が完了していません（成功: {success_count}/{total_count}）")
-        print(f"  無限リトライモードのため、未完了のファイルは引き続きリトライされます。")
+        print(f"\n⚠ 一部の音声ファイルの生成に失敗しました（成功: {success_count}/{total_count}）")
         return 1
 
 
