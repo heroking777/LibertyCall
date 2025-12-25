@@ -259,6 +259,12 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             if hasattr(response, 'candidates') and len(response.candidates) > 0:
                 candidate = response.candidates[0]
                 
+                # finish_reasonを確認
+                finish_reason = getattr(candidate, 'finish_reason', None)
+                if is_short_text:
+                    print(f"  デバッグ: finish_reason = {finish_reason}", flush=True)
+                    print(f"  デバッグ: candidate.content = {candidate.content}", flush=True)
+                
                 if hasattr(candidate, 'content') and candidate.content is not None:
                     if hasattr(candidate.content, 'parts') and len(candidate.content.parts) > 0:
                         # パス固定: parts[0].inline_data.data
@@ -272,6 +278,16 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
                                     if isinstance(audio_data, str):
                                         return base64.b64decode(audio_data)
                                     return audio_data
+                                elif is_short_text:
+                                    print(f"  デバッグ: audio_data が空です (size: {len(audio_data) if audio_data else 0})", flush=True)
+                            elif is_short_text:
+                                print(f"  デバッグ: part.inline_data.data が見つかりません", flush=True)
+                        elif is_short_text:
+                            print(f"  デバッグ: part.inline_data が見つかりません", flush=True)
+                    elif is_short_text:
+                        print(f"  デバッグ: candidate.content.parts が空です", flush=True)
+                elif is_short_text:
+                    print(f"  デバッグ: candidate.content が None です", flush=True)
             
             # 音声データが空の場合はリトライ
             if not audio_data or len(audio_data) == 0:
