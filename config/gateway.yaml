@@ -9,3 +9,8 @@ ws:
   reconnect_delay_sec: 3
 logging:
   level: "DEBUG"
+# Gemini API認証情報設定
+# サービスアカウントキーを使用する場合:
+# GOOGLE_APPLICATION_CREDENTIALS: "/path/to/your/service-account-key.json"
+# またはAPIキーを使用する場合:
+# GEMINI_API_KEY: "your-api-key"
