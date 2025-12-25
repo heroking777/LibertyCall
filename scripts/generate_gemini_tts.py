@@ -167,7 +167,13 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             client = genai.Client(api_key=api_key)
             
             # システムプロンプトを固定して一貫した声質を保つ
-            prompt = f"{SYSTEM_PROMPT} {text}"
+            # 短いセリフの場合は肉付けして生成を安定させる
+            if len(text.strip()) <= 5:  # 短いセリフ（5文字以下）
+                enhanced_text = f"少し間を置いてから、丁寧に「{text}」と言ってください"
+            else:
+                enhanced_text = text
+            
+            prompt = f"{SYSTEM_PROMPT} {enhanced_text}"
             
             # 生成リクエスト
             # Gemini 2.0 Flash は 'AUDIO' モダリティを指定する必要があります
@@ -194,52 +200,93 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             
             if infinite_retry and attempt <= 3:
                 print(f"  API応答受信完了", flush=True)
+                # デバッグ: レスポンスの構造全体を表示
+                print(f"  デバッグ: response = {response}", flush=True)
+                print(f"  デバッグ: response type = {type(response)}", flush=True)
+                print(f"  デバッグ: response.__dict__ = {getattr(response, '__dict__', 'N/A')}", flush=True)
+                print(f"  デバッグ: response attributes = {[attr for attr in dir(response) if not attr.startswith('_')]}", flush=True)
             
-            # 音声データの取り出し
-            # ユーザー提供のコード例に基づく実装
-            # response.candidates[0].content.parts から inline_data を持つ part を探す
+            # 音声データの取り出し（修正版）
+            # response.candidates[0].content.parts をループして、inline_data または data 属性があるパートから確実にバイトデータを取り出す
             audio_data = None
             
             if hasattr(response, 'candidates') and len(response.candidates) > 0:
                 candidate = response.candidates[0]
                 
+                if infinite_retry and attempt <= 3:
+                    print(f"  デバッグ: candidate type = {type(candidate)}", flush=True)
+                    print(f"  デバッグ: candidate attributes = {dir(candidate)}", flush=True)
+                    print(f"  デバッグ: candidate.content = {candidate.content}", flush=True)
+                
                 if hasattr(candidate, 'content') and candidate.content is not None:
                     if hasattr(candidate.content, 'parts') and candidate.content.parts:
-                        # inline_dataを持つpartを探す
-                        for part in candidate.content.parts:
+                        if infinite_retry and attempt <= 3:
+                            print(f"  デバッグ: parts 数 = {len(candidate.content.parts)}", flush=True)
+                        
+                        # parts をループして、inline_data または data 属性を探す
+                        for i, part in enumerate(candidate.content.parts):
+                            if infinite_retry and attempt <= 3:
+                                print(f"  デバッグ: part[{i}] type = {type(part)}", flush=True)
+                                print(f"  デバッグ: part[{i}] attributes = {dir(part)}", flush=True)
+                            
+                            # inline_data 属性を確認
                             if hasattr(part, 'inline_data') and part.inline_data is not None:
-                                audio_data = part.inline_data.data
-                                if audio_data and len(audio_data) > 0:
-                                    # Base64エンコードされている場合はデコード
-                                    if isinstance(audio_data, str):
-                                        return base64.b64decode(audio_data)
-                                    return audio_data
+                                if infinite_retry and attempt <= 3:
+                                    print(f"  デバッグ: part[{i}].inline_data が見つかりました", flush=True)
+                                    print(f"  デバッグ: part[{i}].inline_data type = {type(part.inline_data)}", flush=True)
+                                    print(f"  デバッグ: part[{i}].inline_data attributes = {dir(part.inline_data)}", flush=True)
+                                
+                                # inline_data.data を確認
+                                if hasattr(part.inline_data, 'data'):
+                                    audio_data = part.inline_data.data
+                                    if infinite_retry and attempt <= 3:
+                                        print(f"  デバッグ: part[{i}].inline_data.data が見つかりました (size: {len(audio_data) if audio_data else 0})", flush=True)
+                                # inline_data 自体がデータの場合
+                                elif hasattr(part.inline_data, '__dict__'):
+                                    # 辞書形式の場合
+                                    inline_dict = part.inline_data.__dict__
+                                    if 'data' in inline_dict:
+                                        audio_data = inline_dict['data']
+                                        if infinite_retry and attempt <= 3:
+                                            print(f"  デバッグ: part[{i}].inline_data.__dict__['data'] が見つかりました", flush=True)
+                            
+                            # data 属性を直接確認
+                            if not audio_data and hasattr(part, 'data'):
+                                audio_data = part.data
+                                if infinite_retry and attempt <= 3:
+                                    print(f"  デバッグ: part[{i}].data が見つかりました", flush=True)
+                            
+                            # 音声データが見つかった場合は処理
+                            if audio_data and len(audio_data) > 0:
+                                if infinite_retry and attempt <= 3:
+                                    print(f"  デバッグ: 音声データ取得成功 (size: {len(audio_data)} bytes)", flush=True)
+                                # Base64エンコードされている場合はデコード
+                                if isinstance(audio_data, str):
+                                    return base64.b64decode(audio_data)
+                                return audio_data
             
             # response.partsからも確認（以前の成功時はこちらにあった）
             if not audio_data and hasattr(response, 'parts') and response.parts:
-                for part in response.parts:
+                if infinite_retry and attempt <= 3:
+                    print(f"  デバッグ: response.parts を確認中...", flush=True)
+                for i, part in enumerate(response.parts):
                     if hasattr(part, 'inline_data') and part.inline_data is not None:
-                        audio_data = part.inline_data.data
+                        if hasattr(part.inline_data, 'data'):
+                            audio_data = part.inline_data.data
+                        elif hasattr(part.inline_data, '__dict__') and 'data' in part.inline_data.__dict__:
+                            audio_data = part.inline_data.__dict__['data']
+                        
                         if audio_data and len(audio_data) > 0:
-                            # Base64エンコードされている場合はデコード
                             if isinstance(audio_data, str):
                                 return base64.b64decode(audio_data)
                             return audio_data
-            
-            # デバッグ: レスポンスの構造を確認
-            if infinite_retry and attempt <= 3:
-                print(f"  デバッグ: レスポンス構造確認中...", flush=True)
-                if hasattr(response, 'candidates') and len(response.candidates) > 0:
-                    candidate = response.candidates[0]
-                    if hasattr(candidate, 'content'):
-                        if candidate.content is None:
-                            print(f"  デバッグ: candidate.content が None です", flush=True)
-                        elif hasattr(candidate.content, 'parts'):
-                            print(f"  デバッグ: parts 数 = {len(candidate.content.parts) if candidate.content.parts else 0}", flush=True)
-                            for i, part in enumerate(candidate.content.parts or []):
-                                print(f"  デバッグ: part[{i}] type = {type(part)}", flush=True)
-                                if hasattr(part, 'inline_data'):
-                                    print(f"  デバッグ: part[{i}].inline_data = {part.inline_data}", flush=True)
+                    
+                    if hasattr(part, 'data'):
+                        audio_data = part.data
+                        if audio_data and len(audio_data) > 0:
+                            if isinstance(audio_data, str):
+                                return base64.b64decode(audio_data)
+                            return audio_data
             
             # 音声データが空の場合はリトライ
             if not audio_data or len(audio_data) == 0:
