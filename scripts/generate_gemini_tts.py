@@ -57,7 +57,11 @@ CHANNELS = 1  # モノラル
 GEMINI_MODEL = "gemini-2.5-flash-preview-tts"
 
 # 音声名（日本語対応）
-VOICE_NAME = "Aoede"  # 落ち着いた女性の声（他: Charon, Kore, Puck, Fenrir）
+VOICE_NAME = "Aoede"  # 固定: 一貫した声質を保つため
+
+# システムプロンプト（固定）
+SYSTEM_PROMPT = """[設定: あなたはリバティーコールの明るくハキハキとした女性受付スタッフです。常に口角を上げ、20代後半の落ち着きつつも華やかなトーンで、一貫した声質を保って話してください。]
+以下のセリフだけを読み上げてください："""
 
 
 def check_credentials() -> bool:
@@ -102,48 +106,56 @@ def load_voice_list() -> dict:
                 audio_id = parts[0].strip()
                 text = parts[1].strip()
                 
-                # 000-003のみ処理
-                if audio_id in ["000", "001", "002", "003"]:
+                # 001-010を処理（000は完成しているので除外）
+                if audio_id in ["001", "002", "003", "004", "005", "006", "007", "008", "009", "010"]:
                     voice_texts[audio_id] = text
     
     return voice_texts
 
 
-def synthesize_with_gemini(text: str, api_key: str) -> Optional[bytes]:
+def synthesize_with_gemini(text: str, api_key: str, max_retries: int = 3) -> Optional[bytes]:
     """
     Gemini APIを使用してテキストから音声を合成する（google-genaiパッケージ使用）
     
     Args:
         text: 音声化するテキスト
         api_key: APIキー
+        max_retries: 最大リトライ回数
     
     Returns:
         音声データ（bytes）または None
     """
-    try:
-        if not GENAI_AVAILABLE:
-            print("エラー: google-genai がインストールされていません。")
-            return None
-        
-        # クライアントの初期化
-        client = genai.Client(api_key=api_key)
-        
-        # 生成リクエスト
-        # Gemini 2.0 Flash は 'AUDIO' モダリティを指定する必要があります
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=text,
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],  # これが最重要（大文字）
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name=VOICE_NAME
+    import time
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            if not GENAI_AVAILABLE:
+                print("エラー: google-genai がインストールされていません。")
+                return None
+            
+            # クライアントの初期化
+            client = genai.Client(api_key=api_key)
+            
+            # システムプロンプトを固定して一貫した声質を保つ
+            prompt = f"{SYSTEM_PROMPT} {text}"
+            
+            # 生成リクエスト
+            # Gemini 2.0 Flash は 'AUDIO' モダリティを指定する必要があります
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],  # これが最重要（大文字）
+                    temperature=0.0,  # AIの演技の「ゆらぎ」を最小限に抑える
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=VOICE_NAME
+                            )
                         )
                     )
                 )
             )
-        )
         
         # 音声データの取り出し
         # ユーザー提供のコード例に基づく実装
