@@ -59,8 +59,15 @@ GEMINI_MODEL = "gemini-2.5-flash-preview-tts"
 # 音声名（日本語対応）
 VOICE_NAME = "Aoede"  # 固定: 一貫した声質を保つため
 
-# システムプロンプト（固定）
-# Pitch: 2.0, Speed: 1.05 の設定を数値として明示的にプロンプトに含める
+# ============================================================================
+# システムプロンプト（クライアント000専用 - 確定版）
+# ============================================================================
+# 注意: 将来的にはクライアントごとに異なるプロンプトを設定できるように
+#       拡張する予定です（例: CLIENT_PROMPTS = {"000": "...", "001": "..."}）
+# ============================================================================
+# クライアント000の音声生成では、毎回このプロンプトを使用します。
+# Pitch: +2.0, Rate: 1.05 の設定を数値として明示的にプロンプトに含めています。
+# ============================================================================
 SYSTEM_PROMPT = """[設定: あなたはリバティーコールのプロの女性受付です。以下の『音声物理パラメーター』を厳守して読み上げてください。
 ・声の高さ(Pitch): +2.0 (標準より高め)
 ・話速(Rate): 1.05 (標準よりわずかに速く)
@@ -92,8 +99,16 @@ def ensure_directories():
     print(f"✓ 出力ディレクトリ確認: {OUTPUT_DIR}")
 
 
-def load_voice_list() -> dict:
-    """voice_list_000.tsvから音声テキストを読み込む"""
+def load_voice_list(skip_existing: bool = False) -> dict:
+    """
+    voice_list_000.tsvから音声テキストを読み込む
+    
+    Args:
+        skip_existing: Trueの場合、既に生成済みのファイルをスキップ
+    
+    Returns:
+        音声テキストの辞書 {audio_id: text}
+    """
     voice_texts = {}
     
     if not TSV_FILE.exists():
@@ -111,9 +126,17 @@ def load_voice_list() -> dict:
                 audio_id = parts[0].strip()
                 text = parts[1].strip()
                 
-                # 001-010を処理（000は完成しているので除外）
-                if audio_id in ["001", "002", "003", "004", "005", "006", "007", "008", "009", "010"]:
-                    voice_texts[audio_id] = text
+                # 000は除外（完成しているため）
+                if audio_id == "000":
+                    continue
+                
+                # 既存ファイルをスキップする場合
+                if skip_existing:
+                    output_wav = OUTPUT_DIR / f"{audio_id}.wav"
+                    if output_wav.exists() and output_wav.stat().st_size > 0:
+                        continue
+                
+                voice_texts[audio_id] = text
     
     return voice_texts
 
@@ -250,7 +273,7 @@ def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
     return wav_buffer.getvalue()
 
 
-def generate_audio_file(audio_id: str, text: str, api_key: str) -> bool:
+def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: float = 0.0) -> bool:
     """
     Gemini APIを使用して音声ファイルを生成
     
@@ -296,6 +319,13 @@ def generate_audio_file(audio_id: str, text: str, api_key: str) -> bool:
         print(f"[完了] {audio_id}.wav の生成が完了しました", flush=True)
         print(f"  ファイルパス: {output_wav}", flush=True)
         print(f"  ファイルサイズ: {file_size:,} bytes ({file_size / 1024:.2f} KB)", flush=True)
+        
+        # レート制限対策: 指定秒数スリープ
+        if sleep_seconds > 0:
+            import time
+            print(f"  レート制限回避のため {sleep_seconds}秒待機中...", flush=True)
+            time.sleep(sleep_seconds)
+        
         return True
         
     except Exception as e:
