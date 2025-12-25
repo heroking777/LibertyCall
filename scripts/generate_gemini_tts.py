@@ -173,6 +173,9 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             # Gemini 2.0 Flash は 'AUDIO' モダリティを指定する必要があります
             # 注意: SpeechConfigにはpitch/speaking_rateパラメータがサポートされていないため、
             # プロンプト内で数値として明示的に指示しています（Pitch: +2.0, Rate: 1.05）
+            if infinite_retry and attempt <= 3:
+                print(f"  API呼び出し中...（{attempt}回目）", flush=True)
+            
             response = client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=prompt,
@@ -188,6 +191,9 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
                     )
                 )
             )
+            
+            if infinite_retry and attempt <= 3:
+                print(f"  API応答受信完了", flush=True)
             
             # 音声データの取り出し
             # ユーザー提供のコード例に基づく実装
