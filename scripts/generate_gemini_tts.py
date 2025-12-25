@@ -144,33 +144,25 @@ def load_voice_list(skip_existing: bool = False) -> dict:
     return voice_texts
 
 
-def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False, max_attempts: int = 3) -> Optional[bytes]:
+def synthesize_with_gemini(text: str, api_key: str) -> tuple[Optional[bytes], Optional[str]]:
     """
     Gemini APIを使用してテキストから音声を合成する（google-genaiパッケージ使用）
+    リトライなし、1回のみ実行
     
     Args:
         text: 音声化するテキスト
         api_key: APIキー
-        infinite_retry: Trueの場合、無限リトライ（成功するまで続行、指数バックオフ適用）
     
     Returns:
-        音声データ（bytes）または None
+        (音声データ（bytes）または None, エラー理由（str）または None)
     """
-    import time
-    
-    attempt = 0
-    while True:
-        attempt += 1
-        if not infinite_retry and attempt > max_attempts:
-            print(f"  最大試行回数（{max_attempts}回）に達しました。", flush=True)
-            return None
-        try:
-            if not GENAI_AVAILABLE:
-                print("エラー: google-genai がインストールされていません。")
-                return None
-            
-            # クライアントの初期化
-            client = genai.Client(api_key=api_key)
+    try:
+        if not GENAI_AVAILABLE:
+            print("エラー: google-genai がインストールされていません。", flush=True)
+            return None, "GENAI_NOT_AVAILABLE"
+        
+        # クライアントの初期化
+        client = genai.Client(api_key=api_key)
             
             # システムプロンプトを固定して一貫した声質を保つ
             # 短いセリフ（5文字以下）の場合は特別処理
@@ -231,100 +223,60 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
                 )
             )
             
-            # セーフティ設定を全開放（TTS APIでサポートされているテキスト用カテゴリのみ）
-            # IMAGE関連とJAILBREAK、CIVIC_INTEGRITYはTTS APIではサポートされていないため除外
-            safety_settings = [
-                types.SafetySetting(
-                    category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                    threshold=types.HarmBlockThreshold.BLOCK_NONE
-                ),
-                types.SafetySetting(
-                    category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                    threshold=types.HarmBlockThreshold.BLOCK_NONE
-                ),
-                types.SafetySetting(
-                    category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                    threshold=types.HarmBlockThreshold.BLOCK_NONE
-                ),
-                types.SafetySetting(
-                    category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                    threshold=types.HarmBlockThreshold.BLOCK_NONE
-                ),
-            ]
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=config
+        )
             
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt,
-                config=config
-            )
+        # 音声データの取り出し（パス固定版）
+        # response.candidates[0].content.parts[0].inline_data.data から直接バイナリを取得
+        audio_data = None
+        
+        if hasattr(response, 'candidates') and len(response.candidates) > 0:
+            candidate = response.candidates[0]
             
-            
-            # 音声データの取り出し（パス固定版）
-            # response.candidates[0].content.parts[0].inline_data.data から直接バイナリを取得
-            audio_data = None
-            
-            if hasattr(response, 'candidates') and len(response.candidates) > 0:
-                candidate = response.candidates[0]
-                
-                # finish_reasonを確認
-                finish_reason = getattr(candidate, 'finish_reason', None)
-                if is_short_text:
-                    print(f"  デバッグ: finish_reason = {finish_reason}", flush=True)
-                    print(f"  デバッグ: candidate.content = {candidate.content}", flush=True)
-                
-                if hasattr(candidate, 'content') and candidate.content is not None:
-                    if hasattr(candidate.content, 'parts') and len(candidate.content.parts) > 0:
-                        # パス固定: parts[0].inline_data.data
-                        part = candidate.content.parts[0]
-                        
-                        if hasattr(part, 'inline_data') and part.inline_data is not None:
-                            if hasattr(part.inline_data, 'data'):
-                                audio_data = part.inline_data.data
-                                
-                                if audio_data and len(audio_data) > 0:
-                                    if isinstance(audio_data, str):
-                                        return base64.b64decode(audio_data)
-                                    return audio_data
-                                elif is_short_text:
-                                    print(f"  デバッグ: audio_data が空です (size: {len(audio_data) if audio_data else 0})", flush=True)
-                            elif is_short_text:
-                                print(f"  デバッグ: part.inline_data.data が見つかりません", flush=True)
-                        elif is_short_text:
-                            print(f"  デバッグ: part.inline_data が見つかりません", flush=True)
-                    elif is_short_text:
-                        print(f"  デバッグ: candidate.content.parts が空です", flush=True)
-                elif is_short_text:
-                    print(f"  デバッグ: candidate.content が None です", flush=True)
-            
-            # 音声データが空の場合はリトライ
-            if not audio_data or len(audio_data) == 0:
-                if infinite_retry:
-                    # 指数バックオフ: 1回目30秒、2回目60秒、3回目120秒...（最大300秒）
-                    backoff_seconds = min(30 * (2 ** (attempt - 1)), 300)
-                    print(f"  警告: 音声データが空でした。リトライ中...（{attempt}回目）", flush=True)
-                    print(f"  {backoff_seconds}秒待機してから再試行します（指数バックオフ）...", flush=True)
-                    time.sleep(backoff_seconds)
-                    continue
-                else:
-                    print(f"警告: 音声データが見つかりませんでした。", flush=True)
-                    return None
-            else:
-                # 成功した場合は音声データを返す
-                return audio_data
+            if hasattr(candidate, 'content') and candidate.content is not None:
+                if hasattr(candidate.content, 'parts') and len(candidate.content.parts) > 0:
+                    # パス固定: parts[0].inline_data.data
+                    part = candidate.content.parts[0]
                     
-        except Exception as e:
-            if infinite_retry:
-                # 指数バックオフ: 1回目30秒、2回目60秒、3回目120秒...（最大300秒）
-                backoff_seconds = min(30 * (2 ** (attempt - 1)), 300)
-                print(f"  エラー: {e}。リトライ中...（{attempt}回目）", flush=True)
-                print(f"  {backoff_seconds}秒待機してから再試行します（指数バックオフ）...", flush=True)
-                time.sleep(backoff_seconds)
-                continue
-            else:
-                print(f"エラー: Gemini API音声合成に失敗しました: {e}", flush=True)
-                import traceback
-                traceback.print_exc()
-                return None
+                    if hasattr(part, 'inline_data') and part.inline_data is not None:
+                        if hasattr(part.inline_data, 'data'):
+                            audio_data = part.inline_data.data
+                            
+                            if audio_data and len(audio_data) > 0:
+                                if isinstance(audio_data, str):
+                                    return base64.b64decode(audio_data), None
+                                return audio_data, None
+        
+        # 音声データが空の場合は失敗として返す
+        finish_reason = None
+        if hasattr(response, 'candidates') and len(response.candidates) > 0:
+            candidate = response.candidates[0]
+            finish_reason = getattr(candidate, 'finish_reason', None)
+        error_reason = "EMPTY_DATA"
+        if finish_reason:
+            error_reason = f"{finish_reason}"
+        print(f"  警告: 音声データが見つかりませんでした (finish_reason: {finish_reason})", flush=True)
+        return None, error_reason
+                    
+    except Exception as e:
+        error_str = str(e)
+        error_reason = "UNKNOWN_ERROR"
+        
+        # エラー理由を特定
+        if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+            error_reason = "429_QUOTA_EXCEEDED"
+        elif "500" in error_str or "INTERNAL" in error_str:
+            error_reason = "500_INTERNAL_ERROR"
+        elif "400" in error_str or "INVALID_ARGUMENT" in error_str:
+            error_reason = "400_INVALID_ARGUMENT"
+        else:
+            error_reason = f"ERROR_{type(e).__name__}"
+        
+        print(f"  エラー: Gemini API音声合成に失敗しました: {error_reason}", flush=True)
+        return None, error_reason
 
 
 def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
@@ -354,7 +306,7 @@ def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
     return wav_buffer.getvalue()
 
 
-def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: float = 0.0, infinite_retry: bool = False) -> bool:
+def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: float = 0.0) -> tuple[bool, Optional[str]]:
     """
     Gemini APIを使用して音声ファイルを生成
     
@@ -420,13 +372,14 @@ def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: f
             print(f"  レート制限回避のため {sleep_seconds}秒待機中...", flush=True)
             time.sleep(sleep_seconds)
         
-        return True
+        return True, None
         
     except Exception as e:
+        error_reason = f"EXCEPTION_{type(e).__name__}"
         print(f"  ✗ {audio_id}: エラー - {e}", flush=True)
         import traceback
         traceback.print_exc()
-        return False
+        return False, error_reason
 
 
 def main():
@@ -469,7 +422,19 @@ def main():
             if test_id in all_texts:
                 voice_texts[test_id] = all_texts[test_id]
     else:
-        voice_texts = load_voice_list(skip_existing=True)
+        # 006以降の未生成分をすべて処理
+        all_texts = load_voice_list(skip_existing=True)
+        voice_texts = {}
+        for audio_id, text in all_texts.items():
+            # 006以降のみ処理（000-005は除外）
+            try:
+                audio_id_int = int(audio_id)
+                if audio_id_int >= 6:
+                    voice_texts[audio_id] = text
+            except ValueError:
+                # 数値でないID（例: 006_SYS）も処理
+                if not audio_id.startswith(("000", "001", "002", "003", "004", "005")):
+                    voice_texts[audio_id] = text
     
     if not voice_texts:
         print("✓ すべての音声ファイルが既に生成済みです。")
@@ -487,38 +452,47 @@ def main():
     print(f"  出力形式: WAV")
     print(f"  出力ディレクトリ: {OUTPUT_DIR}")
     
-    # 音声ファイル生成（リトライ無効モード）
-    print(f"\n音声ファイル生成中（リトライ無効モード）...", flush=True)
+    # 音声ファイル生成（一撃必殺モード：リトライなし）
+    print(f"\n音声ファイル生成中（一撃必殺モード：リトライなし）...", flush=True)
     print(f"  レート制限対策: 1件ごとに10秒スリープ（APIに優しい設定）", flush=True)
-    print(f"  リトライ: 無効（1回のみ実行）", flush=True)
+    print(f"  リトライ: 無効（1回のみ実行、失敗したら即スキップ）", flush=True)
+    print(f"  429エラー対策: 429エラーの場合のみ3分待機してから次へ", flush=True)
     print(f"  パラメータ: Model={GEMINI_MODEL}, Voice={VOICE_NAME}, Pitch=+2.0, Rate=1.05, Temperature=0.0", flush=True)
     print(f"", flush=True)
     
     success_count = 0
-    failed_list = []
+    failed_list = {}  # {audio_id: error_reason}
     total_count = len(voice_texts)
+    import time
     
     for idx, audio_id in enumerate(sorted(voice_texts.keys()), 1):
         text = voice_texts[audio_id]
         print(f"\n[{idx}/{total_count}] {audio_id} を処理中...", flush=True)
         
         try:
-            # リトライ無効モードで生成（1回のみ）
-            if generate_audio_file(audio_id, text, api_key, sleep_seconds=10.0, infinite_retry=False):
+            # 一撃必殺モード：1回のみ実行
+            success, error_reason = generate_audio_file(audio_id, text, api_key, sleep_seconds=10.0)
+            
+            if success:
                 success_count += 1
                 print(f"  ✓ {audio_id}: 生成成功（進捗: {success_count}/{total_count}）", flush=True)
             else:
-                failed_list.append(audio_id)
-                print(f"  ✗ {audio_id}: 生成失敗", flush=True)
+                failed_list[audio_id] = error_reason
+                print(f"  ✗ {audio_id}: 生成失敗 (理由: {error_reason})", flush=True)
+                
+                # 429エラーの場合のみ3分待機
+                if error_reason == "429_QUOTA_EXCEEDED":
+                    print(f"  ⚠ 429エラー検出: クォータ回復を待つため3分間停止します...", flush=True)
+                    time.sleep(180)  # 3分 = 180秒
+                    print(f"  待機完了、次の番号へ進みます", flush=True)
+                
         except KeyboardInterrupt:
             print(f"\n\n⚠ ユーザーによる中断が検出されました。", flush=True)
             print(f"  成功: {success_count}件 / 残り: {total_count - success_count}件", flush=True)
             return 1
         except Exception as e:
-            failed_list.append(audio_id)
+            failed_list[audio_id] = f"EXCEPTION_{type(e).__name__}"
             print(f"  ✗ {audio_id}: 予期しないエラー - {e}", flush=True)
-            import traceback
-            traceback.print_exc()
         
         # 各ファイル生成後に強制的にflush
         sys.stdout.flush()
@@ -533,8 +507,8 @@ def main():
     
     if failed_list:
         print(f"\n⚠ 生成に失敗した番号のリスト:")
-        for failed_id in failed_list:
-            print(f"  - {failed_id}")
+        for failed_id, error_reason in sorted(failed_list.items()):
+            print(f"  - {failed_id}: 失敗 ({error_reason})")
     
     if success_count == total_count:
         print("\n✓ すべての音声ファイルが正常に生成されました！")
