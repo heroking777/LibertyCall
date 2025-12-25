@@ -373,6 +373,14 @@ def generate_audio_file(audio_id: str, text: str, api_key: str, sleep_seconds: f
             print(f"  ⚠ {audio_id}: テキストが空のためスキップ", flush=True)
             return False
         
+        # デバッグ: 003のテキストを強制的に書き換え
+        if audio_id == "003":
+            original_text = text
+            text = "今日はとても天気がいいので、散歩に行きたいですね。"
+            print(f"  デバッグ: 003のテキストを強制的に書き換えました", flush=True)
+            print(f"  元のテキスト: {original_text}", flush=True)
+            print(f"  新しいテキスト: {text}", flush=True)
+        
         # 開始ログ
         print(f"\n[開始] {audio_id}.wav の生成を開始します", flush=True)
         print(f"  テキスト: {text}", flush=True)
