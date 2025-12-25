@@ -40,7 +40,7 @@ except ImportError:
 PROJECT_ROOT = Path(__file__).parent.parent
 CLIENT_DIR = PROJECT_ROOT / "clients" / "000"
 TSV_FILE = CLIENT_DIR / "voice_list_000.tsv"
-OUTPUT_DIR = PROJECT_ROOT / "output"
+OUTPUT_DIR = CLIENT_DIR / "audio"
 
 # TTS設定
 SAMPLE_RATE = 24000  # 24kHz
@@ -53,13 +53,15 @@ GEMINI_MODEL = "gemini-2.0-flash-exp"
 
 def check_credentials() -> bool:
     """認証情報の確認"""
-    google_api_key = os.getenv("GOOGLE_API_KEY")
+    google_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     google_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     
     if not google_api_key and not google_creds:
         print("エラー: 認証情報が設定されていません。")
         print("以下のいずれかを設定してください:")
         print("  export GOOGLE_API_KEY=\"your-api-key\"")
+        print("  または")
+        print("  export GEMINI_API_KEY=\"your-api-key\"")
         print("  または")
         print("  export GOOGLE_APPLICATION_CREDENTIALS=\"/path/to/credentials.json\"")
         return False
@@ -267,7 +269,7 @@ def main():
     ensure_directories()
     
     # Gemini API初期化
-    google_api_key = os.getenv("GOOGLE_API_KEY")
+    google_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     google_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     
     try:
