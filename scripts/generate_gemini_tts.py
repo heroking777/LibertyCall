@@ -178,12 +178,53 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             
             prompt = f"{SYSTEM_PROMPT} {enhanced_text}"
             
+            # デバッグ: プロンプト全体を表示
+            print(f"  デバッグ: プロンプト全体 = {prompt}", flush=True)
+            print(f"  デバッグ: プロンプト長 = {len(prompt)} 文字", flush=True)
+            
+            # セーフティ設定を全開放（TTS APIでサポートされているテキスト用カテゴリのみ）
+            # IMAGE関連とJAILBREAK、CIVIC_INTEGRITYはTTS APIではサポートされていないため除外
+            safety_settings = [
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE
+                ),
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE
+                ),
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE
+                ),
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE
+                ),
+            ]
+            
             # 生成リクエスト
             # Gemini 2.0 Flash は 'AUDIO' モダリティを指定する必要があります
             # 注意: SpeechConfigにはpitch/speaking_rateパラメータがサポートされていないため、
             # プロンプト内で数値として明示的に指示しています（Pitch: +2.0, Rate: 1.05）
             if infinite_retry and attempt <= 3:
                 print(f"  API呼び出し中...（{attempt}回目）", flush=True)
+            
+            # デバッグ: GenerateContentConfigを表示
+            config = types.GenerateContentConfig(
+                responseModalities=["AUDIO"],
+                temperature=0.0,
+                safetySettings=safety_settings,
+                speechConfig=types.SpeechConfig(
+                    voiceConfig=types.VoiceConfig(
+                        prebuiltVoiceConfig=types.PrebuiltVoiceConfig(
+                            voiceName=VOICE_NAME
+                        )
+                    )
+                )
+            )
+            print(f"  デバッグ: GenerateContentConfig = {config}", flush=True)
+            print(f"  デバッグ: safetySettings = {safety_settings}", flush=True)
             
             # セーフティ設定を全開放（TTS APIでサポートされているテキスト用カテゴリのみ）
             # IMAGE関連とJAILBREAK、CIVIC_INTEGRITYはTTS APIではサポートされていないため除外
@@ -209,34 +250,48 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
             response = client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=prompt,
-                config=types.GenerateContentConfig(
-                    responseModalities=["AUDIO"],  # これが最重要（大文字、キャメルケース）
-                    temperature=0.0,  # AIの演技の「ゆらぎ」を最小限に抑える
-                    safetySettings=safety_settings,  # セーフティ設定を全開放
-                    speechConfig=types.SpeechConfig(
-                        voiceConfig=types.VoiceConfig(
-                            prebuiltVoiceConfig=types.PrebuiltVoiceConfig(
-                                voiceName=VOICE_NAME
-                            )
-                        )
-                    )
-                )
+                config=config
             )
             
-            if infinite_retry and attempt <= 3:
-                print(f"  API応答受信完了", flush=True)
-                # デバッグ: finish_reasonを確認
-                if hasattr(response, 'candidates') and len(response.candidates) > 0:
-                    candidate = response.candidates[0]
-                    finish_reason = getattr(candidate, 'finish_reason', None)
-                    finish_message = getattr(candidate, 'finish_message', None)
-                    print(f"  デバッグ: finish_reason = {finish_reason}", flush=True)
-                    print(f"  デバッグ: finish_message = {finish_message}", flush=True)
-                    if finish_reason and 'SAFETY' in str(finish_reason).upper():
-                        print(f"  ⚠ 警告: セーフティフィルターでブロックされています！", flush=True)
-                # デバッグ: レスポンスの構造全体を表示
-                print(f"  デバッグ: response = {response}", flush=True)
-                print(f"  デバッグ: response type = {type(response)}", flush=True)
+            # デバッグ: responseオブジェクト全体を表示
+            print(f"  デバッグ: response オブジェクト全体 = {response}", flush=True)
+            print(f"  デバッグ: response type = {type(response)}", flush=True)
+            print(f"  デバッグ: response attributes = {[attr for attr in dir(response) if not attr.startswith('_')]}", flush=True)
+            
+            # デバッグ: prompt_feedbackを確認
+            if hasattr(response, 'prompt_feedback'):
+                prompt_feedback = response.prompt_feedback
+                print(f"  デバッグ: prompt_feedback = {prompt_feedback}", flush=True)
+                if prompt_feedback:
+                    print(f"  デバッグ: prompt_feedback type = {type(prompt_feedback)}", flush=True)
+                    print(f"  デバッグ: prompt_feedback attributes = {[attr for attr in dir(prompt_feedback) if not attr.startswith('_')]}", flush=True)
+                    if hasattr(prompt_feedback, 'block_reason'):
+                        print(f"  デバッグ: prompt_feedback.block_reason = {prompt_feedback.block_reason}", flush=True)
+                    if hasattr(prompt_feedback, 'safety_ratings'):
+                        print(f"  デバッグ: prompt_feedback.safety_ratings = {prompt_feedback.safety_ratings}", flush=True)
+            
+            # デバッグ: finish_reasonとsafety_ratingsを確認
+            if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                finish_reason = getattr(candidate, 'finish_reason', None)
+                finish_message = getattr(candidate, 'finish_message', None)
+                print(f"  デバッグ: finish_reason = {finish_reason}", flush=True)
+                print(f"  デバッグ: finish_message = {finish_message}", flush=True)
+                
+                # safety_ratingsを確認
+                if hasattr(candidate, 'safety_ratings'):
+                    safety_ratings = candidate.safety_ratings
+                    print(f"  デバッグ: candidate.safety_ratings = {safety_ratings}", flush=True)
+                    if safety_ratings:
+                        for i, rating in enumerate(safety_ratings):
+                            print(f"  デバッグ: safety_ratings[{i}] = {rating}", flush=True)
+                            if hasattr(rating, 'category'):
+                                print(f"  デバッグ: safety_ratings[{i}].category = {rating.category}", flush=True)
+                            if hasattr(rating, 'probability'):
+                                print(f"  デバッグ: safety_ratings[{i}].probability = {rating.probability}", flush=True)
+                
+                if finish_reason and 'SAFETY' in str(finish_reason).upper():
+                    print(f"  ⚠ 警告: セーフティフィルターでブロックされています！", flush=True)
             
             # 音声データの取り出し（パス固定版）
             # response.candidates[0].content.parts[0].inline_data.data から直接バイナリを取得
