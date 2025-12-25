@@ -60,9 +60,13 @@ GEMINI_MODEL = "gemini-2.5-flash-preview-tts"
 VOICE_NAME = "Aoede"  # 固定: 一貫した声質を保つため
 
 # システムプロンプト（固定）
-# Pitch: 2.0, Speed: 1.05 の設定をプロンプトに含める
-SYSTEM_PROMPT = """[設定: あなたはリバティーコールの明るくハキハキとした女性受付スタッフです。常に口角を上げ、20代後半の落ち着きつつも華やかなトーンで、一貫した声質を保って話してください。声の高さは少し高め（Pitch: 2.0相当）、話す速度はやや速め（Speed: 1.05相当）で話してください。]
-以下のセリフだけを読み上げてください："""
+# Pitch: 2.0, Speed: 1.05 の設定を数値として明示的にプロンプトに含める
+SYSTEM_PROMPT = """[設定: あなたはリバティーコールのプロの女性受付です。以下の『音声物理パラメーター』を厳守して読み上げてください。
+・声の高さ(Pitch): +2.0 (標準より高め)
+・話速(Rate): 1.05 (標準よりわずかに速く)
+・トーン: 明るく、一貫性を保つこと]
+
+読み上げるセリフ："""
 
 
 def check_credentials() -> bool:
@@ -143,21 +147,19 @@ def synthesize_with_gemini(text: str, api_key: str, max_retries: int = 3) -> Opt
             # 生成リクエスト
             # Gemini 2.0 Flash は 'AUDIO' モダリティを指定する必要があります
             # 注意: SpeechConfigにはpitch/speaking_rateパラメータがサポートされていないため、
-            # プロンプト内で指示しています（Pitch: 2.0, Speed: 1.05相当）
+            # プロンプト内で数値として明示的に指示しています（Pitch: +2.0, Rate: 1.05）
             response = client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    response_modalities=["AUDIO"],  # これが最重要（大文字）
-                    speech_config=types.SpeechConfig(
-                        voice_config=types.VoiceConfig(
-                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name=VOICE_NAME
+                    responseModalities=["AUDIO"],  # これが最重要（大文字、キャメルケース）
+                    temperature=0.0,  # AIの演技の「ゆらぎ」を最小限に抑える
+                    speechConfig=types.SpeechConfig(
+                        voiceConfig=types.VoiceConfig(
+                            prebuiltVoiceConfig=types.PrebuiltVoiceConfig(
+                                voiceName=VOICE_NAME
                             )
                         )
-                    ),
-                    generation_config=types.GenerationConfig(
-                        temperature=0.0  # AIの演技の「ゆらぎ」を最小限に抑える
                     )
                 )
             )
