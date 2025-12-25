@@ -33,8 +33,8 @@ SAMPLE_RATE = 24000  # 24kHz
 BIT_DEPTH = 16  # 16bit
 CHANNELS = 1  # モノラル
 
-# Gemini 2.0/2.5 モデル名（最新仕様：preview-ttsサフィックスを削除）
-GEMINI_MODEL = "gemini-2.0-flash"
+# Gemini 2.0 Flash-Lite モデル名（最新のLiteモデル）
+GEMINI_MODEL = "gemini-2.0-flash-lite-preview-02-05"
 
 # 音声名（日本語対応）
 VOICE_NAME = "Kore"  # 固定: 一貫した声質を保つため（確定レシピ）
