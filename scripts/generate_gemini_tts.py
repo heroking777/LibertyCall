@@ -187,8 +187,8 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
                 else:
                     # その他の短いセリフは語尾に「。。。」を追加
                     enhanced_text = f"{text.strip()}。。。"
-                # 2. プロンプトを簡略化（テキストのみ）
-                prompt = f"{SHORT_TEXT_PROMPT} {enhanced_text}"
+                # 2. 通常のプロンプトを使用（簡略化プロンプトは使わない）
+                prompt = f"{SYSTEM_PROMPT} {enhanced_text}"
             else:
                 # 通常のセリフはそのまま
                 prompt = f"{SYSTEM_PROMPT} {text}"
