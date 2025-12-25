@@ -362,15 +362,15 @@ def main():
         print("インストール: pip install google-genai")
         return 1
     
-    # 音声リスト読み込み
+    # 音声リスト読み込み（既存ファイルをスキップ）
     print(f"\n音声リスト読み込み中...")
-    voice_texts = load_voice_list()
+    voice_texts = load_voice_list(skip_existing=True)
     
     if not voice_texts:
-        print("エラー: 音声テキストが見つかりませんでした。")
-        return 1
+        print("✓ すべての音声ファイルが既に生成済みです。")
+        return 0
     
-    print(f"✓ {len(voice_texts)}件の音声テキストを読み込みました")
+    print(f"✓ {len(voice_texts)}件の未生成音声テキストを読み込みました")
     
     # TTS設定表示
     print(f"\nTTS設定:")
@@ -382,17 +382,29 @@ def main():
     print(f"  出力形式: WAV")
     print(f"  出力ディレクトリ: {OUTPUT_DIR}")
     
-    # 音声ファイル生成
-    print(f"\n音声ファイル生成中...", flush=True)
+    # 音声ファイル生成（全自動生成モード）
+    print(f"\n音声ファイル生成中（全自動生成モード）...", flush=True)
+    print(f"  レート制限対策: 1件ごとに7秒スリープ", flush=True)
+    print(f"  エラー継続: 500エラーなどが出ても止まらず続行します", flush=True)
+    print(f"", flush=True)
+    
     success_count = 0
-    failed_count = 0
+    failed_list = []
     
     for audio_id in sorted(voice_texts.keys()):
         text = voice_texts[audio_id]
-        if generate_audio_file(audio_id, text, api_key):
-            success_count += 1
-        else:
-            failed_count += 1
+        try:
+            if generate_audio_file(audio_id, text, api_key, sleep_seconds=7.0):
+                success_count += 1
+            else:
+                failed_list.append(audio_id)
+                print(f"  ⚠ {audio_id}: 生成失敗（エラーログを確認してください）", flush=True)
+        except Exception as e:
+            failed_list.append(audio_id)
+            print(f"  ✗ {audio_id}: 予期しないエラー - {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+        
         # 各ファイル生成後に強制的にflush
         sys.stdout.flush()
     
@@ -400,16 +412,19 @@ def main():
     print(f"\n" + "=" * 60)
     print(f"音声ファイル生成完了")
     print(f"  成功: {success_count}件")
-    print(f"  失敗: {failed_count}件")
+    print(f"  失敗: {len(failed_list)}件")
     print(f"  合計: {len(voice_texts)}件")
     print("=" * 60)
     
-    if success_count == len(voice_texts):
+    if failed_list:
+        print(f"\n⚠ 生成に失敗した番号のリスト:")
+        for failed_id in failed_list:
+            print(f"  - {failed_id}")
+        print(f"\n合計 {len(failed_list)}件の生成に失敗しました。")
+        return 1
+    else:
         print("\n✓ すべての音声ファイルが正常に生成されました！")
         return 0
-    else:
-        print("\n⚠ 一部の音声ファイルの生成に失敗しました。")
-        return 1
 
 
 if __name__ == "__main__":
