@@ -39,6 +39,12 @@ GEMINI_MODEL = "gemini-2.5-flash-preview-tts"
 # 音声名（日本語対応）
 VOICE_NAME = "Kore"  # 固定: 一貫した声質を保つため（確定レシピ）
 
+# 無料枠（Free Tier）の制限設定
+MAX_REQUESTS_PER_DAY = 1500  # 1日の最大リクエスト数
+RPM_LIMIT = 15  # 1分あたりのリクエスト制限（無料枠）
+SLEEP_MIN = 12  # 最小スリープ時間（秒）
+SLEEP_MAX = 15  # 最大スリープ時間（秒）- 15 RPMを守るため（60秒 / 15 = 4秒間隔、余裕を持って12〜15秒）
+
 
 def check_credentials() -> bool:
     """認証情報の確認"""
@@ -314,10 +320,11 @@ def main():
     print(f"  出力形式: WAV")
     print(f"  出力ディレクトリ: {OUTPUT_DIR}")
     
-    # 音声ファイル生成（完全放置・突破仕様：APIが拒絶できない形）
-    print(f"\n音声ファイル生成中（完全放置・突破仕様）...", flush=True)
+    # 音声ファイル生成（無料枠対応：Free Tier制限に合わせた設定）
+    print(f"\n音声ファイル生成中（無料枠対応：Free Tier制限）...", flush=True)
     print(f"  リトライ: 無効（1回のみ実行、失敗したら即スキップ）", flush=True)
-    print(f"  ランダム待機: 15秒〜25秒のランダム待機（Bot判定回避）", flush=True)
+    print(f"  1日の上限: {MAX_REQUESTS_PER_DAY}リクエスト（無料枠）", flush=True)
+    print(f"  RPM制限対策: {SLEEP_MIN}秒〜{SLEEP_MAX}秒のランダム待機（{RPM_LIMIT} RPMを守る）", flush=True)
     print(f"  429エラー時: 即座にシステム停止（無駄なAPI呼び出しを防止）", flush=True)
     print(f"  クライアント: 1つのクライアントを使い回し（リコネクト削減）", flush=True)
     print(f"  システムプロンプト: 完全削除（TSVテキストのみ）", flush=True)
@@ -331,46 +338,65 @@ def main():
     success_count = 0
     failed_list = {}  # {audio_id: error_reason}
     total_count = len(voice_texts)
+    request_count = 0  # リクエストカウンター（1日の上限チェック用）
     import time
     import random
     
     for idx, audio_id in enumerate(sorted(voice_texts.keys()), 1):
+        # 1日の上限チェック（1,500リクエスト）
+        if request_count >= MAX_REQUESTS_PER_DAY:
+            print(f"\n" + "=" * 60, flush=True)
+            print(f"⚠ 本日の無料枠上限に達しました", flush=True)
+            print(f"  リクエスト数: {request_count}件 / 上限: {MAX_REQUESTS_PER_DAY}件", flush=True)
+            print(f"  成功: {success_count}件 / 処理済み: {idx - 1}件 / 残り: {total_count - (idx - 1)}件", flush=True)
+            print(f"  安全に終了します", flush=True)
+            print("=" * 60, flush=True)
+            break
+        
         text = voice_texts[audio_id]
-        print(f"\n[{idx}/{total_count}] {audio_id} を処理中...", flush=True)
+        print(f"\n[{idx}/{total_count}] {audio_id} を処理中... (リクエスト数: {request_count}/{MAX_REQUESTS_PER_DAY})", flush=True)
         
         try:
             # 一撃必殺モード：1回のみ実行（再利用クライアント使用）
             success, error_reason = generate_audio_file(audio_id, text, client)
             
+            # リクエストカウンターを増加（成功・失敗に関わらず）
+            request_count += 1
+            
             if success:
                 success_count += 1
-                print(f"  ✓ {audio_id}: 生成成功（進捗: {success_count}/{total_count}）", flush=True)
+                print(f"  ✓ {audio_id}: 生成成功（進捗: {success_count}/{total_count}, リクエスト: {request_count}/{MAX_REQUESTS_PER_DAY}）", flush=True)
             else:
                 failed_list[audio_id] = error_reason
-                print(f"  ✗ {audio_id}: 生成失敗 (理由: {error_reason})", flush=True)
+                print(f"  ✗ {audio_id}: 生成失敗 (理由: {error_reason}, リクエスト: {request_count}/{MAX_REQUESTS_PER_DAY})", flush=True)
                 
                 # 429エラー（API制限）が検出されたら即座にシステムを停止
                 if error_reason == "429_QUOTA_EXCEEDED":
                     print(f"\n" + "=" * 60, flush=True)
                     print(f"⚠ API制限エラー（429 RESOURCE_EXHAUSTED）が検出されました", flush=True)
-                    print(f"  1日の上限（100回）を超えた可能性があります", flush=True)
                     print(f"  無駄なAPI呼び出し（入力トークン課金）を防ぐため、システムを即座に停止します", flush=True)
                     print(f"  成功: {success_count}件 / 処理済み: {idx}件 / 残り: {total_count - idx}件", flush=True)
+                    print(f"  リクエスト数: {request_count}件 / 上限: {MAX_REQUESTS_PER_DAY}件", flush=True)
                     print("=" * 60, flush=True)
                     sys.exit(1)
                 
         except KeyboardInterrupt:
             print(f"\n\n⚠ ユーザーによる中断が検出されました。", flush=True)
             print(f"  成功: {success_count}件 / 残り: {total_count - success_count}件", flush=True)
+            print(f"  リクエスト数: {request_count}件 / 上限: {MAX_REQUESTS_PER_DAY}件", flush=True)
             return 1
         except Exception as e:
+            request_count += 1  # エラーでもリクエストカウント
             failed_list[audio_id] = f"EXCEPTION_{type(e).__name__}"
             print(f"  ✗ {audio_id}: 予期しないエラー - {e}", flush=True)
         
-        # 成功・失敗に関わらず、15秒〜25秒のランダム待機（Bot判定回避）
-        wait_seconds = random.uniform(15, 25)
-        print(f"  {wait_seconds:.1f}秒待機中（ランダム）...", flush=True)
+        # 成功・失敗に関わらず、12秒〜15秒のランダム待機（15 RPM制限を守る）
+        wait_seconds = random.uniform(SLEEP_MIN, SLEEP_MAX)
+        print(f"  {wait_seconds:.1f}秒待機中（ランダム、RPM制限対策）...", flush=True)
         time.sleep(wait_seconds)
+        
+        # 進捗ログ出力（1件終わるごと）
+        print(f"  [進捗] 成功: {success_count}件, 失敗: {len(failed_list)}件, リクエスト: {request_count}/{MAX_REQUESTS_PER_DAY}件", flush=True)
         
         # 各ファイル生成後に強制的にflush
         sys.stdout.flush()
@@ -381,6 +407,7 @@ def main():
     print(f"  成功: {success_count}件")
     print(f"  失敗: {len(failed_list)}件")
     print(f"  合計: {total_count}件")
+    print(f"  リクエスト数: {request_count}件 / 上限: {MAX_REQUESTS_PER_DAY}件")
     print("=" * 60)
     
     if failed_list:
