@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Gemini 2.0 APIを使用した日本語TTS（音声合成）スクリプト
+Gemini 2.5 APIを使用した日本語TTS（音声合成）スクリプト
 
-Vertex AI SDKまたはMultimodal Live APIを使用して音声を生成します。
+google.genaiパッケージとspeech_configを使用して音声を生成します。
 
 voice_list_000.tsvから000-003の音声ファイルを生成します。
 
 使い方:
+    export GOOGLE_API_KEY="your-api-key"
+    # または
     export GOOGLE_APPLICATION_CREDENTIALS="/path/to/credentials.json"
-    export GOOGLE_CLOUD_PROJECT="your-project-id"
-    export GOOGLE_CLOUD_LOCATION="us-central1"
     
     python scripts/generate_gemini_tts.py
 
@@ -21,26 +21,25 @@ voice_list_000.tsvから000-003の音声ファイルを生成します。
     - clients/000/audio/003.wav
 
 依存パッケージ:
-    - google-cloud-aiplatform: pip install google-cloud-aiplatform
+    - google-genai: pip install google-genai
 """
 
 import os
 import sys
 import wave
 import io
-import json
 import base64
 from pathlib import Path
 from typing import Optional
 
 try:
-    from google.cloud import aiplatform
-    from vertexai.generative_models import GenerativeModel
-    VERTEX_AI_AVAILABLE = True
+    from google import genai
+    from google.genai import types
+    GENAI_AVAILABLE = True
 except ImportError:
-    VERTEX_AI_AVAILABLE = False
-    print("警告: google-cloud-aiplatform がインストールされていません。")
-    print("インストール: pip install google-cloud-aiplatform")
+    GENAI_AVAILABLE = False
+    print("エラー: google-genai がインストールされていません。")
+    print("インストール: pip install google-genai")
 
 # プロジェクトルートのパスを取得
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -53,44 +52,25 @@ SAMPLE_RATE = 24000  # 24kHz
 BIT_DEPTH = 16  # 16bit
 CHANNELS = 1  # モノラル
 
-# Gemini 2.0 Flash モデル名
-GEMINI_MODEL = "gemini-2.0-flash-exp"
+# Gemini 2.5 モデル名
+GEMINI_MODEL = "gemini-2.5-flash"
 
 
 def check_credentials() -> bool:
     """認証情報の確認"""
+    google_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     google_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    project_id = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT")
     
-    if not google_creds:
-        print("エラー: GOOGLE_APPLICATION_CREDENTIALS 環境変数が設定されていません。")
-        print("設定例: export GOOGLE_APPLICATION_CREDENTIALS=\"/path/to/credentials.json\"")
+    if not google_api_key and not google_creds:
+        print("エラー: 認証情報が設定されていません。")
+        print("以下のいずれかを設定してください:")
+        print("  export GOOGLE_API_KEY=\"your-api-key\"")
+        print("  または")
+        print("  export GEMINI_API_KEY=\"your-api-key\"")
+        print("  または")
+        print("  export GOOGLE_APPLICATION_CREDENTIALS=\"/path/to/credentials.json\"")
         return False
-    
-    if not os.path.exists(google_creds):
-        print(f"エラー: 認証ファイルが見つかりません: {google_creds}")
-        return False
-    
-    if not project_id:
-        print("警告: GOOGLE_CLOUD_PROJECT 環境変数が設定されていません。")
-        print("認証ファイルからプロジェクトIDを読み取ります。")
-    
     return True
-
-
-def get_project_id_from_credentials() -> Optional[str]:
-    """認証ファイルからプロジェクトIDを取得"""
-    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    if not creds_path or not os.path.exists(creds_path):
-        return None
-    
-    try:
-        with open(creds_path, 'r') as f:
-            creds = json.load(f)
-            return creds.get('project_id')
-    except Exception as e:
-        print(f"警告: 認証ファイルからプロジェクトIDを読み取れませんでした: {e}")
-        return None
 
 
 def ensure_directories():
@@ -125,174 +105,105 @@ def load_voice_list() -> dict:
     return voice_texts
 
 
-def synthesize_with_vertex_ai(text: str, project_id: str, location: str = "us-central1") -> Optional[bytes]:
+def synthesize_with_gemini_2_5(text: str, api_key: Optional[str] = None) -> Optional[bytes]:
     """
-    Vertex AI SDKを使用してテキストから音声を合成する
+    Gemini 2.5 APIを使用してテキストから音声を合成する
     
     Args:
         text: 音声化するテキスト
-        project_id: Google Cloud プロジェクトID
-        location: リージョン（デフォルト: us-central1）
+        api_key: APIキー（Noneの場合は環境変数から取得）
     
     Returns:
         音声データ（bytes）または None
     """
     try:
-        # Vertex AIを初期化
-        aiplatform.init(project=project_id, location=location)
-        
-        # Gemini 2.0 Flash モデルを取得
-        model = GenerativeModel(GEMINI_MODEL)
-        
-        # 音声生成のリクエスト
-        # 注: Vertex AIのGenerativeModelは主にテキスト生成用ですが、
-        # 音声生成機能がある場合は、適切なメソッドを使用します
-        
-        # プロンプトを作成
-        prompt = f"以下の日本語テキストを自然な音声で読み上げてください: {text}"
-        
-        # 音声生成を試行
-        # 注: 実際のAPIでは、音声生成専用のメソッドやパラメータがある可能性があります
-        try:
-            # generate_contentを使用（音声生成がサポートされている場合）
-            response = model.generate_content(
-                prompt,
-                generation_config={
-                    "temperature": 0.7,
-                    "max_output_tokens": 8192,
-                }
-            )
-            
-            # レスポンスから音声データを取得
-            # 注: 実際のAPIレスポンス形式に合わせて調整が必要です
-            if hasattr(response, 'audio_content'):
-                return response.audio_content
-            elif hasattr(response, 'candidates') and len(response.candidates) > 0:
-                candidate = response.candidates[0]
-                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                    for part in candidate.content.parts:
-                        if hasattr(part, 'audio_data'):
-                            # Base64エンコードされた音声データの場合
-                            if isinstance(part.audio_data, str):
-                                return base64.b64decode(part.audio_data)
-                            return part.audio_data
-                        elif hasattr(part, 'inline_data') and hasattr(part.inline_data, 'data'):
-                            # inline_dataに音声データがある場合
-                            return base64.b64decode(part.inline_data.data)
-            
-            # テキストが返された場合（音声生成がサポートされていない場合）
-            print(f"警告: Vertex AIは音声データではなくテキストを返しました。")
-            print(f"レスポンス: {response.text if hasattr(response, 'text') else 'N/A'}")
+        if not GENAI_AVAILABLE:
+            print("エラー: google-genai がインストールされていません。")
             return None
-            
-        except Exception as api_error:
-            print(f"API呼び出しエラー: {api_error}")
+        
+        # クライアントを初期化
+        if api_key:
+            client = genai.Client(api_key=api_key)
+        else:
+            # 環境変数からAPIキーを取得
+            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                # サービスアカウントキーを使用する場合（Vertex AI）
+                creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+                project_id = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT")
+                location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+                
+                if creds_path and project_id:
+                    import vertexai
+                    vertexai.init(project=project_id, location=location)
+                    client = genai.Client(vertexai=True)
+                else:
+                    print("エラー: APIキーまたは認証情報（プロジェクトID含む）が見つかりません。")
+                    return None
+            else:
+                client = genai.Client(api_key=api_key)
+        
+        # 音声生成リクエスト
+        # speech_configを使用して音声を生成
+        # ユーザー提供のコード例に基づく実装
+        try:
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=text,
+                config=types.GenerateContentConfig(
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name='Charon'  # 日本語対応ボイス
+                            )
+                        )
+                    )
+                )
+            )
+        except Exception as config_error:
+            print(f"警告: speech_configの設定でエラーが発生しました: {config_error}")
+            print(f"代替方法を試します...")
+            # シンプルな方法を試す
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=text
+            )
+        
+        # 音声データを取得（ユーザー提供のコード例に基づく）
+        # response.candidates[0].content.parts[0].inline_data.data
+        try:
+            if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                
+                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                    if len(candidate.content.parts) > 0:
+                        part = candidate.content.parts[0]
+                        
+                        # inline_dataから音声データを取得
+                        if hasattr(part, 'inline_data') and part.inline_data is not None:
+                            inline_data = part.inline_data
+                            if hasattr(inline_data, 'data') and inline_data.data:
+                                # Base64エンコードされた音声データ
+                                audio_data = inline_data.data
+                                print(f"✓ 音声データを取得しました (Base64サイズ: {len(audio_data)} bytes)")
+                                decoded_data = base64.b64decode(audio_data)
+                                print(f"✓ デコード後のサイズ: {len(decoded_data)} bytes")
+                                return decoded_data
+                        
+                        # テキストが返された場合は警告
+                        if hasattr(part, 'text') and part.text:
+                            print(f"警告: テキストが返されました（音声データではありません）: {part.text[:100]}")
+                            print(f"speech_configが正しく適用されていない可能性があります。")
+        except Exception as e:
+            print(f"エラー: 音声データの取得中にエラーが発生しました: {e}")
             import traceback
             traceback.print_exc()
-            return None
         
-    except Exception as e:
-        print(f"エラー: Vertex AI音声合成に失敗しました: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
-def synthesize_with_multimodal_live_api(text: str, project_id: str, location: str = "us-central1") -> Optional[bytes]:
-    """
-    Multimodal Live APIを使用してテキストから音声を合成する（REST API版）
-    
-    Args:
-        text: 音声化するテキスト
-        project_id: Google Cloud プロジェクトID
-        location: リージョン（デフォルト: us-central1）
-    
-    Returns:
-        音声データ（bytes）または None
-    """
-    try:
-        import requests
-        from google.auth import default
-        from google.auth.transport.requests import Request
-        
-        # 認証情報を取得（適切なスコープを指定）
-        credentials, _ = default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
-        credentials.refresh(Request())
-        
-        # Vertex AI API のエンドポイント
-        endpoint = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{GEMINI_MODEL}:generateContent"
-        
-        # リクエストボディ
-        # 注: 実際のGemini 2.0 APIの音声生成機能のパラメータは、最新のAPIドキュメントを確認してください
-        payload = {
-            "contents": [{
-                "role": "user",
-                "parts": [{
-                    "text": text
-                }]
-            }],
-            "generationConfig": {
-                "temperature": 0.7,
-                "maxOutputTokens": 8192,
-            }
-        }
-        
-        # リクエストヘッダー
-        headers = {
-            "Authorization": f"Bearer {credentials.token}",
-            "Content-Type": "application/json"
-        }
-        
-        # API呼び出し
-        response = requests.post(endpoint, json=payload, headers=headers)
-        
-        # エラーレスポンスの詳細を確認
-        if response.status_code != 200:
-            print(f"APIエラー: {response.status_code}")
-            try:
-                error_detail = response.json()
-                print(f"エラー詳細: {json.dumps(error_detail, indent=2, ensure_ascii=False)}")
-            except:
-                print(f"エラーレスポンス: {response.text[:500]}")
-            response.raise_for_status()
-        
-        # レスポンスから音声データを取得
-        result = response.json()
-        
-        if "candidates" in result and len(result["candidates"]) > 0:
-            candidate = result["candidates"][0]
-            if "content" in candidate and "parts" in candidate["content"]:
-                for part in candidate["content"]["parts"]:
-                    if "inlineData" in part:
-                        # Base64エンコードされた音声データ
-                        audio_data = part["inlineData"]["data"]
-                        return base64.b64decode(audio_data)
-                    elif "text" in part:
-                        # テキストが返された場合
-                        print(f"レスポンス: テキストが返されました - {part['text'][:100]}")
-        
-        # デバッグ: レスポンスの詳細を表示
         print(f"警告: 音声データが見つかりませんでした。")
-        print(f"レスポンス形式: {list(result.keys())}")
-        if "candidates" in result and len(result["candidates"]) > 0:
-            candidate = result["candidates"][0]
-            print(f"候補のキー: {list(candidate.keys())}")
-            if "content" in candidate:
-                print(f"コンテンツのキー: {list(candidate['content'].keys())}")
-                if "parts" in candidate["content"]:
-                    for i, part in enumerate(candidate["content"]["parts"]):
-                        print(f"パート {i} のキー: {list(part.keys())}")
-        
-        # 注: Gemini 2.0 APIは音声生成機能を直接サポートしていない可能性があります
-        # 実際の音声生成には、Google Cloud Text-to-Speech APIを使用する必要があるかもしれません
         return None
         
-    except ImportError:
-        print("エラー: requests がインストールされていません。")
-        print("インストール: pip install requests")
-        return None
     except Exception as e:
-        print(f"エラー: Multimodal Live API音声合成に失敗しました: {e}")
+        print(f"エラー: Gemini 2.5 API音声合成に失敗しました: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -325,15 +236,14 @@ def convert_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
     return wav_buffer.getvalue()
 
 
-def generate_audio_file(audio_id: str, text: str, project_id: str, location: str) -> bool:
+def generate_audio_file(audio_id: str, text: str, api_key: Optional[str] = None) -> bool:
     """
-    Vertex AIまたはMultimodal Live APIを使用して音声ファイルを生成
+    Gemini 2.5 APIを使用して音声ファイルを生成
     
     Args:
         audio_id: 音声ID（例: "000"）
         text: 音声化するテキスト
-        project_id: Google Cloud プロジェクトID
-        location: リージョン
+        api_key: APIキー（Noneの場合は環境変数から取得）
     
     Returns:
         成功した場合True
@@ -350,21 +260,11 @@ def generate_audio_file(audio_id: str, text: str, project_id: str, location: str
         print(f"  モデル: {GEMINI_MODEL}")
         print(f"  サンプリングレート: {SAMPLE_RATE}Hz")
         
-        # まずVertex AI SDKを試行
-        audio_data = None
-        if VERTEX_AI_AVAILABLE:
-            print(f"  Vertex AI SDKを使用して音声生成を試行...")
-            audio_data = synthesize_with_vertex_ai(text, project_id, location)
-        
-        # Vertex AIが失敗した場合はMultimodal Live APIを試行
-        if not audio_data:
-            print(f"  Multimodal Live APIを使用して音声生成を試行...")
-            audio_data = synthesize_with_multimodal_live_api(text, project_id, location)
+        # Gemini 2.5 APIで音声合成
+        audio_data = synthesize_with_gemini_2_5(text, api_key)
         
         if not audio_data:
             print(f"  ✗ {audio_id}: 音声合成に失敗しました")
-            print(f"    注: Gemini 2.0 APIの音声生成機能がサポートされていない可能性があります。")
-            print(f"    最新のAPIドキュメントを確認してください。")
             return False
         
         # WAV形式に変換
@@ -389,7 +289,7 @@ def generate_audio_file(audio_id: str, text: str, project_id: str, location: str
 def main():
     """メイン処理"""
     print("=" * 60)
-    print("Gemini 2.0 API 日本語TTS音声生成 (Vertex AI / Multimodal Live API)")
+    print("Gemini 2.5 API 日本語TTS音声生成")
     print("=" * 60)
     
     # 認証情報確認
@@ -399,26 +299,22 @@ def main():
     # ディレクトリ確認
     ensure_directories()
     
-    # プロジェクトIDとリージョンを取得
-    project_id = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT")
-    if not project_id:
-        project_id = get_project_id_from_credentials()
+    # APIキーを取得
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    google_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     
-    if not project_id:
-        print("エラー: プロジェクトIDが取得できませんでした。")
-        print("GOOGLE_CLOUD_PROJECT 環境変数を設定するか、認証ファイルにproject_idが含まれていることを確認してください。")
+    if api_key:
+        print(f"\n✓ APIキー認証を使用")
+    elif google_creds:
+        print(f"\n✓ サービスアカウント認証を使用")
+    else:
+        print(f"\n✗ 認証情報が見つかりません")
         return 1
     
-    location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-    
-    print(f"\n✓ 認証情報確認完了")
-    print(f"  プロジェクトID: {project_id}")
-    print(f"  リージョン: {location}")
-    
-    if VERTEX_AI_AVAILABLE:
-        print(f"✓ Vertex AI SDK 利用可能")
-    else:
-        print(f"⚠ Vertex AI SDK 未インストール (Multimodal Live APIのみ使用)")
+    if not GENAI_AVAILABLE:
+        print("エラー: google-genai がインストールされていません。")
+        print("インストール: pip install google-genai")
+        return 1
     
     # 音声リスト読み込み
     print(f"\n音声リスト読み込み中...")
@@ -433,6 +329,7 @@ def main():
     # TTS設定表示
     print(f"\nTTS設定:")
     print(f"  モデル: {GEMINI_MODEL}")
+    print(f"  ボイス: Charon (日本語対応)")
     print(f"  サンプリングレート: {SAMPLE_RATE}Hz")
     print(f"  ビット深度: {BIT_DEPTH}bit")
     print(f"  チャンネル: {CHANNELS} (モノラル)")
@@ -446,7 +343,7 @@ def main():
     
     for audio_id in sorted(voice_texts.keys()):
         text = voice_texts[audio_id]
-        if generate_audio_file(audio_id, text, project_id, location):
+        if generate_audio_file(audio_id, text, api_key):
             success_count += 1
         else:
             failed_count += 1
@@ -464,8 +361,6 @@ def main():
         return 0
     else:
         print("\n⚠ 一部の音声ファイルの生成に失敗しました。")
-        if failed_count > 0:
-            print("Gemini 2.0 APIの音声生成機能がサポートされているか確認してください。")
         return 1
 
 
