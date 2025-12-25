@@ -200,18 +200,14 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
                 if hasattr(candidate, 'content') and candidate.content is not None:
                     if hasattr(candidate.content, 'parts') and candidate.content.parts:
                         # inline_dataを持つpartを探す
-                        audio_part = next(
-                            (part for part in candidate.content.parts if hasattr(part, 'inline_data') and part.inline_data is not None),
-                            None
-                        )
-                        
-                        if audio_part:
-                            audio_data = audio_part.inline_data.data
-                            if audio_data and len(audio_data) > 0:
-                                # Base64エンコードされている場合はデコード
-                                if isinstance(audio_data, str):
-                                    return base64.b64decode(audio_data)
-                                return audio_data
+                        for part in candidate.content.parts:
+                            if hasattr(part, 'inline_data') and part.inline_data is not None:
+                                audio_data = part.inline_data.data
+                                if audio_data and len(audio_data) > 0:
+                                    # Base64エンコードされている場合はデコード
+                                    if isinstance(audio_data, str):
+                                        return base64.b64decode(audio_data)
+                                    return audio_data
             
             # response.partsからも確認（以前の成功時はこちらにあった）
             if not audio_data and hasattr(response, 'parts') and response.parts:
@@ -223,6 +219,21 @@ def synthesize_with_gemini(text: str, api_key: str, infinite_retry: bool = False
                             if isinstance(audio_data, str):
                                 return base64.b64decode(audio_data)
                             return audio_data
+            
+            # デバッグ: レスポンスの構造を確認
+            if infinite_retry and attempt <= 3:
+                print(f"  デバッグ: レスポンス構造確認中...", flush=True)
+                if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                    candidate = response.candidates[0]
+                    if hasattr(candidate, 'content'):
+                        if candidate.content is None:
+                            print(f"  デバッグ: candidate.content が None です", flush=True)
+                        elif hasattr(candidate.content, 'parts'):
+                            print(f"  デバッグ: parts 数 = {len(candidate.content.parts) if candidate.content.parts else 0}", flush=True)
+                            for i, part in enumerate(candidate.content.parts or []):
+                                print(f"  デバッグ: part[{i}] type = {type(part)}", flush=True)
+                                if hasattr(part, 'inline_data'):
+                                    print(f"  デバッグ: part[{i}].inline_data = {part.inline_data}", flush=True)
             
             # 音声データが空の場合はリトライ
             if not audio_data or len(audio_data) == 0:
