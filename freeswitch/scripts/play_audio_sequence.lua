@@ -87,11 +87,12 @@ local session_client_id = client_id
 -- session:execute("record_session", record_session_path)
 
 -- GatewayへリアルタイムRTPをミラー送信（UDP経由で127.0.0.1:7002に送信）
--- record_sessionではなく、uuid_recordを使用
-freeswitch.consoleLog("INFO", "[RTP] Starting RTP mirror to Gateway (127.0.0.1:7002)\n")
+-- mod_rtp_streamを使用してRTPストリームをUDPに送信
+freeswitch.consoleLog("INFO", "[RTP] Starting RTP stream to Gateway (127.0.0.1:7002)\n")
 local api = freeswitch.API()
-local result = api:executeString("uuid_record " .. uuid .. " start udp://127.0.0.1:7002")
-freeswitch.consoleLog("INFO", "[RTP] uuid_record result: " .. tostring(result) .. "\n")
+-- uuid_rtp_streamを使用（FreeSWITCH 1.10以降で利用可能）
+local result = api:executeString("uuid_rtp_stream " .. uuid .. " start 127.0.0.1 7002")
+freeswitch.consoleLog("INFO", "[RTP] uuid_rtp_stream result: " .. tostring(result) .. "\n")
 
 -- 必ず再生するアナウンス（無音削減: silence_threshold=0.1でテンプレート間の無音を削減）
 session:setVariable("silence_threshold", "0.1")
