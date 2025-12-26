@@ -1937,20 +1937,9 @@ class AICore:
                     
                     # 各call_idの最終活動時刻をチェック
                     for call_id, last_activity_time in list(self.last_activity.items()):
-                        # 【修正3】古いセッションの除外: アクティブなcall_idリストに存在しない場合はスキップ
+                        # 【緊急修正】アクティブでない通話はスキップ
                         if active_call_ids and call_id not in active_call_ids:
-                            # 古いセッションのクリーンアップ（最終活動時刻が30秒以上経過している場合）
-                            elapsed_since_last = current_time - last_activity_time
-                            if elapsed_since_last >= 30.0:
-                                self.logger.debug(
-                                    f"[ACTIVITY_MONITOR] Cleaning up stale session: call_id={call_id} "
-                                    f"elapsed={elapsed_since_last:.1f}s (not in active calls)"
-                                )
-                                # 古いセッションのデータをクリーンアップ
-                                self.last_activity.pop(call_id, None)
-                                self.is_playing.pop(call_id, None)
-                                self.partial_transcripts.pop(call_id, None)
-                                self.last_template_play.pop(call_id, None)
+                            self.logger.info(f"[ACTIVITY_MONITOR] Skipping inactive call: call_id={call_id}")
                             continue
                         
                         # 再生中は無音タイムアウトをスキップ
