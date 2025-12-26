@@ -77,13 +77,14 @@ session:setVariable("disable-transcoding", "true")
 
 -- セッション録音開始（u-law 8kHz）
 local session_client_id = client_id
-local record_session_path = string.format("/var/lib/libertycall/sessions/%s/%s/session_%s/audio/caller.wav",
-    os.date("%Y-%m-%d"),
-    session_client_id,
-    os.date("%Y%m%d_%H%M%S")
-)
-session:execute("set", "record_session=" .. record_session_path)
-session:execute("record_session", record_session_path)
+-- ファイル録音はコメントアウト（UDP送信と競合するため）
+-- local record_session_path = string.format("/var/lib/libertycall/sessions/%s/%s/session_%s/audio/caller.wav",
+--     os.date("%Y-%m-%d"),
+--     session_client_id,
+--     os.date("%Y%m%d_%H%M%S")
+-- )
+-- session:execute("set", "record_session=" .. record_session_path)
+-- session:execute("record_session", record_session_path)
 
 -- GatewayへリアルタイムRTPをミラー送信（UDP経由で127.0.0.1:7002に送信）
 -- 直接record_sessionを実行（execute_on_mediaではなく）
