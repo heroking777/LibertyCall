@@ -192,12 +192,11 @@ def generate_audio_file(audio_id: str, text: str) -> bool:
     """1件の音声ファイルを生成"""
     output_path = OUTPUT_DIR / f"{audio_id}.wav"
     
-    # 既にファイルが存在する場合はスキップ
+    # 既存ファイルがあれば上書きするため、スキップしない
     if output_path.exists():
-        print(f"[{audio_id:15s}] スキップ: 既に存在します")
-        return True
-    
-    print(f"[{audio_id:15s}] 処理中: {text[:50]}...", end=" ", flush=True)
+        print(f"[{audio_id:15s}] 上書き: {text[:50]}...", end=" ", flush=True)
+    else:
+        print(f"[{audio_id:15s}] 処理中: {text[:50]}...", end=" ", flush=True)
     
     # F5-TTSで音声生成（ref.wavの声質を維持）
     success = generate_audio_with_f5_tts(
@@ -267,12 +266,7 @@ def main():
             text = voice_texts[audio_id]
             result = generate_audio_file(audio_id, text)
             if result:
-                # 既存ファイルの場合はスキップカウント
-                output_path = OUTPUT_DIR / f"{audio_id}.wav"
-                if output_path.exists() and idx > 1:
-                    skip_count += 1
-                else:
-                    success_count += 1
+                success_count += 1
             else:
                 fail_count += 1
         except KeyboardInterrupt:
@@ -287,8 +281,6 @@ def main():
     print("生成完了")
     print("=" * 70)
     print(f"成功: {success_count}件")
-    if skip_count > 0:
-        print(f"スキップ: {skip_count}件（既存ファイル）")
     print(f"失敗: {fail_count}件")
     print(f"出力先: {OUTPUT_DIR}")
     print("=" * 70)
