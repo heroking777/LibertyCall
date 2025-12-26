@@ -214,18 +214,20 @@ class FreeswitchRTPMonitor:
     
     async def start_monitoring(self):
         """FreeSWITCH送信RTPポートの監視を開始（RTPポート未検出でも継続）"""
-        # ポート取得をリトライ（最大5回、1秒間隔）
-        for retry in range(5):
+        # ポート取得をリトライ（最大10回、1秒間隔）- RTP情報ファイルの作成を待つため延長
+        for retry in range(10):
             self.freeswitch_rtp_port = self.get_rtp_port_from_freeswitch()
             if self.freeswitch_rtp_port:
                 break
             await asyncio.sleep(1.0)
-            self.logger.debug(f"[FS_RTP_MONITOR] Retry {retry + 1}/5: waiting for FreeSWITCH channel...")
+            self.logger.debug(f"[FS_RTP_MONITOR] Retry {retry + 1}/10: waiting for FreeSWITCH channel or RTP info file...")
         
         if not self.freeswitch_rtp_port:
             self.logger.warning("[FS_RTP_MONITOR] RTPポート未検出（スキップモード）で継続します。ASRフラグファイル監視は継続します。")
             # RTPポートが取得できなくても、ASRフラグファイル監視は継続する
             asyncio.create_task(self._check_asr_enable_flag())
+            # RTP情報ファイルを定期的に監視するタスクも開始（後からファイルが作成される場合に備える）
+            asyncio.create_task(self._monitor_rtp_info_files())
             return
         
         try:
@@ -250,6 +252,8 @@ class FreeswitchRTPMonitor:
             
             # 002.wav完了フラグファイルを監視するタスクを開始
             asyncio.create_task(self._check_asr_enable_flag())
+            # RTP情報ファイルを定期的に監視するタスクも開始（後からファイルが作成される場合に備える）
+            asyncio.create_task(self._monitor_rtp_info_files())
         except OSError as e:
             if e.errno == 98:  # Address already in use
                 self.logger.warning(
@@ -293,6 +297,66 @@ class FreeswitchRTPMonitor:
                 self.logger.error(f"[FS_RTP_MONITOR] Error checking ASR enable flag: {e}", exc_info=True)
             
             await asyncio.sleep(0.5)  # 0.5秒間隔でチェック
+    
+    async def _monitor_rtp_info_files(self):
+        """RTP情報ファイルを定期的に監視して、RTPポートが検出されたら監視を開始"""
+        while self.gateway.running:
+            try:
+                # 既にRTPポートが検出されている場合は監視を開始済み
+                if self.freeswitch_rtp_port and self.monitor_sock:
+                    await asyncio.sleep(5.0)  # 既に監視中なら5秒間隔でチェック
+                    continue
+                
+                # RTP情報ファイルをチェック
+                rtp_info_files = list(Path("/tmp").glob("rtp_info_*.txt"))
+                if rtp_info_files:
+                    # 最新のファイルを取得
+                    latest_file = max(rtp_info_files, key=lambda p: p.stat().st_mtime)
+                    
+                    # ファイルからポートを取得
+                    port = None
+                    try:
+                        with open(latest_file, 'r') as f:
+                            lines = f.readlines()
+                            for line in lines:
+                                if line.startswith("local="):
+                                    local_rtp = line.split("=", 1)[1].strip()
+                                    if ":" in local_rtp:
+                                        port_str = local_rtp.split(":")[-1]
+                                        port = int(port_str)
+                                        break
+                    except Exception as e:
+                        self.logger.debug(f"[FS_RTP_MONITOR] Error reading RTP info file {latest_file}: {e}")
+                        await asyncio.sleep(2.0)
+                        continue
+                    
+                    if port and port != self.freeswitch_rtp_port:
+                        self.logger.info(f"[FS_RTP_MONITOR] Found RTP port {port} from RTP info file, starting monitoring...")
+                        self.freeswitch_rtp_port = port
+                        # RTPポートで監視を開始
+                        try:
+                            loop = asyncio.get_running_loop()
+                            self.monitor_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                            self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                            self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                            self.monitor_sock.bind(("0.0.0.0", self.freeswitch_rtp_port))
+                            self.monitor_sock.setblocking(False)
+                            
+                            self.monitor_transport, _ = await loop.create_datagram_endpoint(
+                                lambda: RTPProtocol(self.gateway),
+                                sock=self.monitor_sock
+                            )
+                            self.logger.info(
+                                f"[FS_RTP_MONITOR] Started monitoring FreeSWITCH RTP port {self.freeswitch_rtp_port} (from RTP info file)"
+                            )
+                        except Exception as e:
+                            self.logger.error(f"[FS_RTP_MONITOR] Failed to start monitoring port {port}: {e}", exc_info=True)
+                            self.freeswitch_rtp_port = None
+                
+                await asyncio.sleep(2.0)  # 2秒間隔でチェック
+            except Exception as e:
+                self.logger.error(f"[FS_RTP_MONITOR] Error in _monitor_rtp_info_files: {e}", exc_info=True)
+                await asyncio.sleep(2.0)
     
     def enable_asr(self):
         """002.wav再生完了後にASRを有効化"""
