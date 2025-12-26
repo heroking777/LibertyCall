@@ -20,7 +20,8 @@ from typing import Optional
 
 # VOICEVOX設定（SSHポートフォワーディング経由でローカルPCのVOICEVOXに接続）
 VOICEVOX_URL = "http://[::1]:50022"  # IPv6アドレスで接続
-SPEAKER_ID = 2  # 四国めたん・ノーマル
+SPEAKER_ID = 2  # 四国めたん・ノーマル（デフォルト）
+MALE_SPEAKER_ID = 11  # 玄野武宏・ノーマル（000番用）
 
 # 音声パラメータ
 SPEED_SCALE = 1.15      # 話速
@@ -80,12 +81,12 @@ def load_texts_from_json(json_file: Path) -> dict:
         return {}
 
 
-def get_audio_query(text: str) -> Optional[dict]:
+def get_audio_query(text: str, speaker_id: int = SPEAKER_ID) -> Optional[dict]:
     """音声クエリを取得"""
     try:
         response = requests.post(
             f"{VOICEVOX_URL}/audio_query",
-            params={"text": text, "speaker": SPEAKER_ID},
+            params={"text": text, "speaker": speaker_id},
             timeout=10
         )
         if response.status_code == 200:
@@ -98,7 +99,7 @@ def get_audio_query(text: str) -> Optional[dict]:
         return None
 
 
-def synthesize_audio(audio_query: dict) -> Optional[bytes]:
+def synthesize_audio(audio_query: dict, speaker_id: int = SPEAKER_ID) -> Optional[bytes]:
     """音声を合成"""
     try:
         # パラメータを設定
@@ -108,7 +109,7 @@ def synthesize_audio(audio_query: dict) -> Optional[bytes]:
         
         response = requests.post(
             f"{VOICEVOX_URL}/synthesis",
-            params={"speaker": SPEAKER_ID},
+            params={"speaker": speaker_id},
             headers={"Content-Type": "application/json"},
             data=json.dumps(audio_query),
             timeout=30
@@ -139,16 +140,20 @@ def generate_audio_file(audio_id: str, text: str) -> bool:
         print(f"\n[{audio_id}] スキップ: 既に存在します")
         return True
     
-    print(f"\n[{audio_id}] 処理中: {text[:50]}...")
+    # 000番は男性の声を使用
+    speaker_id = MALE_SPEAKER_ID if audio_id == "000" else SPEAKER_ID
+    speaker_name = "玄野武宏（男性）" if audio_id == "000" else "四国めたん（女性）"
+    
+    print(f"\n[{audio_id}] 処理中: {text[:50]}... ({speaker_name})")
     
     # 音声クエリを取得
-    audio_query = get_audio_query(text)
+    audio_query = get_audio_query(text, speaker_id=speaker_id)
     if not audio_query:
         print(f"  ✗ 失敗: 音声クエリの取得に失敗しました")
         return False
     
     # 音声を合成
-    audio_data = synthesize_audio(audio_query)
+    audio_data = synthesize_audio(audio_query, speaker_id=speaker_id)
     if not audio_data:
         print(f"  ✗ 失敗: 音声合成に失敗しました")
         return False
