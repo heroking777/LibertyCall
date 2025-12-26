@@ -247,11 +247,11 @@ class GoogleASR:
             self.logger.info("[STREAM_WORKER_PRECHECK] About to start request generator")
             
             def request_generator_from_queue():
-            """
-            audio_queue に積まれた PCM を Google の StreamingRecognizeRequest に変換するジェネレータ。
-            Asterisk 側は 20ms ごとに RTP を送ってくるが、ここで明示的に sleep する必要はない。
-            ジェネレータなので、yield で制御が呼び元に戻るため sleep 不要。
-            """
+                """
+                audio_queue に積まれた PCM を Google の StreamingRecognizeRequest に変換するジェネレータ。
+                Asterisk 側は 20ms ごとに RTP を送ってくるが、ここで明示的に sleep する必要はない。
+                ジェネレータなので、yield で制御が呼び元に戻るため sleep 不要。
+                """
             empty_count = 0  # 【修正】連続して空の回数をカウント
             while not self._stop_event.is_set():
                 try:
