@@ -27,8 +27,8 @@ if not session:answered() then
     -- UUIDを変数に保存（Zombieセッションでも失わないように）
     call_uuid = session:get_uuid()
     freeswitch.consoleLog("INFO", "[CALLFLOW] Stored call UUID: " .. tostring(call_uuid) .. "\n")
-    -- RTPを継続的に送信してセッション維持
-    session:execute("start_dtmf_generate")
+    -- RTPを継続的に送信してセッション維持（start_dtmf_generateは削除）
+    -- session:execute("start_dtmf_generate")
     local wait_start = os.time()
     while not session:ready() and os.difftime(os.time(), wait_start) < 3 do
         freeswitch.msleep(250)
@@ -96,22 +96,7 @@ session:sleep(2000)
 
 -- GatewayへリアルタイムRTPをミラー送信（uuid_rtp_stream使用）
 -- 現在の通話UUIDを取得（既に取得済み）
-freeswitch.consoleLog("INFO", "[RTP] Starting RTP mirror for call " .. uuid .. "\n")
-api = freeswitch.API()
-local rtp_result = api:execute("uuid_rtp_stream", uuid .. " start 127.0.0.1:7002 codec=PCMU")
-freeswitch.consoleLog("INFO", "[RTP] uuid_rtp_stream result: " .. (rtp_result or "nil") .. "\n")
-
--- デバッグ用: ffmpegで強制的に音声をUDP送信（uuid_rtp_streamが動作しない場合のテスト）
--- bash -c '... & disown' により確実に非同期実行（FreeSWITCHの同期ブロックを回避）
-freeswitch.consoleLog("INFO", "[RTP_DEBUG] Starting ffmpeg test stream to 127.0.0.1:7002\n")
-local ffmpeg_path = "/usr/bin/ffmpeg"
-local cmd = string.format(
-    "bash -c '%s -re -i /opt/libertycall/clients/000/audio/000.wav -ar 8000 -ac 1 -acodec pcm_mulaw -f rtp udp://127.0.0.1:7002 > /tmp/ffmpeg_rtp_test.log 2>&1 & disown'",
-    ffmpeg_path
-)
-freeswitch.consoleLog("INFO", "[RTP_DEBUG] Exec command: " .. cmd .. "\n")
-local result = api:execute("system", cmd)
-freeswitch.consoleLog("INFO", "[RTP_DEBUG] ffmpeg launch result: " .. (result or "nil") .. "\n")
+freeswitch.consoleLog("INFO", "[RTP] RTP mirror and sched_api temporarily disabled for testing\n")
 
 -- ========================================
 -- 無音監視と催促制御（Lua側で完結）
@@ -142,10 +127,18 @@ local prompt_count = 0
 local asr_response_detected = false
 
 while session:ready() and not asr_response_detected and prompt_count < 3 do
-    freeswitch.msleep(1000)
-    -- RTPを継続的に送信してセッション維持（1秒ごとに再送信を明示）
-    session:execute("start_dtmf_generate")
+    -- 無音を防ぐため、無音ファイルを再生（RTPを流し続ける）
+    session:execute("playback", "silence_stream://100")
+    freeswitch.msleep(900)
+    -- RTPを継続的に送信してセッション維持（start_dtmf_generateは削除）
+    -- session:execute("start_dtmf_generate")
     elapsed = elapsed + 1
+    
+    -- デバッグログ: ループ条件の各要素をチェック（本番用にコメントアウト）
+    -- freeswitch.consoleLog("INFO", string.format(
+    --     "[CALLFLOW] DEBUG Loop check: ready=%s, asr_detected=%s, prompt_count=%d, elapsed=%d\n",
+    --     tostring(session:ready()), tostring(asr_response_detected), prompt_count, elapsed
+    -- ))
     
     -- ASR反応フラグファイルをチェック
     local flag_file = io.open(asr_response_flag_file, "r")
@@ -175,36 +168,9 @@ while session:ready() and not asr_response_detected and prompt_count < 3 do
                 io.close(f)
                 freeswitch.consoleLog("INFO", "[CALLFLOW] Attempting reminder playback: " .. reminder_path .. "\n")
 
-                -- RTP経路を強制的に再確立してから再生
-                local api = freeswitch.API()
-                local current_uuid = call_uuid or session:get_uuid()
-
-                if current_uuid then
-                    freeswitch.consoleLog("INFO", "[CALLFLOW] Re-inviting inbound leg to media path for UUID: " .. current_uuid .. "\n")
-                    local reneg = api:executeString("uuid_media " .. current_uuid)
-                    freeswitch.consoleLog("INFO", "[CALLFLOW] RTP media reinvite result: " .. tostring(reneg) .. "\n")
-
-                    freeswitch.msleep(100)
-
-                    -- 即時に uuid_displace を実行（Lua実行中に確実にセッションへアタッチ）
-                    local cmd = string.format("uuid_displace %s start %s", current_uuid, reminder_path)
-                    freeswitch.consoleLog("INFO", "[CALLFLOW] Executing uuid_displace command: " .. cmd .. "\n")
-
-                    local ok, result = pcall(function()
-                        return api:executeString(cmd)
-                    end)
-
-                    if ok then
-                        freeswitch.consoleLog("INFO", "[CALLFLOW] Reminder playback (displace immediate) result: " .. tostring(result) .. "\n")
-                    else
-                        freeswitch.consoleLog("ERR", "[CALLFLOW] uuid_displace execution failed: " .. tostring(result) .. "\n")
-                    end
-
-                    -- Lua GC防止（再生完了まで待機）
-                    freeswitch.msleep(1000)
-                else
-                    freeswitch.consoleLog("ERR", "[CALLFLOW] call_uuid is nil, cannot play reminder\n")
-                end
+                -- uuid_displaceではなく、playbackで再生（silence_streamと干渉しないように）
+                session:execute("playback", reminder_path)
+                freeswitch.consoleLog("INFO", string.format("[CALLFLOW] Played reminder: %s\n", reminder_path))
             else
                 freeswitch.consoleLog("ERR", "[CALLFLOW] Reminder file missing: " .. reminder_path .. "\n")
             end
