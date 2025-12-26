@@ -191,11 +191,31 @@ def generate_audio_with_f5_tts(
             )
             
             # 音声データを保存
-            if audio_data is not None:
+            if audio_data is None:
+                print("  ✗ 音声データが生成されませんでした")
+                return False
+            
+            # audio_dataがタプルやリストの場合、最初の要素（音声波形データ）を取り出す
+            if isinstance(audio_data, (tuple, list)):
+                audio_data = audio_data[0]
+            
+            # numpy.ndarrayに確実に変換
+            import numpy as np
+            if not isinstance(audio_data, np.ndarray):
+                audio_data = np.array(audio_data)
+            
+            # 1次元配列に変換（2次元の場合は最初のチャンネルのみ）
+            if audio_data.ndim > 1:
+                audio_data = audio_data[0] if audio_data.shape[0] == 1 else audio_data[:, 0]
+            
+            # 音声データを保存（try-exceptで囲む）
+            try:
                 sf.write(str(output_path), audio_data, 24000)  # 24kHz
                 return True
-            else:
-                print("  ✗ 音声データが生成されませんでした")
+            except Exception as save_error:
+                print(f"  ✗ 保存エラー: {save_error}")
+                import traceback
+                traceback.print_exc()
                 return False
                 
         except Exception as e:
@@ -275,6 +295,13 @@ def main():
     sorted_ids = sorted(voice_texts.keys(), key=lambda x: (len(x), x))
     total_count = len(sorted_ids)
     
+    # テストモード: 環境変数TEST_MODE=1で最初の1件のみ処理
+    test_mode = os.getenv("TEST_MODE", "false").lower() == "true" or os.getenv("TEST_MODE") == "1"
+    if test_mode:
+        sorted_ids = sorted_ids[:1]
+        total_count = 1
+        print("\n⚠ テストモード: 最初の1件のみ処理します")
+    
     # 音声生成
     print(f"\n{total_count}件の音声を生成します...")
     print("注意: 初回実行時はモデルのダウンロード（数GB）が発生します")
@@ -292,12 +319,17 @@ def main():
                 success_count += 1
             else:
                 fail_count += 1
+                # エラーが発生しても次の行へ進む（既にgenerate_audio_file内でエラーハンドリング済み）
         except KeyboardInterrupt:
             print("\n\n⚠ ユーザーによって中断されました")
             break
         except Exception as e:
             print(f"\n[{audio_id:15s}] ✗ 予期しないエラー: {e}")
+            import traceback
+            traceback.print_exc()
             fail_count += 1
+            # エラーが発生しても次の行へ進む
+            continue
     
     # 結果表示
     print("\n" + "=" * 70)
