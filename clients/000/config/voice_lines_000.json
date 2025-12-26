@@ -1,6 +1,6 @@
 {
   "000": {
-    "text": "この通話は品質向上のためろ'くおんさせていただきます",
+    "text": "この通話は品質向上のためろくおんさせていただきます",
     "model": "gemini-2.5-flash-preview-tts",
     "voice": "Aoede",
     "rate": 1.1
