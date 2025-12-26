@@ -269,6 +269,68 @@ class FreeswitchRTPMonitor:
             self.logger.warning(f"[FS_RTP_MONITOR] Error getting RTP port (non-fatal): {e}")
             return None
     
+    def update_uuid_mapping_for_call(self, call_id: str) -> Optional[str]:
+        """
+        call_idに対応するFreeSWITCH UUIDを取得してマッピングを更新
+        
+        :param call_id: 通話ID
+        :return: 取得したUUID（失敗時はNone）
+        """
+        import subprocess
+        import re
+        from pathlib import Path
+        
+        uuid = None
+        
+        # 方法1: RTP情報ファイルから取得（優先）
+        try:
+            rtp_info_files = list(Path("/tmp").glob("rtp_info_*.txt"))
+            if rtp_info_files:
+                latest_file = max(rtp_info_files, key=lambda p: p.stat().st_mtime)
+                with open(latest_file, 'r') as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        if line.startswith("uuid="):
+                            uuid = line.split("=", 1)[1].strip()
+                            self.logger.info(f"[UUID_UPDATE] Found UUID from RTP info file: {uuid}")
+                            break
+        except Exception as e:
+            self.logger.debug(f"[UUID_UPDATE] Error reading RTP info file: {e}")
+        
+        # 方法2: show channelsから取得（フォールバック）
+        if not uuid:
+            try:
+                result = subprocess.run(
+                    ["fs_cli", "-x", "show", "channels"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split('\n')
+                    if len(lines) >= 2 and not lines[0].startswith('0 total'):
+                        for line in lines[1:]:
+                            if line.strip() and not line.startswith('uuid,'):
+                                parts = line.split(',')
+                                if parts and parts[0].strip():
+                                    uuid = parts[0].strip()
+                                    self.logger.info(f"[UUID_UPDATE] Found UUID from show channels: {uuid}")
+                                    break
+            except Exception as e:
+                self.logger.warning(f"[UUID_UPDATE] Error getting UUID from show channels: {e}")
+        
+        # マッピングを更新
+        if uuid and hasattr(self.gateway, 'call_uuid_map'):
+            old_uuid = self.gateway.call_uuid_map.get(call_id)
+            self.gateway.call_uuid_map[call_id] = uuid
+            if old_uuid != uuid:
+                self.logger.info(f"[UUID_UPDATE] Updated mapping: call_id={call_id} old_uuid={old_uuid} -> new_uuid={uuid}")
+            else:
+                self.logger.debug(f"[UUID_UPDATE] Mapping unchanged: call_id={call_id} uuid={uuid}")
+            return uuid
+        
+        return None
+    
     async def start_monitoring(self):
         """FreeSWITCH送信RTPポートの監視を開始（RTPポート未検出でも継続）"""
         # ポート取得をリトライ（最大10回、1秒間隔）- RTP情報ファイルの作成を待つため延長
