@@ -1277,11 +1277,11 @@ class AICore:
         
         # Gemini API設定を保存
         self.tts_config = tts_conf
-            # TTS設定ログ出力
-            self.logger.info(
-                f"[TTS_PROFILE] client={self.client_id} voice={tts_conf['voice']} "
+        # TTS設定ログ出力
+        self.logger.info(
+            f"[TTS_PROFILE] client={self.client_id} voice={tts_conf['voice']} "
             f"speed={tts_conf['speaking_rate']} pitch={tts_conf['pitch']} (Gemini API)"
-            )
+        )
     
     def set_call_id(self, call_id: str):
         """call_idを設定し、WAV保存フラグをリセット"""
