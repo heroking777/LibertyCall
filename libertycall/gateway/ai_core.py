@@ -1941,6 +1941,9 @@ class AICore:
         self._call_started_calls.discard(call_id)
         self._intro_played_calls.discard(call_id)
         
+        # ACTIVITY_MONITOR用のlast_activityもクリア（タイムアウト処理停止）
+        self.last_activity.pop(call_id, None)
+        
         # ログ出力（デバッグ強化）
         self.logger.info(
             f"[AICORE] on_call_end() call_id={call_id} source={source} client_id={effective_client_id} "

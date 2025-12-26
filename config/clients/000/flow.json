@@ -90,6 +90,10 @@
       "description": "通常の会話・質問への対応フェーズ",
       "transitions": [
         {
+          "condition": "intent == 'NOT_HEARD'",
+          "target": "NOT_HEARD"
+        },
+        {
           "condition": "intent == 'SALES_CALL' && 初回",
           "target": "AFTER_085"
         },
