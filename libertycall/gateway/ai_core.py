@@ -1677,30 +1677,50 @@ class AICore:
                 )
                 continue
             
-            # テンプレートIDから音声ファイルパスを生成（クライアント別ディレクトリ）
-            # _norm.wavが存在すれば優先使用（音声品質向上）
+            # 【修正1】テンプレートIDから音声ファイルパスを生成（絶対パス、クライアント別ディレクトリ）
+            # 絶対パスで固定（ディレクトリ階層の問題を回避）
             audio_dir = Path(f"/opt/libertycall/clients/{effective_client_id}/audio")
-            audio_file_norm = audio_dir / f"{template_id}_8k_norm.wav"
-            audio_file_regular = audio_dir / f"{template_id}_8k.wav"
-            audio_file_plain = audio_dir / f"{template_id}.wav"
             
-            # _norm.wavが存在すれば優先使用、次に_8k.wav、最後に.wavのみ
-            if audio_file_norm.exists():
-                audio_file = str(audio_file_norm)
-            elif audio_file_regular.exists():
-                audio_file = str(audio_file_regular)
-            elif audio_file_plain.exists():
-                audio_file = str(audio_file_plain)
-            else:
-                # 音声ファイルが存在しない場合は警告を出力
+            # ファイル名の候補（優先順位: .wav → _8k.wav → _8k_norm.wav）
+            audio_file_plain = audio_dir / f"{template_id}.wav"
+            audio_file_regular = audio_dir / f"{template_id}_8k.wav"
+            audio_file_norm = audio_dir / f"{template_id}_8k_norm.wav"
+            
+            # ファイル存在確認（優先順位順）
+            audio_file = None
+            checked_paths = []
+            for candidate in [audio_file_plain, audio_file_regular, audio_file_norm]:
+                checked_paths.append(str(candidate))
+                if candidate.exists():
+                    audio_file = str(candidate)
+                    self.logger.debug(
+                        f"[PLAY_TEMPLATE] Found audio file: template_id={template_id} file={audio_file}"
+                    )
+                    break
+            
+            if not audio_file:
+                # 音声ファイルが存在しない場合は警告を出力し、デフォルトテンプレート（001）にフォールバック
                 self.logger.warning(
                     f"[PLAY_TEMPLATE] Audio file not found: template_id={template_id} "
-                    f"(checked: {audio_file_norm}, {audio_file_regular}, {audio_file_plain})"
+                    f"checked_paths={checked_paths} audio_dir={audio_dir}"
                 )
                 # runtime.logにも警告を出力
                 runtime_logger = logging.getLogger("runtime")
                 runtime_logger.warning(f"[FLOW] Missing template audio: call_id={call_id} template_id={template_id}")
-                continue
+                
+                # フォールバック: デフォルトテンプレート（001）を試す
+                fallback_template_id = "001"
+                fallback_file = audio_dir / f"{fallback_template_id}.wav"
+                if fallback_file.exists():
+                    audio_file = str(fallback_file)
+                    self.logger.info(
+                        f"[PLAY_TEMPLATE] Using fallback template: template_id={template_id} -> fallback={fallback_template_id} file={audio_file}"
+                    )
+                else:
+                    self.logger.error(
+                        f"[PLAY_TEMPLATE] Fallback template also not found: {fallback_file}"
+                    )
+                    continue
             
             # FreeSWITCHへの音声再生リクエストを送信（即時発火、待機なし）
             if hasattr(self, 'playback_callback') and self.playback_callback:

@@ -297,7 +297,7 @@ class FreeswitchRTPMonitor:
         except Exception as e:
             self.logger.debug(f"[UUID_UPDATE] Error reading RTP info file: {e}")
         
-        # 方法2: show channelsから取得（フォールバック）
+        # 方法2: show channelsから取得（フォールバック、call_idに紐付く正確なUUIDを抽出）
         if not uuid:
             try:
                 result = subprocess.run(
@@ -309,13 +309,52 @@ class FreeswitchRTPMonitor:
                 if result.returncode == 0:
                     lines = result.stdout.strip().split('\n')
                     if len(lines) >= 2 and not lines[0].startswith('0 total'):
+                        # ヘッダー行を解析（CSV形式）
+                        header_line = lines[0] if lines[0].startswith('uuid,') else None
+                        headers = header_line.split(',') if header_line else []
+                        
+                        # UUID形式の正規表現（8-4-4-4-12形式）
+                        uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+                        
+                        # 各行を解析してcall_idに一致するUUIDを探す
                         for line in lines[1:]:
-                            if line.strip() and not line.startswith('uuid,'):
+                            if not line.strip() or line.startswith('uuid,'):
+                                continue
+                            
+                            parts = line.split(',')
+                            if not parts or not parts[0].strip():
+                                continue
+                            
+                            # 先頭のUUIDを取得
+                            candidate_uuid = parts[0].strip()
+                            if not uuid_pattern.match(candidate_uuid):
+                                continue
+                            
+                            # call_idが行内に含まれているか確認（cid_name, name, presence_id等に含まれる可能性）
+                            # call_idは通常 "in-YYYYMMDDHHMMSS" 形式
+                            if call_id in line:
+                                uuid = candidate_uuid
+                                self.logger.info(
+                                    f"[UUID_UPDATE] Found UUID from show channels (matched call_id): "
+                                    f"uuid={uuid} call_id={call_id}"
+                                )
+                                break
+                        
+                        # call_idに一致するものが見つからなかった場合、最初の有効なUUIDを使用（フォールバック）
+                        if not uuid:
+                            for line in lines[1:]:
+                                if not line.strip() or line.startswith('uuid,'):
+                                    continue
                                 parts = line.split(',')
                                 if parts and parts[0].strip():
-                                    uuid = parts[0].strip()
-                                    self.logger.info(f"[UUID_UPDATE] Found UUID from show channels: uuid={uuid} call_id={call_id}")
-                                    break
+                                    candidate_uuid = parts[0].strip()
+                                    if uuid_pattern.match(candidate_uuid):
+                                        uuid = candidate_uuid
+                                        self.logger.warning(
+                                            f"[UUID_UPDATE] Using first available UUID (call_id match failed): "
+                                            f"uuid={uuid} call_id={call_id}"
+                                        )
+                                        break
             except Exception as e:
                 self.logger.warning(f"[UUID_UPDATE] Error getting UUID from show channels: {e}")
         
@@ -2936,10 +2975,13 @@ class RealtimeGateway:
             
             playback_success = False
             invalid_session = False
+            # 【修正3】再生成功フラグをselfに保存（finallyブロックでアクセス可能にする）
+            self._last_playback_success = False
             if result:
                 reply_text = result.getHeader('Reply-Text') if hasattr(result, 'getHeader') else None
                 if reply_text and '+OK' in reply_text:
                     playback_success = True
+                    self._last_playback_success = True
                     self.logger.info(
                         f"[PLAYBACK] Playback started: call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
                     )
@@ -2981,6 +3023,7 @@ class RealtimeGateway:
                             retry_reply = retry_result.getHeader('Reply-Text') if hasattr(retry_result, 'getHeader') else None
                             if retry_reply and '+OK' in retry_reply:
                                 playback_success = True
+                                self._last_playback_success = True
                                 self.logger.info(
                                     f"[PLAYBACK] Playback started (after remap): call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
                                 )
@@ -3000,6 +3043,7 @@ class RealtimeGateway:
                                         fallback_reply = fallback_result.getHeader('Reply-Text') if hasattr(fallback_result, 'getHeader') else None
                                         if fallback_reply and '+OK' in fallback_reply:
                                             playback_success = True
+                                            self._last_playback_success = True
                                             self.logger.info(
                                                 f"[PLAYBACK] Playback started (final fallback): call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
                                             )
@@ -3032,6 +3076,7 @@ class RealtimeGateway:
                             fallback_reply = fallback_result.getHeader('Reply-Text') if hasattr(fallback_result, 'getHeader') else None
                             if fallback_reply and '+OK' in fallback_reply:
                                 playback_success = True
+                                self._last_playback_success = True
                                 self.logger.info(
                                     f"[PLAYBACK] Playback started (fallback): call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
                                 )
@@ -3052,6 +3097,7 @@ class RealtimeGateway:
                             fallback_reply = fallback_result.getHeader('Reply-Text') if hasattr(fallback_result, 'getHeader') else None
                             if fallback_reply and '+OK' in fallback_reply:
                                 playback_success = True
+                                self._last_playback_success = True
                                 self.logger.info(
                                     f"[PLAYBACK] Playback started (fallback): call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
                                 )
@@ -3152,9 +3198,20 @@ class RealtimeGateway:
             
         except Exception as e:
             self.logger.exception(f"[PLAYBACK] Failed to send playback request: {e}")
-            # エラー時はis_playingをFalseにする
+            # 【修正3】エラー時はis_playingをFalseにする（次の発話認識をブロックしない）
+            self._last_playback_success = False
             if hasattr(self.ai_core, 'is_playing'):
                 self.ai_core.is_playing[call_id] = False
+                self.logger.info(f"[PLAYBACK] Set is_playing[{call_id}] = False (due to error)")
+        finally:
+            # 【修正3】再生リクエストの成否に関わらず、再生失敗時はis_playingをFalseに戻す
+            # 再生成功時はis_playingをTrueのままにして、再生完了イベントでFalseにする
+            # 再生失敗時（playback_successがFalse）の場合のみFalseに設定
+            if hasattr(self, '_last_playback_success') and not self._last_playback_success:
+                if hasattr(self.ai_core, 'is_playing'):
+                    if self.ai_core.is_playing.get(call_id, False):
+                        self.ai_core.is_playing[call_id] = False
+                        self.logger.info(f"[PLAYBACK] Set is_playing[{call_id}] = False (playback failed in finally)")
     
     def _handle_hangup(self, call_id: str) -> None:
         """
@@ -4312,3 +4369,4 @@ if __name__ == '__main__':
     finally:
         logger = logging.getLogger(__name__)
         logger.info("[EXIT] Gateway stopped")
+
