@@ -203,10 +203,31 @@ class GoogleASR:
         print(f"[DEBUG_METHOD_CHECK] _stream_worker method exists: {hasattr(self, '_stream_worker')}", flush=True)
         print(f"[DEBUG_METHOD_CHECK] _stream_worker callable: {callable(self._stream_worker)}", flush=True)
         
+        # 【最終デバッグ】ラムダでラップしてメソッドバインディング問題を回避
+        def worker_wrapper():
+            print("[WRAPPER_ENTRY] Worker wrapper started", flush=True)
+            try:
+                print("[WRAPPER_BEFORE_CALL] About to call self._stream_worker()", flush=True)
+                result = self._stream_worker()
+                print(f"[WRAPPER_AFTER_CALL] self._stream_worker() returned: {result}", flush=True)
+                # ジェネレータの場合は消費する
+                if hasattr(result, '__iter__') and hasattr(result, '__next__'):
+                    print("[WRAPPER_CONSUMING_GENERATOR] Consuming generator...", flush=True)
+                    for item in result:
+                        pass  # ジェネレータを消費
+                    print("[WRAPPER_GENERATOR_CONSUMED] Generator consumed", flush=True)
+            except Exception as e:
+                import traceback
+                print(f"[WRAPPER_ERROR] Exception caught: {e}", flush=True)
+                traceback.print_exc()
+                raise
+            finally:
+                print("[WRAPPER_EXIT] Worker wrapper exiting", flush=True)
+        
         # 例外を確実にキャッチするためにtry-exceptでラップ
         try:
             self._stream_thread = threading.Thread(
-                target=self._stream_worker,
+                target=worker_wrapper,
                 daemon=False,
                 name=f"GoogleASR-{call_id}"  # スレッド名を設定（デバッグ用）
             )
