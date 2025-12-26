@@ -200,7 +200,7 @@ class GoogleASR:
         self._stop_event.clear()
         self._stream_thread = threading.Thread(
             target=self._stream_worker,
-            daemon=True
+            daemon=False  # デバッグ用にFalseに変更（例外を可視化）
         )
         self._stream_thread.start()
         self.logger.info(f"GoogleASR: STREAM_WORKER_START call_id={call_id}")
@@ -240,6 +240,11 @@ class GoogleASR:
         """
         Google StreamingRecognize をバックグラウンドで回すワーカー。
         """
+        # 【緊急デバッグ】強制的にstdoutに出力（ログが効かない場合の最終手段）
+        print("[EMERGENCY_DEBUG] _stream_worker() ENTERED", flush=True)
+        import sys
+        sys.stdout.flush()
+        
         # 強制的にINFOレベルでログ出力（デバッグ用）
         self.logger.info("[STREAM_WORKER_ENTRY] _stream_worker started")
         
