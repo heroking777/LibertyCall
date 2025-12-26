@@ -1661,8 +1661,8 @@ class AICore:
             self.last_template_play[call_id] = {}
         
         current_time = time.time()
-        # 重複防止: 同じテンプレートを3秒以内に連続再生しない
-        DUPLICATE_PREVENTION_SEC = 3.0
+        # 重複防止: 同じテンプレートを10秒以内に連続再生しない
+        DUPLICATE_PREVENTION_SEC = 10.0
         
         # 応答速度最適化: すべてのテンプレートを即座に再生開始（待機なし）
         # FreeSWITCHは自動的に順番に再生するため、各再生の完了を待つ必要はない
@@ -3491,6 +3491,8 @@ class AICore:
                 # 正規化したテキストで比較（先頭/末尾スペースの違いを無視）
                 if prev_text_normalized != text_normalized:
                     self.partial_transcripts[call_id].pop("processed", None)
+                # 正規化したテキストも保存（final処理時の比較用）
+                self.partial_transcripts[call_id]["text_normalized"] = text_normalized
                 self.partial_transcripts[call_id]["text"] = text
                 self.partial_transcripts[call_id]["updated"] = time.time()
             
@@ -3538,12 +3540,27 @@ class AICore:
         # ============================================================
         
         # final処理時にpartial処理済みなら早期return（重複再生防止）
-        if is_final and call_id in self.partial_transcripts:
-            if self.partial_transcripts[call_id].get("processed"):
-                merged_text = self.partial_transcripts[call_id].get("text", "")
-                self.logger.info(f"[ASR_SKIP_FINAL] Already processed as partial: call_id={call_id} text={merged_text!r}")
-                del self.partial_transcripts[call_id]
-                return None
+        if is_final:
+            # テキストを正規化して比較
+            text_normalized = text.strip() if text else ""
+            
+            # partial_transcriptsに保存されている正規化テキストと比較
+            if call_id in self.partial_transcripts:
+                partial_text_normalized = self.partial_transcripts[call_id].get("text_normalized", "")
+                if partial_text_normalized:
+                    # 正規化したテキストが同じで、かつprocessedフラグが立っている場合はスキップ
+                    if partial_text_normalized == text_normalized and self.partial_transcripts[call_id].get("processed"):
+                        self.logger.info(f"[ASR_SKIP_FINAL] Already processed as partial: call_id={call_id} text={text_normalized!r}")
+                        del self.partial_transcripts[call_id]
+                        return None
+                elif self.partial_transcripts[call_id].get("processed"):
+                    # text_normalizedが保存されていない場合でも、processedフラグがあればスキップ
+                    merged_text = self.partial_transcripts[call_id].get("text", "")
+                    merged_text_normalized = merged_text.strip() if merged_text else ""
+                    if merged_text_normalized == text_normalized:
+                        self.logger.info(f"[ASR_SKIP_FINAL] Already processed as partial: call_id={call_id} text={text_normalized!r}")
+                        del self.partial_transcripts[call_id]
+                        return None
         
         # 【最終活動時刻を更新】
         self.last_activity[call_id] = time.time()
