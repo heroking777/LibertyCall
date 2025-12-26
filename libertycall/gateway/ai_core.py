@@ -1119,6 +1119,10 @@ class AICore:
         # UUIDごとの最終活動時刻を管理する辞書（call_id -> last_activity_timestamp）
         self.last_activity: Dict[str, float] = {}
         
+        # テンプレート再生履歴を管理する辞書（call_id -> {template_id: last_play_time}）
+        # 同じテンプレートを短時間で連続再生しないようにする
+        self.last_template_play: Dict[str, Dict[str, float]] = {}
+        
         # セッション情報を管理する辞書（call_id -> session_info）
         self.session_info: Dict[str, Dict[str, Any]] = {}
         
@@ -1652,9 +1656,27 @@ class AICore:
         # クライアントIDの決定
         effective_client_id = client_id or self.call_client_map.get(call_id) or self.client_id or "000"
         
+        # テンプレート再生履歴の初期化
+        if call_id not in self.last_template_play:
+            self.last_template_play[call_id] = {}
+        
+        current_time = time.time()
+        # 重複防止: 同じテンプレートを3秒以内に連続再生しない
+        DUPLICATE_PREVENTION_SEC = 3.0
+        
         # 応答速度最適化: すべてのテンプレートを即座に再生開始（待機なし）
         # FreeSWITCHは自動的に順番に再生するため、各再生の完了を待つ必要はない
         for template_id in template_ids:
+            # 重複チェック: 同じテンプレートを短時間で連続再生しない
+            last_play_time = self.last_template_play[call_id].get(template_id, 0)
+            time_since_last_play = current_time - last_play_time
+            if time_since_last_play < DUPLICATE_PREVENTION_SEC:
+                self.logger.debug(
+                    f"[PLAY_TEMPLATE] Skipping duplicate: call_id={call_id} template_id={template_id} "
+                    f"time_since_last={time_since_last_play:.2f}s"
+                )
+                continue
+            
             # テンプレートIDから音声ファイルパスを生成（クライアント別ディレクトリ）
             # _norm.wavが存在すれば優先使用（音声品質向上）
             audio_dir = Path(f"/opt/libertycall/clients/{effective_client_id}/audio")
@@ -1684,6 +1706,8 @@ class AICore:
             if hasattr(self, 'playback_callback') and self.playback_callback:
                 try:
                     self.playback_callback(call_id, audio_file)
+                    # 再生履歴を更新
+                    self.last_template_play[call_id][template_id] = current_time
                     self.logger.info(
                         f"[PLAY_TEMPLATE] Sent playback request (immediate): "
                         f"call_id={call_id} template_id={template_id} file={audio_file}"
@@ -3454,13 +3478,18 @@ class AICore:
                 # 例: "もし" → "もしもし" → "もしもしホーム"
                 # ただし、非累積的なケースも検出してログに記録
                 prev_text = self.partial_transcripts[call_id].get("text", "")
+                # テキスト比較時は正規化（先頭/末尾スペースを無視）
+                prev_text_normalized = prev_text.strip() if prev_text else ""
+                text_normalized = text.strip() if text else ""
+                
                 if prev_text and not text.startswith(prev_text) and prev_text not in text:
                     self.logger.warning(
                         f"[ASR_PARTIAL_NON_CUMULATIVE] call_id={call_id} "
                         f"prev={prev_text!r} new={text!r} (new does not start with prev)"
                     )
                 # テキストが変わった場合はprocessedフラグをリセット（新しいテキストを処理可能にする）
-                if prev_text != text:
+                # 正規化したテキストで比較（先頭/末尾スペースの違いを無視）
+                if prev_text_normalized != text_normalized:
                     self.partial_transcripts[call_id].pop("processed", None)
                 self.partial_transcripts[call_id]["text"] = text
                 self.partial_transcripts[call_id]["updated"] = time.time()
