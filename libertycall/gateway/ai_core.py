@@ -1885,6 +1885,10 @@ class AICore:
                                     # テンプレートを取得して再生
                                     template_ids = flow_engine.get_templates(next_phase)
                                     if template_ids:
+                                        # 最終活動時刻を即座に更新（110再生前に更新してタイムアウトを防ぐ）
+                                        self.last_activity[call_id] = current_time
+                                        self.logger.debug(f"[ACTIVITY_MONITOR] Updated last_activity: call_id={call_id} time={current_time}")
+                                        
                                         self._play_template_sequence(call_id, template_ids, client_id)
                                         
                                         # NOT_HEARD (110) 再提示後、QAフェーズへ復帰を保証
@@ -1897,10 +1901,6 @@ class AICore:
                                             # runtime.logに出力
                                             runtime_logger = logging.getLogger("runtime")
                                             runtime_logger.info(f"[FLOW] call_id={call_id} phase=NOT_HEARD→QA intent=NOT_HEARD template=110 (timeout recovery)")
-                                    
-                                    # 最終活動時刻を更新（再タイムアウトを防ぐ）
-                                    # 110再生後は現在時刻に更新（正しいロジック）
-                                    self.last_activity[call_id] = current_time
                             except Exception as e:
                                 self.logger.exception(f"[ACTIVITY_MONITOR] Error handling timeout: {e}")
                 except Exception as e:
@@ -3487,6 +3487,8 @@ class AICore:
             # partial結果が5文字以上かつバックチャネル以外の場合、会話フローを開始（ASR高速化）
             merged_text = self.partial_transcripts[call_id].get("text", "")
             if merged_text and len(merged_text) >= 5:
+                # partialで処理済みのフラグを保存（final時に重複処理しない）
+                self.partial_transcripts[call_id]["processed"] = True
                 # 短い発話以外はpartialでも処理開始（finalを待たずに会話フローを開始）
                 self.logger.info(f"[ASR_PARTIAL_PROCESS] call_id={call_id} partial_text={merged_text!r} (>=5 chars, processing immediately)")
                 # 下の処理に進む（return Noneしない）
@@ -3497,6 +3499,14 @@ class AICore:
         # ============================================================
         # ここから下は final（is_final=True）のときだけ実行される
         # ============================================================
+        
+        # final処理時にpartial処理済みなら早期return（重複再生防止）
+        if is_final and call_id in self.partial_transcripts:
+            if self.partial_transcripts[call_id].get("processed"):
+                merged_text = self.partial_transcripts[call_id].get("text", "")
+                self.logger.info(f"[ASR_SKIP_FINAL] Already processed as partial: call_id={call_id} text={merged_text!r}")
+                del self.partial_transcripts[call_id]
+                return None
         
         # 【最終活動時刻を更新】
         self.last_activity[call_id] = time.time()
