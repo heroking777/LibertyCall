@@ -300,37 +300,37 @@ class GoogleASR:
                 Asterisk 側は 20ms ごとに RTP を送ってくるが、ここで明示的に sleep する必要はない。
                 ジェネレータなので、yield で制御が呼び元に戻るため sleep 不要。
                 """
-            empty_count = 0  # 【修正】連続して空の回数をカウント
-            while not self._stop_event.is_set():
-                try:
-                    # 【修正】timeout を 0.1 秒に短縮（より頻繁にチェック）
-                    # 音声が来ない場合でも定期的に空のチャンクを送ってタイムアウトを防ぐ
-                    chunk = self._q.get(timeout=0.1)
-                    empty_count = 0  # 音声が来たらリセット
-                except queue.Empty:
-                    if self._stop_event.is_set():
+                empty_count = 0  # 【修正】連続して空の回数をカウント
+                while not self._stop_event.is_set():
+                    try:
+                        # 【修正】timeout を 0.1 秒に短縮（より頻繁にチェック）
+                        # 音声が来ない場合でも定期的に空のチャンクを送ってタイムアウトを防ぐ
+                        chunk = self._q.get(timeout=0.1)
+                        empty_count = 0  # 音声が来たらリセット
+                    except queue.Empty:
+                        if self._stop_event.is_set():
+                            break
+                        empty_count += 1
+                        # 【修正】10回連続で空の場合（約1秒）、空のチャンクを送ってタイムアウトを防ぐ
+                        # Google側は音声が来ないとタイムアウトするため、定期的に空のチャンクを送る
+                        if empty_count >= 10:
+                            empty_count = 0
+                            # 空のチャンクを送る（Google側のタイムアウトを防ぐ）
+                            yield cloud_speech.StreamingRecognizeRequest(audio_content=b"")  # type: ignore[union-attr]
+                        continue
+                    
+                    if chunk is None:
+                        # sentinel → ストリーム終了
+                        self.logger.debug("GoogleASR.request_generator_from_queue: got sentinel, exiting")
                         break
-                    empty_count += 1
-                    # 【修正】10回連続で空の場合（約1秒）、空のチャンクを送ってタイムアウトを防ぐ
-                    # Google側は音声が来ないとタイムアウトするため、定期的に空のチャンクを送る
-                    if empty_count >= 10:
-                        empty_count = 0
-                        # 空のチャンクを送る（Google側のタイムアウトを防ぐ）
-                        yield cloud_speech.StreamingRecognizeRequest(audio_content=b"")  # type: ignore[union-attr]
-                    continue
-                
-                if chunk is None:
-                    # sentinel → ストリーム終了
-                    self.logger.debug("GoogleASR.request_generator_from_queue: got sentinel, exiting")
-                    break
-                
-                # bytes でない場合はスキップ
-                if not isinstance(chunk, bytes) or len(chunk) == 0:
-                    continue
-                
-                # ここで1リクエスト分を yield して制御が呼び元に戻るので、
-                # 追加の sleep は不要
-                yield cloud_speech.StreamingRecognizeRequest(audio_content=chunk)  # type: ignore[union-attr]
+                    
+                    # bytes でない場合はスキップ
+                    if not isinstance(chunk, bytes) or len(chunk) == 0:
+                        continue
+                    
+                    # ここで1リクエスト分を yield して制御が呼び元に戻るので、
+                    # 追加の sleep は不要
+                    yield cloud_speech.StreamingRecognizeRequest(audio_content=chunk)  # type: ignore[union-attr]
             
             self.logger.info("[STREAM_WORKER_PRECHECK] Request generator defined, about to create config")
             
