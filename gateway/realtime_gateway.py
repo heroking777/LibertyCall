@@ -3933,7 +3933,7 @@ class RealtimeGateway:
                                             
                                             # 処理済みとして記録
                                             processed_lines.add(line_hash)
-                                            
+                                        
                                     except Exception as e:
                                         self.logger.exception(f"Failed to parse HANDOFF_FAIL_TTS_REQUEST: {e}")
                                         processed_lines.add(line_hash)
