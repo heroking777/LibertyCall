@@ -4,9 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=liberty
+# User=liberty  # libertyユーザーが存在しないためコメントアウト
 WorkingDirectory=/opt/libertycall
-ExecStart=/opt/libertycall/venv/bin/python3 /opt/libertycall/gateway/realtime_gateway.py
+ExecStart=/opt/libertycall/venv/bin/python3 /opt/libertycall/gateway/realtime_gateway.py --rtp_port 7002
 Restart=always
 RestartSec=5
 StartLimitIntervalSec=60
