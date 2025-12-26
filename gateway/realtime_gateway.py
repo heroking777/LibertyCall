@@ -3992,6 +3992,21 @@ class RealtimeGateway:
 # ========================================
 
 if __name__ == '__main__':
+    # ログ設定
+    import logging
+    # ログディレクトリを作成
+    log_dir = Path("/opt/libertycall/logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('/opt/libertycall/logs/realtime_gateway.log', encoding='utf-8')
+        ]
+    )
+    
     import argparse
     
     parser = argparse.ArgumentParser(description="Liberty Call Realtime Gateway")
