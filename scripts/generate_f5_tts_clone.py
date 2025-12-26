@@ -136,10 +136,11 @@ def load_f5_tts_model(device: str = 'cpu', model_name: str = 'F5TTS_v1_Base', vo
         # ボコーダー名を取得
         mel_spec_type = vocoder_name
         
-        # モデルをロード（model_cfg_fullを渡す必要がある）
+        # モデルをロード（model_cfgはmodel部分のみを渡す - hydraメタデータを除外）
+        # load_model内でmodel_cls(**model_cfg, ...)として展開されるため、model_cfgはmodel部分のみ
         _model_obj = load_model(
             model_cls=model_cls,
-            model_cfg=model_cfg_full,  # 完全な設定を渡す
+            model_cfg=model_cfg,  # model部分のみ（hydraメタデータなし）
             ckpt_path=ckpt_file,
             mel_spec_type=mel_spec_type,
             vocab_file="",  # 空文字列でデフォルト
