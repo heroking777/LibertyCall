@@ -292,7 +292,7 @@ class FreeswitchRTPMonitor:
                     for line in lines:
                         if line.startswith("uuid="):
                             uuid = line.split("=", 1)[1].strip()
-                            self.logger.info(f"[UUID_UPDATE] Found UUID from RTP info file: {uuid}")
+                            self.logger.info(f"[UUID_UPDATE] Found UUID from RTP info file: uuid={uuid} call_id={call_id}")
                             break
         except Exception as e:
             self.logger.debug(f"[UUID_UPDATE] Error reading RTP info file: {e}")
@@ -314,7 +314,7 @@ class FreeswitchRTPMonitor:
                                 parts = line.split(',')
                                 if parts and parts[0].strip():
                                     uuid = parts[0].strip()
-                                    self.logger.info(f"[UUID_UPDATE] Found UUID from show channels: {uuid}")
+                                    self.logger.info(f"[UUID_UPDATE] Found UUID from show channels: uuid={uuid} call_id={call_id}")
                                     break
             except Exception as e:
                 self.logger.warning(f"[UUID_UPDATE] Error getting UUID from show channels: {e}")
@@ -2924,12 +2924,12 @@ class RealtimeGateway:
             if freeswitch_uuid != call_id:
                 self.logger.debug(f"[PLAYBACK] Using mapped UUID: call_id={call_id} -> uuid={freeswitch_uuid}")
             
-            # 再生リクエスト送信（成否に関わらずlast_activityを更新するため、先に更新）
-            # 【修正2】110連打防止: 再生リクエスト送信時にlast_activityを更新（成否に関わらず）
+            # 【修正3】110連打防止: 再生リクエスト送信時にlast_activityを更新（成否に関わらず）
+            # 再生リクエスト送信直前で更新することで、リクエストの成否に関わらずタイマーをリセット
             if hasattr(self.ai_core, 'last_activity'):
                 import time
                 self.ai_core.last_activity[call_id] = time.time()
-                self.logger.debug(f"[PLAYBACK] Updated last_activity on request: call_id={call_id}")
+                self.logger.info(f"[PLAYBACK] Updated last_activity on request: call_id={call_id} (preventing timeout loop)")
             
             # ESLを使ってuuid_playbackを実行（非同期実行で応答速度を最適化）
             result = self.esl_connection.execute("playback", audio_file, uuid=freeswitch_uuid, force_async=True)
@@ -2969,11 +2969,11 @@ class RealtimeGateway:
                 self.logger.info(
                     f"[PLAYBACK] Attempting UUID remapping for call_id={call_id} (retry {retry_count}/{max_retries})"
                 )
-                    # UUIDマッピングを再取得
-                    if hasattr(self, 'freeswitch_rtp_monitor') and self.freeswitch_rtp_monitor:
-                        new_uuid = self.freeswitch_rtp_monitor.update_uuid_mapping_for_call(call_id)
-                        if new_uuid:
-                            self.logger.info(f"[PLAYBACK] UUID remapped: call_id={call_id} -> new_uuid={new_uuid}")
+                # UUIDマッピングを再取得
+                if hasattr(self, 'freeswitch_rtp_monitor') and self.freeswitch_rtp_monitor:
+                    new_uuid = self.freeswitch_rtp_monitor.update_uuid_mapping_for_call(call_id)
+                    if new_uuid:
+                            self.logger.info(f"[PLAYBACK] UUID remapped: call_id={call_id} -> new_uuid={new_uuid} (remapping successful)")
                             # 再取得したUUIDでリトライ
                             freeswitch_uuid = new_uuid
                             retry_result = self.esl_connection.execute("playback", audio_file, uuid=freeswitch_uuid, force_async=True)
@@ -3085,8 +3085,33 @@ class RealtimeGateway:
                             self.ai_core.is_playing[call_id] = False
                             self.logger.info(f"[PLAYBACK] is_playing[{call_id}] = False (estimated completion)")
                 
-                # 非同期タスクとして実行
-                asyncio.create_task(_reset_playing_flag_after_duration(call_id, duration_sec))
+                # 【修正1】非同期タスクとして実行（イベントループの存在確認）
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(_reset_playing_flag_after_duration(call_id, duration_sec))
+                    else:
+                        # ループが実行されていない場合は、スレッドで実行
+                        import threading
+                        def _reset_in_thread():
+                            import time
+                            time.sleep(duration_sec + 0.5)
+                            if hasattr(self.ai_core, 'is_playing'):
+                                if self.ai_core.is_playing.get(call_id, False):
+                                    self.ai_core.is_playing[call_id] = False
+                                    self.logger.info(f"[PLAYBACK] is_playing[{call_id}] = False (estimated completion, thread)")
+                        threading.Thread(target=_reset_in_thread, daemon=True).start()
+                except RuntimeError:
+                    # イベントループが取得できない場合は、スレッドで実行
+                    import threading
+                    def _reset_in_thread():
+                        import time
+                        time.sleep(duration_sec + 0.5)
+                        if hasattr(self.ai_core, 'is_playing'):
+                            if self.ai_core.is_playing.get(call_id, False):
+                                self.ai_core.is_playing[call_id] = False
+                                self.logger.info(f"[PLAYBACK] is_playing[{call_id}] = False (estimated completion, thread)")
+                    threading.Thread(target=_reset_in_thread, daemon=True).start()
             except Exception as e:
                 self.logger.debug(f"[PLAYBACK] Failed to estimate audio duration: {e}, using default timeout")
                 # エラー時はデフォルトタイムアウト（10秒）を使用
@@ -3097,7 +3122,33 @@ class RealtimeGateway:
                             self.ai_core.is_playing[call_id] = False
                             self.logger.info(f"[PLAYBACK] is_playing[{call_id}] = False (default timeout)")
                 
-                asyncio.create_task(_reset_playing_flag_default(call_id))
+                # 【修正1】非同期タスクとして実行（イベントループの存在確認）
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(_reset_playing_flag_default(call_id))
+                    else:
+                        # ループが実行されていない場合は、スレッドで実行
+                        import threading
+                        def _reset_in_thread():
+                            import time
+                            time.sleep(10.0)
+                            if hasattr(self.ai_core, 'is_playing'):
+                                if self.ai_core.is_playing.get(call_id, False):
+                                    self.ai_core.is_playing[call_id] = False
+                                    self.logger.info(f"[PLAYBACK] is_playing[{call_id}] = False (default timeout, thread)")
+                        threading.Thread(target=_reset_in_thread, daemon=True).start()
+                except RuntimeError:
+                    # イベントループが取得できない場合は、スレッドで実行
+                    import threading
+                    def _reset_in_thread():
+                        import time
+                        time.sleep(10.0)
+                        if hasattr(self.ai_core, 'is_playing'):
+                            if self.ai_core.is_playing.get(call_id, False):
+                                self.ai_core.is_playing[call_id] = False
+                                self.logger.info(f"[PLAYBACK] is_playing[{call_id}] = False (default timeout, thread)")
+                    threading.Thread(target=_reset_in_thread, daemon=True).start()
             
         except Exception as e:
             self.logger.exception(f"[PLAYBACK] Failed to send playback request: {e}")
