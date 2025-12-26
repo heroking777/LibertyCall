@@ -1567,18 +1567,6 @@ class AICore:
         if not template_ids:
             template_ids = flow_engine.get_templates(current_phase)
         
-        # 【修正2】テンプレートが取得できた後、重複チェックを実施
-        if template_ids:
-            filtered_templates = []
-            for tid in template_ids:
-                # 10秒以内に再生されたテンプレートはスキップ
-                last_play = self.last_template_play.get(call_id, {}).get(tid, 0)
-                if time.time() - last_play >= 10.0:
-                    filtered_templates.append(tid)
-                else:
-                    self.logger.info(f"[FLOW_ENGINE] Skipping recently played template: {tid} (last_play={last_play:.2f}s ago)")
-            template_ids = filtered_templates
-        
         # テンプレートIDリストから実際に使用するテンプレートを選択
         # 複数のテンプレートIDがある場合は、Intentやテキストに基づいて選択
         if template_ids and len(template_ids) > 1:
@@ -1689,13 +1677,17 @@ class AICore:
         # 応答速度最適化: すべてのテンプレートを即座に再生開始（待機なし）
         # FreeSWITCHは自動的に順番に再生するため、各再生の完了を待つ必要はない
         for template_id in template_ids:
-            # 重複チェック: 同じテンプレートを短時間で連続再生しない
+            # 【修正2改善】重複防止: 同じテンプレートを10秒以内に連続再生しない
+            if call_id not in self.last_template_play:
+                self.last_template_play[call_id] = {}
+            
             last_play_time = self.last_template_play[call_id].get(template_id, 0)
             time_since_last_play = current_time - last_play_time
-            if time_since_last_play < DUPLICATE_PREVENTION_SEC:
-                self.logger.debug(
-                    f"[PLAY_TEMPLATE] Skipping duplicate: call_id={call_id} template_id={template_id} "
-                    f"time_since_last={time_since_last_play:.2f}s"
+            
+            if time_since_last_play < DUPLICATE_PREVENTION_SEC and last_play_time > 0:
+                self.logger.info(
+                    f"[PLAY_TEMPLATE] Skipping recently played template: call_id={call_id} "
+                    f"template_id={template_id} time_since_last={time_since_last_play:.2f}s"
                 )
                 continue
             
