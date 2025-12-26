@@ -1143,11 +1143,14 @@ class AICore:
                     if "was not found" in error_msg or "credentials" in error_msg.lower():
                         self.logger.error(
                             f"AICore: GoogleASR の初期化に失敗しました（認証エラー）: {error_msg}\n"
-                            f"環境変数 LC_GOOGLE_PROJECT_ID と LC_GOOGLE_CREDENTIALS_PATH を確認してください。"
+                            f"環境変数 LC_GOOGLE_PROJECT_ID と LC_GOOGLE_CREDENTIALS_PATH を確認してください。\n"
+                            f"ASR機能は無効化されますが、GatewayはRTP受信を継続します。"
                         )
                     else:
-                        self.logger.error(f"AICore: GoogleASR の初期化に失敗しました: {error_msg}")
-                    raise
+                        self.logger.error(f"AICore: GoogleASR の初期化に失敗しました: {error_msg}\nASR機能は無効化されますが、GatewayはRTP受信を継続します。")
+                    # エラーを再スローせず、asr_modelをNoneに設定して続行
+                    self.asr_model = None
+                    self.logger.warning("AICore: ASR機能なしでGatewayを起動します（RTP受信は継続されます）")
             elif asr_provider == "whisper":
                 # WhisperLocalASR は whisper プロバイダ使用時のみインポート（google 使用時は絶対にインポートしない）
                 from libertycall.asr.whisper_local import WhisperLocalASR  # type: ignore[import-untyped]
