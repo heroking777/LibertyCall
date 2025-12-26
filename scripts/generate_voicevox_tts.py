@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 # VOICEVOX設定（SSHポートフォワーディング経由でローカルPCのVOICEVOXに接続）
-VOICEVOX_URL = "http://127.0.0.1:50022"
+VOICEVOX_URL = "http://[::1]:50022"  # IPv6アドレスで接続
 SPEAKER_ID = 2  # 四国めたん・ノーマル
 
 # 音声パラメータ
