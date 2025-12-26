@@ -1758,7 +1758,7 @@ class AICore:
                 f"[PLAY_TEMPLATE] Retrying {len(failed_templates)} failed templates after UUID update: call_id={call_id}"
             )
             # 短い待機時間後にリトライ（UUID更新の完了を待つ）
-            import time
+            # 注意: timeモジュールはファイル先頭で既にインポート済み
             time.sleep(0.1)  # 100ms待機
             
             for template_id, audio_file in failed_templates:
