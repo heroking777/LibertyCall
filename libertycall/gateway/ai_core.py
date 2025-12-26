@@ -1899,7 +1899,8 @@ class AICore:
                                             runtime_logger.info(f"[FLOW] call_id={call_id} phase=NOT_HEARD→QA intent=NOT_HEARD template=110 (timeout recovery)")
                                     
                                     # 最終活動時刻を更新（再タイムアウトを防ぐ）
-                                    self.last_activity[call_id] = current_time
+                                    # 110再生後は十分な時間（20秒）をセットして、再生中と再生直後のタイムアウトを防ぐ
+                                    self.last_activity[call_id] = current_time + 20.0  # 20秒の猶予
                             except Exception as e:
                                 self.logger.exception(f"[ACTIVITY_MONITOR] Error handling timeout: {e}")
                 except Exception as e:
