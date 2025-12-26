@@ -87,9 +87,9 @@ session:execute("record_session", record_session_path)
 
 -- 必ず再生するアナウンス（無音削減: silence_threshold=0.1でテンプレート間の無音を削減）
 session:setVariable("silence_threshold", "0.1")
-session:execute("playback", "/opt/libertycall/clients/000/audio/000_8k.wav")
-session:execute("playback", "/opt/libertycall/clients/000/audio/001_8k.wav")
-session:execute("playback", "/opt/libertycall/clients/000/audio/002_8k.wav")
+session:execute("playback", "/opt/libertycall/clients/000/audio/000.wav")
+session:execute("playback", "/opt/libertycall/clients/000/audio/001.wav")
+session:execute("playback", "/opt/libertycall/clients/000/audio/002.wav")
 
 -- 録音ファイルが生成されるまで少し待機（2秒）
 session:sleep(2000)
@@ -106,7 +106,7 @@ freeswitch.consoleLog("INFO", "[RTP] uuid_rtp_stream result: " .. (rtp_result or
 freeswitch.consoleLog("INFO", "[RTP_DEBUG] Starting ffmpeg test stream to 127.0.0.1:7002\n")
 local ffmpeg_path = "/usr/bin/ffmpeg"
 local cmd = string.format(
-    "bash -c '%s -re -i /opt/libertycall/clients/000/audio/000_8k.wav -ar 8000 -ac 1 -acodec pcm_mulaw -f rtp udp://127.0.0.1:7002 > /tmp/ffmpeg_rtp_test.log 2>&1 & disown'",
+    "bash -c '%s -re -i /opt/libertycall/clients/000/audio/000.wav -ar 8000 -ac 1 -acodec pcm_mulaw -f rtp udp://127.0.0.1:7002 > /tmp/ffmpeg_rtp_test.log 2>&1 & disown'",
     ffmpeg_path
 )
 freeswitch.consoleLog("INFO", "[RTP_DEBUG] Exec command: " .. cmd .. "\n")
@@ -122,9 +122,9 @@ local asr_response_flag_file = string.format("/tmp/asr_response_%s.flag", uuid)
 
 -- 催促音声ファイル
 local reminders = {
-    "/opt/libertycall/clients/000/audio/000-004_8k.wav",
-    "/opt/libertycall/clients/000/audio/000-005_8k.wav",
-    "/opt/libertycall/clients/000/audio/000-006_8k.wav"
+    "/opt/libertycall/clients/000/audio/prompt_001_8k.wav",
+    "/opt/libertycall/clients/000/audio/prompt_002_8k.wav",
+    "/opt/libertycall/clients/000/audio/prompt_003_8k.wav"
 }
 
 -- タイムアウト設定（秒）
