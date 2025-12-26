@@ -108,7 +108,7 @@ class RTPPacketBuilder:
         return bytes(header) + payload
 
 class FreeswitchRTPMonitor:
-    """FreeSWITCHの送信RTPポートを監視してASR処理に流し込む（Pull型）"""
+    """FreeSWITCHの送信RTPポートを監視してASR処理に流し込む（Pull型、pcap方式）"""
     
     def __init__(self, gateway: 'RealtimeGateway'):
         self.gateway = gateway
@@ -117,6 +117,8 @@ class FreeswitchRTPMonitor:
         self.monitor_sock: Optional[socket.socket] = None
         self.monitor_transport = None
         self.asr_active = False  # 002.wav再生完了後にTrueになる
+        self.capture_thread: Optional[threading.Thread] = None
+        self.capture_running = False
         
     def get_rtp_port_from_freeswitch(self) -> Optional[int]:
         """FreeSWITCHから現在の送信RTPポートを取得（RTP情報ファイル優先、uuid_dumpはフォールバック）"""
