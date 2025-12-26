@@ -177,6 +177,10 @@ class GoogleASR:
         # デバッグ用：Google に送る生 PCM を一時的に貯める（最大 5 秒）
         self._debug_raw = bytearray()
         self._debug_max_bytes = int(16000 * 2 * DEBUG_RECORDING_DURATION_SEC)  # 16kHz * 16bit(2byte) * duration
+        
+        # 【修正6】再起動スケジュールフラグの初期化
+        self._restart_stream_scheduled = False
+        self._stream_start_time = None
     
     def _start_stream_worker(self, call_id: str) -> None:
         """
@@ -184,6 +188,13 @@ class GoogleASR:
         
         :param call_id: 通話ID（on_transcript 呼び出し用）
         """
+        # 【修正4】ストリーム開始時刻を記録
+        self._stream_start_time = time.time()
+        self.logger.info(f"[ASR_STREAM] Recording stream start time: {self._stream_start_time:.2f} for call_id={call_id}")
+        
+        # 【修正6】再起動スケジュールフラグをリセット
+        self._restart_stream_scheduled = False
+        
         # 【修正理由】既存スレッドが生きている場合でも call_id を更新する必要がある
         # TEMP_CALL のままになると、on_transcript で正しい call_id が使われない
         self._current_call_id = call_id  # call_id を常に更新（on_transcript 呼び出し用）
@@ -380,6 +391,22 @@ class GoogleASR:
             self.logger.info("[STREAM_WORKER_PRECHECK] streaming_recognize() called, entering response loop")
             
             for response in responses:
+                # 【修正5】280秒（4分40秒）経過時に予防的再起動
+                stream_start_time = getattr(self, '_stream_start_time', None)
+                if stream_start_time:
+                    stream_duration = time.time() - stream_start_time
+                    if stream_duration >= 280.0:
+                        call_id = getattr(self, '_current_call_id', 'TEMP_CALL')
+                        self.logger.warning(
+                            f"[ASR_AUTO_RESTART] Stream duration limit approaching ({stream_duration:.1f}s), "
+                            f"initiating preventive restart for call_id={call_id}"
+                        )
+                        # ストリーム再起動をスケジュール
+                        if not getattr(self, '_restart_stream_scheduled', False):
+                            self._restart_stream_scheduled = True
+                            # 現在の処理を完了してから再起動
+                            break
+                
                 # レスポンス全体をログに出す
                 self.logger.info("GoogleASR: STREAM_RESPONSE: %s", response)
                 
@@ -453,6 +480,18 @@ class GoogleASR:
                         )
                         # デバッグログ拡張: ASR_RESULT
                         self.logger.info(f"[ASR_RESULT] \"{transcript}\"")
+            
+            # 【修正7】予防的再起動が必要な場合
+            if getattr(self, '_restart_stream_scheduled', False):
+                call_id = getattr(self, '_current_call_id', 'TEMP_CALL')
+                self.logger.info(f"[ASR_AUTO_RESTART] Executing preventive restart for call_id={call_id}")
+                self._restart_stream_scheduled = False
+                # 短い待機後に再起動（同期処理）
+                time.sleep(0.1)
+                # 既存のrestart_stream()を呼ぶ
+                self.restart_stream(call_id)
+                # 再起動後は新しいストリームが開始されるため、ここで終了
+                return
         except Exception as e:
             # まずログ
             self.logger.exception("GoogleASR._stream_worker: unexpected error: %s", e)
