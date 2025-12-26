@@ -3433,14 +3433,21 @@ class AICore:
         重要: partial（is_final=False）の場合は partial_transcripts に追記するだけ。
         会話ロジック（intent判定、テンプレート選択、ログ書き込みなど）は final（is_final=True）のときだけ実行される。
         """
-        # 【追加】入口ログ（DEBUGレベルに変更）
-        self.logger.debug(
-            "[ASR_DEBUG] on_transcript call_id=%s is_final=%s text=%r kwargs=%r",
-            call_id,
-            is_final,
-            text,
-            kwargs,
+        # 【追加】入口ログ（強化版）
+        text_stripped = text.strip() if text else ""
+        text_length = len(text_stripped) if text_stripped else 0
+        
+        self.logger.info(
+            f"[ASR_TRANSCRIPT] on_transcript called: call_id={call_id} is_final={is_final} "
+            f"text={text!r} text_length={text_length} text_stripped={text_stripped!r}"
         )
+        
+        # 空文字やスペースのみの場合は早期return（ログ出力して終了）
+        if not text_stripped or text_length == 0:
+            self.logger.debug(
+                f"[ASR_TRANSCRIPT] Empty or whitespace-only text, skipping: call_id={call_id} text={text!r}"
+            )
+            return None
         
         self.logger.info(f"AI_CORE: on_transcript: call_id={call_id} text={text} is_final={is_final}")
         
