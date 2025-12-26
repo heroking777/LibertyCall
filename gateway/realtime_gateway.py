@@ -490,6 +490,11 @@ class FreeswitchRTPMonitor:
                     self.logger.debug(f"[RTP_RECV] Captured {len(rtp_data)} bytes from {addr} (pcap)")
                     self.logger.info(f"[RTP_RECV_RAW] from={addr}, len={len(rtp_data)} (pcap)")
                     
+                    # デバッグ: RTPペイロード（音声データ）のサイズを確認
+                    if len(rtp_data) > 12:
+                        audio_payload_size = len(rtp_data) - 12  # RTPヘッダー12バイトを除く
+                        self.logger.debug(f"[RTP_AUDIO] RTP packet: total={len(rtp_data)} bytes, header=12 bytes, audio_payload={audio_payload_size} bytes (pcap)")
+                    
                     # asyncioイベントループでhandle_rtp_packetを実行
                     # 別スレッドからasyncioを呼び出すため、新しいイベントループを作成
                     try:
