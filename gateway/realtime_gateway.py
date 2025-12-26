@@ -2918,38 +2918,110 @@ class RealtimeGateway:
                 self.ai_core.is_playing[call_id] = True
                 self.logger.info(f"[PLAYBACK] is_playing[{call_id}] = True")
             
-            # ESLを使ってuuid_playbackを実行（非同期実行で応答速度を最適化）
-            # 注意: FreeSWITCHのuuid_playbackは、再生完了までブロックするため、
-            # 非同期で実行するか、bgapiを使用する必要がある
-            # ここでは、execute()を使用して非同期実行（force_async=True）
-            # 応答速度最適化: 再生完了を待たずに即座に次の処理に進む
+            # 【修正1】UUIDマッピングの動的更新とセッション有効性チェック
             # call_idからFreeSWITCH UUIDに変換（マッピングが存在する場合）
             freeswitch_uuid = self.call_uuid_map.get(call_id, call_id)
             if freeswitch_uuid != call_id:
                 self.logger.debug(f"[PLAYBACK] Using mapped UUID: call_id={call_id} -> uuid={freeswitch_uuid}")
+            
+            # 再生リクエスト送信（成否に関わらずlast_activityを更新するため、先に更新）
+            # 【修正2】110連打防止: 再生リクエスト送信時にlast_activityを更新（成否に関わらず）
+            if hasattr(self.ai_core, 'last_activity'):
+                import time
+                self.ai_core.last_activity[call_id] = time.time()
+                self.logger.debug(f"[PLAYBACK] Updated last_activity on request: call_id={call_id}")
+            
+            # ESLを使ってuuid_playbackを実行（非同期実行で応答速度を最適化）
             result = self.esl_connection.execute("playback", audio_file, uuid=freeswitch_uuid, force_async=True)
             
             playback_success = False
+            invalid_session = False
             if result:
                 reply_text = result.getHeader('Reply-Text') if hasattr(result, 'getHeader') else None
                 if reply_text and '+OK' in reply_text:
                     playback_success = True
                     self.logger.info(
-                        f"[PLAYBACK] Playback started: call_id={call_id} file={audio_file}"
+                        f"[PLAYBACK] Playback started: call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
                     )
                 else:
-                    self.logger.warning(
-                        f"[PLAYBACK] Playback command may have failed: call_id={call_id} "
-                        f"reply={reply_text}"
-                    )
+                    # invalid session idエラーを検知
+                    if reply_text and 'invalid session id' in reply_text.lower():
+                        invalid_session = True
+                        self.logger.warning(
+                            f"[PLAYBACK] Invalid session id detected: call_id={call_id} uuid={freeswitch_uuid} reply={reply_text}"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"[PLAYBACK] Playback command may have failed: call_id={call_id} "
+                            f"reply={reply_text}"
+                        )
             else:
                 self.logger.warning(f"[PLAYBACK] No response from ESL: call_id={call_id}")
             
-            # 再生成功時のみlast_activityを更新（タイムアウト防止）
-            if playback_success and hasattr(self.ai_core, 'last_activity'):
-                import time
-                self.ai_core.last_activity[call_id] = time.time()
-                self.logger.debug(f"[PLAYBACK] Updated last_activity on success: call_id={call_id}")
+            # 【修正1】invalid session idエラー時、UUIDマッピングを再取得してリトライ
+            if invalid_session:
+                self.logger.info(f"[PLAYBACK] Attempting UUID remapping for call_id={call_id}")
+                # UUIDマッピングを再取得
+                if hasattr(self, 'freeswitch_rtp_monitor') and self.freeswitch_rtp_monitor:
+                    new_uuid = self.freeswitch_rtp_monitor.update_uuid_mapping_for_call(call_id)
+                    if new_uuid:
+                        self.logger.info(f"[PLAYBACK] UUID remapped: call_id={call_id} -> new_uuid={new_uuid}")
+                        # 再取得したUUIDでリトライ
+                        freeswitch_uuid = new_uuid
+                        retry_result = self.esl_connection.execute("playback", audio_file, uuid=freeswitch_uuid, force_async=True)
+                        if retry_result:
+                            retry_reply = retry_result.getHeader('Reply-Text') if hasattr(retry_result, 'getHeader') else None
+                            if retry_reply and '+OK' in retry_reply:
+                                playback_success = True
+                                self.logger.info(
+                                    f"[PLAYBACK] Playback started (after remap): call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
+                                )
+                            else:
+                                self.logger.warning(
+                                    f"[PLAYBACK] Retry failed: call_id={call_id} reply={retry_reply}"
+                                )
+                        else:
+                            self.logger.warning(f"[PLAYBACK] Retry failed: no response from ESL")
+                    else:
+                        # UUID再取得に失敗した場合、call_idを直接使用（フォールバック）
+                        self.logger.warning(
+                            f"[PLAYBACK] UUID remapping failed, using call_id as UUID (fallback): call_id={call_id}"
+                        )
+                        freeswitch_uuid = call_id
+                        fallback_result = self.esl_connection.execute("playback", audio_file, uuid=freeswitch_uuid, force_async=True)
+                        if fallback_result:
+                            fallback_reply = fallback_result.getHeader('Reply-Text') if hasattr(fallback_result, 'getHeader') else None
+                            if fallback_reply and '+OK' in fallback_reply:
+                                playback_success = True
+                                self.logger.info(
+                                    f"[PLAYBACK] Playback started (fallback): call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
+                                )
+                            else:
+                                self.logger.error(
+                                    f"[PLAYBACK] Fallback also failed: call_id={call_id} reply={fallback_reply}"
+                                )
+                        else:
+                            self.logger.error(f"[PLAYBACK] Fallback failed: no response from ESL")
+                else:
+                    # freeswitch_rtp_monitorが存在しない場合、call_idを直接使用
+                    self.logger.warning(
+                        f"[PLAYBACK] freeswitch_rtp_monitor not available, using call_id as UUID (fallback): call_id={call_id}"
+                    )
+                    freeswitch_uuid = call_id
+                    fallback_result = self.esl_connection.execute("playback", audio_file, uuid=freeswitch_uuid, force_async=True)
+                    if fallback_result:
+                        fallback_reply = fallback_result.getHeader('Reply-Text') if hasattr(fallback_result, 'getHeader') else None
+                        if fallback_reply and '+OK' in fallback_reply:
+                            playback_success = True
+                            self.logger.info(
+                                f"[PLAYBACK] Playback started (fallback): call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
+                            )
+                        else:
+                            self.logger.error(
+                                f"[PLAYBACK] Fallback also failed: call_id={call_id} reply={fallback_reply}"
+                            )
+                    else:
+                        self.logger.error(f"[PLAYBACK] Fallback failed: no response from ESL")
             
             # 注意: 再生完了の検知は、FreeSWITCHのイベント（CHANNEL_EXECUTE_COMPLETE）で行う必要がある
             # ここでは、簡易的に一定時間後にis_playingをFalseにする（実際の実装ではイベントリスナーを使用）

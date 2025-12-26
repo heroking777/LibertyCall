@@ -3486,8 +3486,21 @@ class AICore:
                         f"prev={prev_text!r} new={text!r} (new does not start with prev)"
                     )
                 # テキストが変わった場合はprocessedフラグをリセット（新しいテキストを処理可能にする）
-                # 正規化したテキストで比較（先頭/末尾スペースの違いを無視）
-                if prev_text_normalized != text_normalized:
+                # 【修正3】正規化したテキストで比較（先頭/末尾スペース、句読点・記号の違いを無視）
+                import re
+                def normalize_text_for_comparison(t: str) -> str:
+                    """テキストを正規化（先頭/末尾スペース除去、句読点・記号除去）"""
+                    if not t:
+                        return ""
+                    t = t.strip()
+                    t = re.sub(r'[。、？！：；「」『』【】（）()\[\]{}、.?!:;"\'""''・]', '', t)
+                    t = re.sub(r'\s+', '', t)
+                    return t
+                
+                prev_text_normalized_clean = normalize_text_for_comparison(prev_text_normalized)
+                text_normalized_clean = normalize_text_for_comparison(text_normalized)
+                
+                if prev_text_normalized_clean != text_normalized_clean:
                     self.partial_transcripts[call_id].pop("processed", None)
                 # 正規化したテキストも保存（final処理時の比較用）
                 self.partial_transcripts[call_id]["text_normalized"] = text_normalized
@@ -3539,24 +3552,40 @@ class AICore:
         
         # final処理時にpartial処理済みなら早期return（重複再生防止）
         if is_final:
+            # 【修正3】テキスト正規化: 句読点・記号を除去して比較
+            import re
+            def normalize_text_for_comparison(t: str) -> str:
+                """テキストを正規化（先頭/末尾スペース除去、句読点・記号除去）"""
+                if not t:
+                    return ""
+                # 先頭/末尾スペース除去
+                t = t.strip()
+                # 句読点・記号を除去（。、？！：；「」『』【】（）()[]{}、.?!:;""''など）
+                t = re.sub(r'[。、？！：；「」『』【】（）()\[\]{}、.?!:;"\'""''・]', '', t)
+                # 連続するスペースを1つに
+                t = re.sub(r'\s+', '', t)
+                return t
+            
             # テキストを正規化して比較
-            text_normalized = text.strip() if text else ""
+            text_normalized = normalize_text_for_comparison(text)
             
             # partial_transcriptsに保存されている正規化テキストと比較
             if call_id in self.partial_transcripts:
                 partial_text_normalized = self.partial_transcripts[call_id].get("text_normalized", "")
+                # 保存されているtext_normalizedも再正規化（句読点除去）
                 if partial_text_normalized:
+                    partial_text_normalized = normalize_text_for_comparison(partial_text_normalized)
                     # 正規化したテキストが同じで、かつprocessedフラグが立っている場合はスキップ
                     if partial_text_normalized == text_normalized and self.partial_transcripts[call_id].get("processed"):
-                        self.logger.info(f"[ASR_SKIP_FINAL] Already processed as partial: call_id={call_id} text={text_normalized!r}")
+                        self.logger.info(f"[ASR_SKIP_FINAL] Already processed as partial: call_id={call_id} text={text_normalized!r} (normalized)")
                         del self.partial_transcripts[call_id]
                         return None
                 elif self.partial_transcripts[call_id].get("processed"):
                     # text_normalizedが保存されていない場合でも、processedフラグがあればスキップ
                     merged_text = self.partial_transcripts[call_id].get("text", "")
-                    merged_text_normalized = merged_text.strip() if merged_text else ""
+                    merged_text_normalized = normalize_text_for_comparison(merged_text)
                     if merged_text_normalized == text_normalized:
-                        self.logger.info(f"[ASR_SKIP_FINAL] Already processed as partial: call_id={call_id} text={text_normalized!r}")
+                        self.logger.info(f"[ASR_SKIP_FINAL] Already processed as partial: call_id={call_id} text={text_normalized!r} (normalized)")
                         del self.partial_transcripts[call_id]
                         return None
         
