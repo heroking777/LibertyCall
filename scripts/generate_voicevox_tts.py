@@ -3,6 +3,12 @@
 """
 VOICEVOXを使用した日本語TTS（音声合成）スクリプト
 クリアで綺麗なWAVファイルを一括生成
+
+【使用方法】
+1. ローカルPCでVOICEVOXエンジンを起動
+2. SSHポートフォワーディングを設定:
+   ssh -R 50021:localhost:50021 user@vps
+3. このスクリプトを実行（VPS側から）
 """
 
 import os
@@ -12,8 +18,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
-# VOICEVOX設定
-VOICEVOX_URL = "http://localhost:50021"
+# VOICEVOX設定（SSHポートフォワーディング経由でローカルPCのVOICEVOXに接続）
+VOICEVOX_URL = "http://127.0.0.1:50021"
 SPEAKER_ID = 2  # 四国めたん・ノーマル
 
 # 音声パラメータ
@@ -41,6 +47,8 @@ def check_voicevox_connection() -> bool:
     except requests.exceptions.RequestException as e:
         print(f"✗ VOICEVOXエンジンに接続できませんでした: {e}")
         print(f"  確認: {VOICEVOX_URL} が起動しているか確認してください")
+        print(f"  注意: SSHポートフォワーディングが設定されているか確認してください")
+        print(f"        ssh -R 50021:localhost:50021 user@vps")
         return False
 
 
@@ -191,14 +199,16 @@ def main():
     for idx, audio_id in enumerate(sorted_ids, 1):
         try:
             text = voice_texts[audio_id]
+            output_path = OUTPUT_DIR / f"{audio_id}.wav"
+            
+            # 既にファイルが存在する場合はスキップ
+            if output_path.exists():
+                skip_count += 1
+                continue
+            
             result = generate_audio_file(audio_id, text)
             if result:
-                # 既存ファイルの場合はスキップカウント
-                output_path = OUTPUT_DIR / f"{audio_id}.wav"
-                if output_path.exists() and idx > 1:  # 最初のチェックで既に存在していた場合
-                    skip_count += 1
-                else:
-                    success_count += 1
+                success_count += 1
             else:
                 fail_count += 1
         except KeyboardInterrupt:
