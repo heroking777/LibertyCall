@@ -26,6 +26,11 @@ import audioop
 import collections
 import time
 try:
+    from scapy.all import sniff, IP, UDP
+    SCAPY_AVAILABLE = True
+except ImportError:
+    SCAPY_AVAILABLE = False
+try:
     import aiohttp
     AIOHTTP_AVAILABLE = True
 except ImportError:
@@ -231,24 +236,38 @@ class FreeswitchRTPMonitor:
             return
         
         try:
-            loop = asyncio.get_running_loop()
-            # FreeSWITCH送信RTPポート用のソケットを作成
-            self.monitor_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            # 0.0.0.0でバインドすることで、FreeSWITCHが外部IP（160.251.170.253）から送信するRTPも受信可能
-            # FreeSWITCHのexternalプロファイルは外部IPにRTPを送信するため、127.0.0.1では受信できない
-            self.monitor_sock.bind(("0.0.0.0", self.freeswitch_rtp_port))
-            self.monitor_sock.setblocking(False)
-            
-            # asyncioにソケットを渡す（既存のRTPProtocolを再利用）
-            self.monitor_transport, _ = await loop.create_datagram_endpoint(
-                lambda: RTPProtocol(self.gateway),
-                sock=self.monitor_sock
-            )
-            self.logger.info(
-                f"[FS_RTP_MONITOR] Started monitoring FreeSWITCH RTP port {self.freeswitch_rtp_port}"
-            )
+            # pcap方式でパケットキャプチャを開始（scapy使用）
+            if SCAPY_AVAILABLE:
+                self.logger.info(
+                    f"[FS_RTP_MONITOR] Starting pcap-based monitoring for port {self.freeswitch_rtp_port}"
+                )
+                self.capture_running = True
+                self.capture_thread = threading.Thread(
+                    target=self._pcap_capture_loop,
+                    args=(self.freeswitch_rtp_port,),
+                    daemon=True
+                )
+                self.capture_thread.start()
+                self.logger.info(
+                    f"[FS_RTP_MONITOR] Started pcap monitoring for FreeSWITCH RTP port {self.freeswitch_rtp_port}"
+                )
+            else:
+                # フォールバック: 従来のUDPソケット方式
+                self.logger.warning("[FS_RTP_MONITOR] scapy not available, falling back to UDP socket mode")
+                loop = asyncio.get_running_loop()
+                self.monitor_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                self.monitor_sock.bind(("0.0.0.0", self.freeswitch_rtp_port))
+                self.monitor_sock.setblocking(False)
+                
+                self.monitor_transport, _ = await loop.create_datagram_endpoint(
+                    lambda: RTPProtocol(self.gateway),
+                    sock=self.monitor_sock
+                )
+                self.logger.info(
+                    f"[FS_RTP_MONITOR] Started UDP socket monitoring for FreeSWITCH RTP port {self.freeswitch_rtp_port}"
+                )
             
             # 002.wav完了フラグファイルを監視するタスクを開始
             asyncio.create_task(self._check_asr_enable_flag())
@@ -261,7 +280,7 @@ class FreeswitchRTPMonitor:
                     "monitoring may be disabled or another instance is running"
                 )
             else:
-                self.logger.error(f"[FS_RTP_MONITOR] Failed to bind to port {self.freeswitch_rtp_port}: {e}", exc_info=True)
+                self.logger.error(f"[FS_RTP_MONITOR] Failed to start monitoring: {e}", exc_info=True)
         except Exception as e:
             self.logger.error(f"[FS_RTP_MONITOR] Failed to start monitoring: {e}", exc_info=True)
     
@@ -333,22 +352,35 @@ class FreeswitchRTPMonitor:
                     if port and port != self.freeswitch_rtp_port:
                         self.logger.info(f"[FS_RTP_MONITOR] Found RTP port {port} from RTP info file, starting monitoring...")
                         self.freeswitch_rtp_port = port
-                        # RTPポートで監視を開始
+                        # RTPポートで監視を開始（pcap方式）
                         try:
-                            loop = asyncio.get_running_loop()
-                            self.monitor_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                            self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                            self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-                            self.monitor_sock.bind(("0.0.0.0", self.freeswitch_rtp_port))
-                            self.monitor_sock.setblocking(False)
-                            
-                            self.monitor_transport, _ = await loop.create_datagram_endpoint(
-                                lambda: RTPProtocol(self.gateway),
-                                sock=self.monitor_sock
-                            )
-                            self.logger.info(
-                                f"[FS_RTP_MONITOR] Started monitoring FreeSWITCH RTP port {self.freeswitch_rtp_port} (from RTP info file)"
-                            )
+                            if SCAPY_AVAILABLE:
+                                self.capture_running = True
+                                self.capture_thread = threading.Thread(
+                                    target=self._pcap_capture_loop,
+                                    args=(self.freeswitch_rtp_port,),
+                                    daemon=True
+                                )
+                                self.capture_thread.start()
+                                self.logger.info(
+                                    f"[FS_RTP_MONITOR] Started pcap monitoring for FreeSWITCH RTP port {self.freeswitch_rtp_port} (from RTP info file)"
+                                )
+                            else:
+                                # フォールバック: UDPソケット方式
+                                loop = asyncio.get_running_loop()
+                                self.monitor_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                                self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                                self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                                self.monitor_sock.bind(("0.0.0.0", self.freeswitch_rtp_port))
+                                self.monitor_sock.setblocking(False)
+                                
+                                self.monitor_transport, _ = await loop.create_datagram_endpoint(
+                                    lambda: RTPProtocol(self.gateway),
+                                    sock=self.monitor_sock
+                                )
+                                self.logger.info(
+                                    f"[FS_RTP_MONITOR] Started UDP socket monitoring for FreeSWITCH RTP port {self.freeswitch_rtp_port} (from RTP info file)"
+                                )
                         except Exception as e:
                             self.logger.error(f"[FS_RTP_MONITOR] Failed to start monitoring port {port}: {e}", exc_info=True)
                             self.freeswitch_rtp_port = None
