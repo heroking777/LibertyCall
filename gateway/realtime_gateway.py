@@ -2210,12 +2210,13 @@ class RealtimeGateway:
             if should_cut:
                 # ノイズ除去: バッファが短すぎる場合は破棄
                 if len(self.audio_buffer) < self.MIN_AUDIO_LEN:
+                     self.logger.debug(f"[ASR_DEBUG] Segment too short: {len(self.audio_buffer)} < {self.MIN_AUDIO_LEN}, skipping")
                      self.audio_buffer = bytearray()
                      self.turn_rms_values = []
                      self.current_segment_start = None # リセット
                      return 
 
-                self.logger.debug(">> Processing segment...")
+                self.logger.info(f"[ASR_DEBUG] >> Processing segment... (buffer_size={len(self.audio_buffer)}, time_since_voice={time_since_voice:.2f}s, segment_elapsed={segment_elapsed:.2f}s)")
                 self.is_user_speaking = False
                 
                 user_audio = bytes(self.audio_buffer)
@@ -2226,9 +2227,10 @@ class RealtimeGateway:
                 else:
                     rms_avg = 0
                 
+                self.logger.info(f"[ASR_DEBUG] RMS check: rms_avg={rms_avg:.1f}, MIN_RMS_FOR_ASR={self.MIN_RMS_FOR_ASR}")
                 if rms_avg < self.MIN_RMS_FOR_ASR:
-                    self.logger.debug(
-                        f">> Segment skipped due to low RMS (rms_avg={rms_avg:.1f})"
+                    self.logger.info(
+                        f"[ASR_DEBUG] >> Segment skipped due to low RMS (rms_avg={rms_avg:.1f} < {self.MIN_RMS_FOR_ASR})"
                     )
                     # セグメントを破棄してリセット
                     self.audio_buffer.clear()
@@ -2242,8 +2244,10 @@ class RealtimeGateway:
                 self.current_segment_start = None 
                 
                 # AI処理実行
+                self.logger.info(f"[ASR_DEBUG] Calling process_dialogue with {len(user_audio)} bytes (streaming_enabled={self.streaming_enabled}, initial_sequence_playing={self.initial_sequence_playing})")
                 self._ensure_console_session()
                 tts_audio_24k, should_transfer, text_raw, intent, reply_text = self.ai_core.process_dialogue(user_audio)
+                self.logger.info(f"[ASR_DEBUG] process_dialogue returned: text_raw={text_raw}, intent={intent}, should_transfer={should_transfer}")
                 
                 # 音声が検出された際に無音検知タイマーをリセット
                 if text_raw and intent != "IGNORE":
