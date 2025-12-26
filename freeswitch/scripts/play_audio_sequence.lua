@@ -75,11 +75,6 @@ session:setVariable("rtp-rewrite-timestamps", "false")
 session:setVariable("rtp-autoflush", "false")
 session:setVariable("disable-transcoding", "true")
 
--- GatewayへリアルタイムRTPをミラー送信（UDP経由で127.0.0.1:7002に送信）
--- execute_on_mediaを使用して、メディア確立時にRTPをGatewayに送信
-freeswitch.consoleLog("INFO", "[RTP] Setting up RTP mirror to Gateway (127.0.0.1:7002)\n")
-session:execute("set", "execute_on_media=record_session udp://127.0.0.1:7002")
-
 -- セッション録音開始（u-law 8kHz）
 local session_client_id = client_id
 local record_session_path = string.format("/var/lib/libertycall/sessions/%s/%s/session_%s/audio/caller.wav",
@@ -89,6 +84,12 @@ local record_session_path = string.format("/var/lib/libertycall/sessions/%s/%s/s
 )
 session:execute("set", "record_session=" .. record_session_path)
 session:execute("record_session", record_session_path)
+
+-- GatewayへリアルタイムRTPをミラー送信（UDP経由で127.0.0.1:7002に送信）
+-- 直接record_sessionを実行（execute_on_mediaではなく）
+freeswitch.consoleLog("INFO", "[RTP] Starting RTP mirror to Gateway (127.0.0.1:7002)\n")
+session:execute("record_session", "udp://127.0.0.1:7002")
+freeswitch.consoleLog("INFO", "[RTP] RTP mirror started\n")
 
 -- 必ず再生するアナウンス（無音削減: silence_threshold=0.1でテンプレート間の無音を削減）
 session:setVariable("silence_threshold", "0.1")
