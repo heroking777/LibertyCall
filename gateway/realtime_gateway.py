@@ -107,6 +107,41 @@ class RTPPacketBuilder:
         self.timestamp = (self.timestamp + samples) & 0xFFFFFFFF
         return bytes(header) + payload
 
+class RTPProtocol(asyncio.DatagramProtocol):
+    def __init__(self, gateway: 'RealtimeGateway'):
+        self.gateway = gateway
+    def connection_made(self, transport):
+        self.transport = transport
+    def datagram_received(self, data: bytes, addr: Tuple[str, int]):
+        # 受信確認ログ（UDPパケットが実際に届いているか確認用）
+        self.gateway.logger.debug(f"[RTP_RECV] Received {len(data)} bytes from {addr}")
+        
+        # RTP受信ログ（軽量版：fromとlenのみ）
+        self.gateway.logger.info(f"[RTP_RECV_RAW] from={addr}, len={len(data)}")
+        
+        # RakutenのRTP監視対策：受信したパケットをそのまま送り返す（エコー）
+        # これによりRakuten側は「RTP到達OK」と判断し、通話が切れなくなる
+        try:
+            if self.transport:
+                self.transport.sendto(data, addr)
+                self.gateway.logger.debug(f"[RTP_ECHO] sent echo packet to {addr}, len={len(data)}")
+        except Exception as e:
+            self.gateway.logger.warning(f"[RTP_ECHO] failed to send echo: {e}")
+        
+        try:
+            task = asyncio.create_task(self.gateway.handle_rtp_packet(data, addr))
+            def log_exception(task: asyncio.Task) -> None:
+                exc = task.exception()
+                if exc is not None:
+                    self.gateway.logger.error(
+                        "handle_rtp_packet failed: %r", exc, exc_info=exc
+                    )
+            task.add_done_callback(log_exception)
+        except Exception as e:
+            self.gateway.logger.error(
+                "Failed to create task for handle_rtp_packet: %r", e, exc_info=True
+            )
+
 class FreeswitchRTPMonitor:
     """FreeSWITCHの送信RTPポートを監視してASR処理に流し込む（Pull型、pcap方式）"""
     
@@ -3951,3 +3986,60 @@ class RealtimeGateway:
             
             except Exception as e:
                 self.logger.exception(f"Error in log monitor loop: {e}")
+
+# ========================================
+# Main Entry Point
+# ========================================
+
+if __name__ == '__main__':
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Liberty Call Realtime Gateway")
+    parser.add_argument(
+        '--rtp_port',
+        type=int,
+        default=None,
+        help='Override RTP listen port (default: from config or env LC_RTP_PORT)'
+    )
+    args = parser.parse_args()
+    
+    # Load configuration
+    config_path = Path(_PROJECT_ROOT) / "config" / "gateway.yaml"
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+    except FileNotFoundError:
+        # Fallback to default config
+        config = {
+            "rtp": {
+                "listen_host": "0.0.0.0",
+                "listen_port": 7002,
+                "payload_type": 0,
+                "sample_rate": 8000
+            },
+            "ws": {
+                "url": "ws://localhost:8000/ws",
+                "reconnect_delay_sec": 5
+            }
+        }
+    
+    # Create gateway instance
+    gateway = RealtimeGateway(config, rtp_port_override=args.rtp_port)
+    
+    # Setup signal handlers for graceful shutdown
+    def signal_handler(sig, frame):
+        logger = logging.getLogger(__name__)
+        logger.info(f"[SIGNAL] Received signal {sig}, initiating shutdown...")
+        asyncio.create_task(gateway.shutdown())
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Run the gateway
+    try:
+        asyncio.run(gateway.start())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        logger = logging.getLogger(__name__)
+        logger.info("[EXIT] Gateway stopped")
