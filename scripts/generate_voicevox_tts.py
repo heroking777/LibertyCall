@@ -23,8 +23,9 @@ INTONATION_SCALE = 1.2  # 抑揚
 
 # プロジェクトルートのパスを取得
 PROJECT_ROOT = Path(__file__).parent.parent
-DATA_FILE = Path(__file__).parent / "data.txt"  # scripts/data.txt
-OUTPUT_DIR = Path(__file__).parent / "output"    # scripts/output
+CLIENT_DIR = PROJECT_ROOT / "clients" / "000"
+JSON_FILE = CLIENT_DIR / "config" / "voice_lines_000.json"
+OUTPUT_DIR = CLIENT_DIR / "audio"  # clients/000/audio/
 
 
 def check_voicevox_connection() -> bool:
@@ -43,23 +44,32 @@ def check_voicevox_connection() -> bool:
         return False
 
 
-def load_texts_from_file(file_path: Path, max_lines: int = 100) -> list:
-    """data.txtからテキストを読み込む"""
-    if not file_path.exists():
-        print(f"✗ エラー: {file_path} が見つかりません")
-        return []
+def load_texts_from_json(json_file: Path) -> dict:
+    """voice_lines_000.jsonからテキストを読み込む"""
+    if not json_file.exists():
+        print(f"✗ エラー: {json_file} が見つかりません")
+        return {}
     
-    texts = []
-    with open(file_path, 'r', encoding='utf-8') as f:
-        for idx, line in enumerate(f, 1):
-            if idx > max_lines:
-                break
-            text = line.strip()
-            if text:  # 空行をスキップ
-                texts.append(text)
-    
-    print(f"✓ {len(texts)}件のテキストを読み込みました")
-    return texts
+    try:
+        with open(json_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # 音声IDとテキストのペアを取得
+        voice_texts = {}
+        for audio_id, config in data.items():
+            if isinstance(config, dict) and "text" in config:
+                text = config["text"].strip()
+                if text:  # 空のテキストをスキップ
+                    voice_texts[audio_id] = text
+        
+        print(f"✓ {len(voice_texts)}件のテキストを読み込みました")
+        return voice_texts
+    except json.JSONDecodeError as e:
+        print(f"✗ JSONの解析に失敗しました: {e}")
+        return {}
+    except Exception as e:
+        print(f"✗ ファイル読み込みエラー: {e}")
+        return {}
 
 
 def get_audio_query(text: str) -> Optional[dict]:
@@ -112,11 +122,16 @@ def ensure_output_directory():
     print(f"✓ 出力ディレクトリ: {OUTPUT_DIR}")
 
 
-def generate_audio_file(text: str, index: int) -> bool:
+def generate_audio_file(audio_id: str, text: str) -> bool:
     """1件の音声ファイルを生成"""
-    output_path = OUTPUT_DIR / f"call_{index:03d}.wav"
+    output_path = OUTPUT_DIR / f"{audio_id}.wav"
     
-    print(f"\n[{index}] 処理中: {text[:30]}...")
+    # 既にファイルが存在する場合はスキップ
+    if output_path.exists():
+        print(f"\n[{audio_id}] スキップ: 既に存在します")
+        return True
+    
+    print(f"\n[{audio_id}] 処理中: {text[:50]}...")
     
     # 音声クエリを取得
     audio_query = get_audio_query(text)
@@ -155,23 +170,35 @@ def main():
     # 出力ディレクトリ作成
     ensure_output_directory()
     
-    # テキスト読み込み
-    texts = load_texts_from_file(DATA_FILE, max_lines=100)
-    if not texts:
+    # JSONからテキスト読み込み
+    voice_texts = load_texts_from_json(JSON_FILE)
+    if not voice_texts:
         print("✗ 処理するテキストがありません")
         sys.exit(1)
     
+    # 音声IDでソート（数値順）
+    sorted_ids = sorted(voice_texts.keys(), key=lambda x: (len(x), x))
+    total_count = len(sorted_ids)
+    
     # 音声生成
-    print(f"\n{len(texts)}件の音声を生成します...")
+    print(f"\n{total_count}件の音声を生成します...")
     print("-" * 60)
     
     success_count = 0
     fail_count = 0
+    skip_count = 0
     
-    for idx, text in enumerate(texts, 1):
+    for idx, audio_id in enumerate(sorted_ids, 1):
         try:
-            if generate_audio_file(text, idx):
-                success_count += 1
+            text = voice_texts[audio_id]
+            result = generate_audio_file(audio_id, text)
+            if result:
+                # 既存ファイルの場合はスキップカウント
+                output_path = OUTPUT_DIR / f"{audio_id}.wav"
+                if output_path.exists() and idx > 1:  # 最初のチェックで既に存在していた場合
+                    skip_count += 1
+                else:
+                    success_count += 1
             else:
                 fail_count += 1
         except KeyboardInterrupt:
@@ -186,6 +213,8 @@ def main():
     print("生成完了")
     print("=" * 60)
     print(f"成功: {success_count}件")
+    if skip_count > 0:
+        print(f"スキップ: {skip_count}件（既存ファイル）")
     print(f"失敗: {fail_count}件")
     print(f"出力先: {OUTPUT_DIR}")
     print("=" * 60)
