@@ -2253,11 +2253,15 @@ class RealtimeGateway:
                      return 
 
                 self.logger.info(f"[ASR_DEBUG] >> Processing segment... (buffer_size={len(self.audio_buffer)}, time_since_voice={time_since_voice:.2f}s, segment_elapsed={segment_elapsed:.2f}s)")
+                # セグメント処理開始時のturn_rms_valuesの状態をログ出力
+                self.logger.info(f"[ASR_DEBUG] turn_rms_values: count={len(self.turn_rms_values)}, values={self.turn_rms_values[:10] if len(self.turn_rms_values) > 0 else 'empty'}")
                 self.is_user_speaking = False
                 
                 user_audio = bytes(self.audio_buffer)
                 
                 # RMSベースのノイズゲート: 低RMSのセグメントはASRに送らない
+                # RMS平均計算の直前にもログ追加
+                self.logger.info(f"[ASR_DEBUG] Before RMS avg calculation: turn_rms_values count={len(self.turn_rms_values)}")
                 if self.turn_rms_values:
                     rms_avg = sum(self.turn_rms_values) / len(self.turn_rms_values)
                 else:
@@ -3858,260 +3862,92 @@ class RealtimeGateway:
         while self.running:
             try:
                 if log_file.exists():
-                    with open(log_file, "r", encoding="utf-8") as f:
-                        # 最後に読み取った位置に移動
-                        f.seek(last_position)
-                        new_lines = f.readlines()
-                        
-                        # 新しい行を処理
-                        for line in new_lines:
-                            # 行のハッシュを計算して重複チェック
-                            line_hash = hash(line.strip())
-                            if line_hash in processed_lines:
-                                continue
+                    try:
+                        with open(log_file, "r", encoding="utf-8") as f:
+                            # 最後に読み取った位置に移動
+                            f.seek(last_position)
+                            new_lines = f.readlines()
                             
-                            if "[HANDOFF_FAIL_TTS_REQUEST]" in line:
-                                # メッセージをパース
-                                # フォーマット: [HANDOFF_FAIL_TTS_REQUEST] call_id=xxx text=xxx audio_len=xxx
-                                try:
-                                    # call_idとtextを抽出
-                                    import re
-                                    call_id_match = re.search(r'call_id=([^\s]+)', line)
-                                    # text='...' または text="..." の形式を抽出
-                                    text_match_quoted = re.search(r"text=([\"'])(.*?)\1", line)
-                                    text_match_unquoted = re.search(r'text=([^\s]+)', line)
-                                    
-                                    if call_id_match:
-                                        call_id = call_id_match.group(1)
-                                        # 引用符で囲まれたテキストを優先、なければ引用符なしのテキスト
-                                        if text_match_quoted:
-                                            text = text_match_quoted.group(2)
-                                        elif text_match_unquoted:
-                                            text = text_match_unquoted.group(1)
-                                        else:
-                                            self.logger.warning(f"HANDOFF_FAIL_TTS: Failed to extract text from line: {line}")
-                                            processed_lines.add(line_hash)
-                                            continue
+                            # 新しい行を処理
+                            for line in new_lines:
+                                # 行のハッシュを計算して重複チェック
+                                line_hash = hash(line.strip())
+                                if line_hash in processed_lines:
+                                    continue
+                                
+                                if "[HANDOFF_FAIL_TTS_REQUEST]" in line:
+                                    # メッセージをパース
+                                    # フォーマット: [HANDOFF_FAIL_TTS_REQUEST] call_id=xxx text=xxx audio_len=xxx
+                                    try:
+                                        # call_idとtextを抽出
+                                        import re
+                                        call_id_match = re.search(r'call_id=([^\s]+)', line)
+                                        # text='...' または text="..." の形式を抽出
+                                        text_match_quoted = re.search(r"text=([\"'])(.*?)\1", line)
+                                        text_match_unquoted = re.search(r'text=([^\s]+)', line)
                                         
-                                        # 現在の通話でない場合は無視（call_idが一致しない、または通話が開始されていない）
-                                        effective_call_id = self._get_effective_call_id()
-                                        if call_id != effective_call_id:
-                                            self.logger.debug(
-                                                f"HANDOFF_FAIL_TTS_SKIP: call_id mismatch (request={call_id}, current={effective_call_id})"
-                                            )
-                                            processed_lines.add(line_hash)
-                                            continue
-                                        
-                                        # call_idが未設定の場合は正式なcall_idを生成
-                                        if not self.call_id:
-                                            if self.client_id:
-                                                self.call_id = self.console_bridge.issue_call_id(self.client_id)
-                                                self.logger.info(
-                                                    f"HANDOFF_FAIL_TTS: generated call_id={self.call_id}"
-                                                )
-                                                # AICoreにcall_idを設定
-                                                if self.call_id:
-                                                    self.ai_core.set_call_id(self.call_id)
+                                        if call_id_match:
+                                            call_id = call_id_match.group(1)
+                                            # 引用符で囲まれたテキストを優先、なければ引用符なしのテキスト
+                                            if text_match_quoted:
+                                                text = text_match_quoted.group(2)
+                                            elif text_match_unquoted:
+                                                text = text_match_unquoted.group(1)
                                             else:
+                                                self.logger.warning(f"HANDOFF_FAIL_TTS: Failed to extract text from line: {line}")
+                                                processed_lines.add(line_hash)
+                                                continue
+                                            
+                                            # 現在の通話でない場合は無視（call_idが一致しない、または通話が開始されていない）
+                                            effective_call_id = self._get_effective_call_id()
+                                            if call_id != effective_call_id:
                                                 self.logger.debug(
-                                                    f"HANDOFF_FAIL_TTS_SKIP: call not started yet (call_id={call_id}, no client_id)"
+                                                    f"HANDOFF_FAIL_TTS_SKIP: call_id mismatch (request={call_id}, current={effective_call_id})"
                                                 )
                                                 processed_lines.add(line_hash)
                                                 continue
-                                        
-                                        self.logger.info(
-                                            f"HANDOFF_FAIL_TTS_DETECTED: call_id={call_id} text={text!r}"
-                                        )
-                                        
-                                        # TTSアナウンスを送信
-                                        self._send_tts(call_id, text, None, False)
-                                        
-                                        # 処理済みとして記録
+                                            
+                                            # call_idが未設定の場合は正式なcall_idを生成
+                                            if not self.call_id:
+                                                if self.client_id:
+                                                    self.call_id = self.console_bridge.issue_call_id(self.client_id)
+                                                    self.logger.info(
+                                                        f"HANDOFF_FAIL_TTS: generated call_id={self.call_id}"
+                                                    )
+                                                    # AICoreにcall_idを設定
+                                                    if self.call_id:
+                                                        self.ai_core.set_call_id(self.call_id)
+                                                else:
+                                                    self.logger.debug(
+                                                        f"HANDOFF_FAIL_TTS_SKIP: call not started yet (call_id={call_id}, no client_id)"
+                                                    )
+                                                    processed_lines.add(line_hash)
+                                                    continue
+                                            
+                                            self.logger.info(
+                                                f"HANDOFF_FAIL_TTS_DETECTED: call_id={call_id} text={text!r}"
+                                            )
+                                            
+                                            # TTSアナウンスを送信
+                                            self._send_tts(call_id, text, None, False)
+                                            
+                                            # 処理済みとして記録
+                                            processed_lines.add(line_hash)
+                                            
+                                    except Exception as e:
+                                        self.logger.exception(f"Failed to parse HANDOFF_FAIL_TTS_REQUEST: {e}")
                                         processed_lines.add(line_hash)
-                                        
-                                except Exception as e:
-                                    self.logger.exception(f"Failed to parse HANDOFF_FAIL_TTS_REQUEST: {e}")
-                                    processed_lines.add(line_hash)
-                        
-                        # 現在の位置を記録
-                        last_position = f.tell()
-                        
-                        # 処理済みセットが大きくなりすぎないように定期的にクリーンアップ
-                        if len(processed_lines) > 1000:
-                            processed_lines.clear()
+                            
+                            # 現在の位置を記録
+                            last_position = f.tell()
+                            
+                            # 処理済みセットが大きくなりすぎないように定期的にクリーンアップ
+                            if len(processed_lines) > 1000:
+                                processed_lines.clear()
+                    except Exception as e:
+                        self.logger.exception(f"Error reading log file: {e}")
                 
-                # 1秒ごとにチェック
-                await asyncio.sleep(1)
-                
+                await asyncio.sleep(0.1)
+            
             except Exception as e:
-                self.logger.exception(f"Log monitor loop error: {e}")
-                await asyncio.sleep(1)
-
-class RTPProtocol(asyncio.DatagramProtocol):
-    def __init__(self, gateway: RealtimeGateway):
-        self.gateway = gateway
-    def connection_made(self, transport):
-        self.transport = transport
-    def datagram_received(self, data: bytes, addr: Tuple[str, int]):
-        # 受信確認ログ（UDPパケットが実際に届いているか確認用）
-        self.gateway.logger.debug(f"[RTP_RECV] Received {len(data)} bytes from {addr}")
-        
-        # RTP受信ログ（軽量版：fromとlenのみ）
-        self.gateway.logger.info(f"[RTP_RECV_RAW] from={addr}, len={len(data)}")
-        
-        # RakutenのRTP監視対策：受信したパケットをそのまま送り返す（エコー）
-        # これによりRakuten側は「RTP到達OK」と判断し、通話が切れなくなる
-        try:
-            if self.transport:
-                self.transport.sendto(data, addr)
-                self.gateway.logger.debug(f"[RTP_ECHO] sent echo packet to {addr}, len={len(data)}")
-        except Exception as e:
-            self.gateway.logger.warning(f"[RTP_ECHO] failed to send echo: {e}")
-        
-        try:
-            task = asyncio.create_task(self.gateway.handle_rtp_packet(data, addr))
-            def log_exception(task: asyncio.Task) -> None:
-                exc = task.exception()
-                if exc is not None:
-                    self.gateway.logger.error(
-                        "handle_rtp_packet failed: %r", exc, exc_info=exc
-                    )
-            task.add_done_callback(log_exception)
-        except Exception as e:
-            self.gateway.logger.error(
-                "Failed to create task for handle_rtp_packet: %r", e, exc_info=True
-            )
-
-def load_config(path: str) -> dict:
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
-
-def setup_logging(level: str = "DEBUG"):
-    """Send all logs to stdout (for systemd journal integration), file, and runtime.log."""
-    # ログディレクトリを確認・作成
-    log_dir = Path("/opt/libertycall/logs")
-    log_file = log_dir / "realtime_gateway.log"
-    runtime_log_file = log_dir / "runtime.log"
-    
-    # ログディレクトリが存在しない場合は作成
-    if not log_dir.exists():
-        log_dir.mkdir(parents=True, exist_ok=True)
-        logging.info(f"[LOG_SETUP] Created log directory: {log_dir}")
-    
-    # ログファイルが存在しない場合は作成（空ファイル）
-    if not log_file.exists():
-        log_file.touch()
-        logging.info(f"[LOG_SETUP] Created log file: {log_file}")
-    
-    if not runtime_log_file.exists():
-        runtime_log_file.touch()
-        logging.info(f"[LOG_SETUP] Created runtime log file: {runtime_log_file}")
-    
-    # フォーマッター設定
-    formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    
-    # stdout ハンドラー（systemd journal 統合用）
-    stdout_handler = logging.StreamHandler(sys.stdout)
-    stdout_handler.setFormatter(formatter)
-    
-    # ファイルハンドラー（ログファイル出力用）
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
-    file_handler.setFormatter(formatter)
-    
-    # runtime.logハンドラー（実行時ログ出力用、INFO以上のみ）
-    runtime_handler = logging.FileHandler(runtime_log_file, encoding="utf-8")
-    runtime_handler.setFormatter(formatter)
-    runtime_handler.setLevel(logging.INFO)  # INFO以上のみ出力
-    
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
-    
-    # Remove existing handlers (avoid duplicate output)
-    for h in root_logger.handlers[:]:
-        root_logger.removeHandler(h)
-    
-    # すべてのハンドラーを追加
-    root_logger.addHandler(stdout_handler)
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(runtime_handler)
-    root_logger.addHandler(file_handler)
-    
-    # Reduce asyncio log noise
-    logging.getLogger("asyncio").setLevel(logging.WARNING)
-    
-    logging.debug(f"[LOG_SETUP] Configured to output logs to stdout and {log_file}")
-
-async def main():
-    import argparse
-    
-    # コマンドライン引数の解析
-    parser = argparse.ArgumentParser(description="LibertyCall Realtime Gateway")
-    parser.add_argument("--uuid", help="Call UUID")
-    parser.add_argument("--rtp_port", type=int, required=False, help="RTP port for inbound media")
-    args = parser.parse_args()
-    
-    # ログ設定初期化
-    setup_logging("DEBUG")
-
-    # 設定読み込み
-    config_path = Path(__file__).parent.parent / "config" / "gateway.yaml"
-    config = load_config(str(config_path))
-
-    # ログレベル再設定（オプション）
-    log_level = config.get("logging", {}).get("level", "DEBUG")
-    if log_level != "DEBUG":
-        setup_logging(log_level)
-
-    # --rtp_port が指定されている場合は config を上書き
-    rtp_port_override = None
-    if args.rtp_port:
-        rtp_port_override = args.rtp_port
-        logging.info(f"[MAIN] RTP port overridden by --rtp_port: {rtp_port_override}")
-
-    gateway = RealtimeGateway(config, rtp_port_override=rtp_port_override)
-
-    # ASR制御用FastAPIサーバーをバックグラウンドで起動
-    try:
-        # 相対インポート（gatewayディレクトリ内のasr_controller.py）
-        import importlib.util
-        asr_controller_path = Path(__file__).parent / "asr_controller.py"
-        spec = importlib.util.spec_from_file_location("asr_controller", asr_controller_path)
-        asr_controller = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(asr_controller)
-        
-        app = asr_controller.app
-        set_gateway_instance = asr_controller.set_gateway_instance
-        import uvicorn
-        
-        # GatewayインスタンスをASR Controllerに設定
-        set_gateway_instance(gateway)
-        
-        # FastAPIサーバーをバックグラウンドで起動
-        config_uvicorn = uvicorn.Config(
-            app=app,
-            host="127.0.0.1",
-            port=8000,
-            log_level="info",
-            access_log=False,  # アクセスログは無効化（Gatewayログと混在しないように）
-        )
-        server = uvicorn.Server(config_uvicorn)
-        
-        # バックグラウンドタスクとして起動
-        asr_server_task = asyncio.create_task(server.serve())
-        logging.info("[MAIN] ASR Controller API server started on http://127.0.0.1:8000")
-    except Exception as e:
-        logging.error(f"[MAIN] Failed to start ASR Controller API server: {e}", exc_info=True)
-        # ASR Controllerが起動しなくてもGatewayは動作する（警告のみ）
-
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(gateway.shutdown()))
-
-    # メイン処理（start() 内で shutdown_event を待つため、ここで常駐）
-    await gateway.start()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+                self.logger.exception(f"Error in log monitor loop: {e}")
