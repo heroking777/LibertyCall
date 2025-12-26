@@ -20,8 +20,8 @@ from typing import Optional, Tuple
 PROJECT_ROOT = Path(__file__).parent.parent
 SCRIPTS_DIR = Path(__file__).parent
 REF_AUDIO_FILE = SCRIPTS_DIR / "ref.wav"
-DATA_FILE = SCRIPTS_DIR / "data.txt"
-OUTPUT_DIR = SCRIPTS_DIR / "output"
+JSON_FILE = PROJECT_ROOT / "clients" / "000" / "config" / "voice_lines_000.json"
+OUTPUT_DIR = PROJECT_ROOT / "clients" / "000" / "audio"  # clients/000/audio/ に保存
 
 # 参照テキスト（ref.wavに対応するテキスト）
 REF_TEXT = "はい、かしこまりました。担当の者にお繋ぎいたしますので、少々お待ちくださいませ。お電話が大変込み合っておりますが、順番にご案内いたします。"
@@ -52,21 +52,33 @@ def check_ref_audio() -> bool:
     return True
 
 
-def load_texts_from_file(file_path: Path) -> list:
-    """data.txtからテキストを読み込む"""
-    if not file_path.exists():
-        print(f"✗ エラー: {file_path} が見つかりません")
-        return []
+def load_texts_from_json(json_file: Path) -> dict:
+    """voice_lines_000.jsonからテキストを読み込む"""
+    if not json_file.exists():
+        print(f"✗ エラー: {json_file} が見つかりません")
+        return {}
     
-    texts = []
-    with open(file_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            text = line.strip()
-            if text:  # 空行をスキップ
-                texts.append(text)
-    
-    print(f"✓ {len(texts)}件のテキストを読み込みました")
-    return texts
+    try:
+        import json
+        with open(json_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # 音声IDとテキストのペアを取得
+        voice_texts = {}
+        for audio_id, config in data.items():
+            if isinstance(config, dict) and "text" in config:
+                text = config["text"].strip()
+                if text:  # 空のテキストをスキップ
+                    voice_texts[audio_id] = text
+        
+        print(f"✓ {len(voice_texts)}件のテキストを読み込みました")
+        return voice_texts
+    except json.JSONDecodeError as e:
+        print(f"✗ JSONの解析に失敗しました: {e}")
+        return {}
+    except Exception as e:
+        print(f"✗ ファイル読み込みエラー: {e}")
+        return {}
 
 
 def ensure_output_directory():
@@ -176,11 +188,16 @@ def generate_audio_with_f5_tts(
         return False
 
 
-def generate_audio_file(text: str, index: int) -> bool:
+def generate_audio_file(audio_id: str, text: str) -> bool:
     """1件の音声ファイルを生成"""
-    output_path = OUTPUT_DIR / f"call_{index:03d}.wav"
+    output_path = OUTPUT_DIR / f"{audio_id}.wav"
     
-    print(f"[{index:3d}] 処理中: {text[:50]}...", end=" ", flush=True)
+    # 既にファイルが存在する場合はスキップ
+    if output_path.exists():
+        print(f"[{audio_id:15s}] スキップ: 既に存在します")
+        return True
+    
+    print(f"[{audio_id:15s}] 処理中: {text[:50]}...", end=" ", flush=True)
     
     # F5-TTSで音声生成（ref.wavの声質を維持）
     success = generate_audio_with_f5_tts(
@@ -221,9 +238,9 @@ def main():
     # 出力ディレクトリ作成
     ensure_output_directory()
     
-    # テキスト読み込み
-    texts = load_texts_from_file(DATA_FILE)
-    if not texts:
+    # JSONからテキスト読み込み
+    voice_texts = load_texts_from_json(JSON_FILE)
+    if not voice_texts:
         print("✗ 処理するテキストがありません")
         sys.exit(1)
     
@@ -232,25 +249,37 @@ def main():
     print(f"参照音声: {REF_AUDIO_FILE.name}")
     print("-" * 70)
     
+    # 音声IDでソート（数値順）
+    sorted_ids = sorted(voice_texts.keys(), key=lambda x: (len(x), x))
+    total_count = len(sorted_ids)
+    
     # 音声生成
-    print(f"\n{len(texts)}件の音声を生成します...")
+    print(f"\n{total_count}件の音声を生成します...")
     print("注意: 初回実行時はモデルのダウンロード（数GB）が発生します")
     print("-" * 70)
     
     success_count = 0
     fail_count = 0
+    skip_count = 0
     
-    for idx, text in enumerate(texts, 1):
+    for idx, audio_id in enumerate(sorted_ids, 1):
         try:
-            if generate_audio_file(text, idx):
-                success_count += 1
+            text = voice_texts[audio_id]
+            result = generate_audio_file(audio_id, text)
+            if result:
+                # 既存ファイルの場合はスキップカウント
+                output_path = OUTPUT_DIR / f"{audio_id}.wav"
+                if output_path.exists() and idx > 1:
+                    skip_count += 1
+                else:
+                    success_count += 1
             else:
                 fail_count += 1
         except KeyboardInterrupt:
             print("\n\n⚠ ユーザーによって中断されました")
             break
         except Exception as e:
-            print(f"\n[{idx:3d}] ✗ 予期しないエラー: {e}")
+            print(f"\n[{audio_id:15s}] ✗ 予期しないエラー: {e}")
             fail_count += 1
     
     # 結果表示
@@ -258,6 +287,8 @@ def main():
     print("生成完了")
     print("=" * 70)
     print(f"成功: {success_count}件")
+    if skip_count > 0:
+        print(f"スキップ: {skip_count}件（既存ファイル）")
     print(f"失敗: {fail_count}件")
     print(f"出力先: {OUTPUT_DIR}")
     print("=" * 70)
