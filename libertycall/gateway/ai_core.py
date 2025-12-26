@@ -2053,6 +2053,19 @@ class AICore:
         # ACTIVITY_MONITOR用のlast_activityもクリア（タイムアウト処理停止）
         self.last_activity.pop(call_id, None)
         
+        # 【緊急修正】古いセッションのデータを即座にクリーンアップ
+        cleanup_items = [
+            ('last_activity', self.last_activity),
+            ('is_playing', self.is_playing),
+            ('partial_transcripts', self.partial_transcripts),
+            ('last_template_play', self.last_template_play),
+        ]
+        
+        for name, data_dict in cleanup_items:
+            if call_id in data_dict:
+                del data_dict[call_id]
+                self.logger.info(f"[CLEANUP] Removed {name} for call_id={call_id}")
+        
         # ログ出力（デバッグ強化）
         self.logger.info(
             f"[AICORE] on_call_end() call_id={call_id} source={source} client_id={effective_client_id} "
