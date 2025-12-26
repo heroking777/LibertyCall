@@ -310,12 +310,20 @@ class GoogleASR:
                 Asterisk 側は 20ms ごとに RTP を送ってくるが、ここで明示的に sleep する必要はない。
                 ジェネレータなので、yield で制御が呼び元に戻るため sleep 不要。
                 """
+                # 【デバッグ】ジェネレータ開始
+                self.logger.info(f"[REQUEST_GEN] Generator started for call_id={self._current_call_id}")
+                
                 empty_count = 0  # 【修正】連続して空の回数をカウント
                 while not self._stop_event.is_set():
+                    # 【デバッグ】ループ開始
+                    self.logger.debug(f"[REQUEST_GEN] Loop iteration start")
                     try:
                         # 【修正】timeout を 0.1 秒に短縮（より頻繁にチェック）
                         # 音声が来ない場合でも定期的に空のチャンクを送ってタイムアウトを防ぐ
+                        # 【デバッグ】キュー取得前
+                        self.logger.debug(f"[REQUEST_GEN] Attempting queue get, qsize={self._q.qsize()}")
                         chunk = self._q.get(timeout=0.1)
+                        self.logger.info(f"[REQUEST_GEN] Got audio chunk: size={len(chunk)} bytes")
                         empty_count = 0  # 音声が来たらリセット
                     except queue.Empty:
                         if self._stop_event.is_set():
@@ -340,6 +348,8 @@ class GoogleASR:
                     
                     # ここで1リクエスト分を yield して制御が呼び元に戻るので、
                     # 追加の sleep は不要
+                    # 【デバッグ】yield前
+                    self.logger.debug(f"[REQUEST_GEN] Yielding request with audio")
                     yield cloud_speech.StreamingRecognizeRequest(audio_content=chunk)  # type: ignore[union-attr]
             
             self.logger.info("[STREAM_WORKER_PRECHECK] Request generator defined, about to create config")
