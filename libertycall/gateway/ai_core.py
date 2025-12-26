@@ -1899,8 +1899,8 @@ class AICore:
                                             runtime_logger.info(f"[FLOW] call_id={call_id} phase=NOT_HEARD→QA intent=NOT_HEARD template=110 (timeout recovery)")
                                     
                                     # 最終活動時刻を更新（再タイムアウトを防ぐ）
-                                    # 110再生後は十分な時間（20秒）をセットして、再生中と再生直後のタイムアウトを防ぐ
-                                    self.last_activity[call_id] = current_time + 20.0  # 20秒の猶予
+                                    # 110再生後は現在時刻に更新（正しいロジック）
+                                    self.last_activity[call_id] = current_time
                             except Exception as e:
                                 self.logger.exception(f"[ACTIVITY_MONITOR] Error handling timeout: {e}")
                 except Exception as e:
@@ -3484,8 +3484,15 @@ class AICore:
                         except Exception as e:
                             self.logger.exception(f"[BACKCHANNEL_ERROR] call_id={call_id} error={e}")
             
-            # partial の場合は会話ロジックを実行しない
-            return None
+            # partial結果が5文字以上かつバックチャネル以外の場合、会話フローを開始（ASR高速化）
+            merged_text = self.partial_transcripts[call_id].get("text", "")
+            if merged_text and len(merged_text) >= 5:
+                # 短い発話以外はpartialでも処理開始（finalを待たずに会話フローを開始）
+                self.logger.info(f"[ASR_PARTIAL_PROCESS] call_id={call_id} partial_text={merged_text!r} (>=5 chars, processing immediately)")
+                # 下の処理に進む（return Noneしない）
+            else:
+                # partial の場合は会話ロジックを実行しない
+                return None
         
         # ============================================================
         # ここから下は final（is_final=True）のときだけ実行される
