@@ -3459,6 +3459,9 @@ class AICore:
                         f"[ASR_PARTIAL_NON_CUMULATIVE] call_id={call_id} "
                         f"prev={prev_text!r} new={text!r} (new does not start with prev)"
                     )
+                # テキストが変わった場合はprocessedフラグをリセット（新しいテキストを処理可能にする）
+                if prev_text != text:
+                    self.partial_transcripts[call_id].pop("processed", None)
                 self.partial_transcripts[call_id]["text"] = text
                 self.partial_transcripts[call_id]["updated"] = time.time()
             
@@ -3487,7 +3490,12 @@ class AICore:
             # partial結果が5文字以上かつバックチャネル以外の場合、会話フローを開始（ASR高速化）
             merged_text = self.partial_transcripts[call_id].get("text", "")
             if merged_text and len(merged_text) >= 5:
-                # partialで処理済みのフラグを保存（final時に重複処理しない）
+                # processedフラグをチェック（既に処理済みなら早期return）
+                if self.partial_transcripts[call_id].get("processed"):
+                    self.logger.debug(f"[ASR_SKIP_PARTIAL] Already processed: call_id={call_id} text={merged_text!r}")
+                    return None
+                
+                # 未処理の場合のみ処理してフラグを保存（final時に重複処理しない）
                 self.partial_transcripts[call_id]["processed"] = True
                 # 短い発話以外はpartialでも処理開始（finalを待たずに会話フローを開始）
                 self.logger.info(f"[ASR_PARTIAL_PROCESS] call_id={call_id} partial_text={merged_text!r} (>=5 chars, processing immediately)")
