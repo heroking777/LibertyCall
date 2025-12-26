@@ -2005,6 +2005,17 @@ class RealtimeGateway:
             pcm16_8k = audioop.ulaw2lin(pcm_data, 2)
             rms = audioop.rms(pcm16_8k, 2)
             
+            # --- RMS計算のデバッグ（最初の数回のみ出力） ---
+            if not hasattr(self, '_rms_debug_count'):
+                self._rms_debug_count = 0
+            if self._rms_debug_count < 5:
+                import struct
+                # PCM16 (8kHz) データのサンプルを確認
+                samples_8k = struct.unpack(f'{len(pcm16_8k)//2}h', pcm16_8k)
+                max_sample_8k = max(abs(s) for s in samples_8k) if samples_8k else 0
+                self.logger.info(f"[RTP_DEBUG] PCM16_8k: {len(samples_8k)} samples, max_amplitude={max_sample_8k}, rms={rms:.1f}, pcm_data_len={len(pcm_data)}")
+                self._rms_debug_count += 1
+            
             # --- 音量レベル送信（管理画面用） ---
             self._maybe_send_audio_level(rms)
 
@@ -2058,6 +2069,17 @@ class RealtimeGateway:
             pcm16_array = np.frombuffer(pcm16_8k_ns, dtype=np.int16)
             pcm16k_array = resample_poly(pcm16_array, 2, 1)  # 8kHz → 16kHz
             pcm16k_chunk = pcm16k_array.astype(np.int16).tobytes()
+            
+            # --- PCM16kデータのデバッグ（最初の数回のみ出力） ---
+            if not hasattr(self, '_pcm16k_debug_count'):
+                self._pcm16k_debug_count = 0
+            if self._pcm16k_debug_count < 5:
+                import struct
+                # PCM16 (16kHz) データのサンプルを確認
+                samples_16k = struct.unpack(f'{len(pcm16k_chunk)//2}h', pcm16k_chunk)
+                max_sample_16k = max(abs(s) for s in samples_16k) if samples_16k else 0
+                self.logger.info(f"[RTP_DEBUG] PCM16_16k: {len(samples_16k)} samples, max_amplitude={max_sample_16k}, rms={rms:.1f}, chunk_len={len(pcm16k_chunk)}")
+                self._pcm16k_debug_count += 1
             
             # --- 初回シーケンス再生中は ASR には送らない（録音とRMSだけ） ---
             if self.initial_sequence_playing:
