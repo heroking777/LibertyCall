@@ -195,25 +195,38 @@ def generate_audio_with_f5_tts(
                 print("  ✗ 音声データが生成されませんでした")
                 return False
             
-            # audio_dataがタプルやリストの場合、最初の要素（音声波形データ）を取り出す
-            if isinstance(audio_data, (tuple, list)):
-                audio_data = audio_data[0]
-            
-            # numpy.ndarrayに確実に変換
+            # F5-TTSのinfer_processは (wav, sr, spect) のタプルを返す
+            # 最初の要素 audio_data[0] (wavデータ) だけを取り出す
             import numpy as np
-            if not isinstance(audio_data, np.ndarray):
-                audio_data = np.array(audio_data)
+            if isinstance(audio_data, tuple):
+                wav_data = audio_data[0]  # wavデータのみ取得
+            elif isinstance(audio_data, list):
+                wav_data = audio_data[0]  # リストの場合も最初の要素
+            else:
+                wav_data = audio_data  # 既に単一データの場合
+            
+            # numpy配列に確実に変換
+            if not isinstance(wav_data, np.ndarray):
+                wav_data = np.array(wav_data, dtype=np.float32)
+            else:
+                # 既にnumpy配列の場合、float32に変換（必要に応じて）
+                if wav_data.dtype != np.float32:
+                    wav_data = wav_data.astype(np.float32)
             
             # 1次元配列に変換（2次元の場合は最初のチャンネルのみ）
-            if audio_data.ndim > 1:
-                audio_data = audio_data[0] if audio_data.shape[0] == 1 else audio_data[:, 0]
+            if wav_data.ndim > 1:
+                if wav_data.shape[0] == 1:
+                    wav_data = wav_data[0]  # (1, samples) -> (samples,)
+                else:
+                    wav_data = wav_data[:, 0]  # (channels, samples) -> (samples,)
             
-            # 音声データを保存（try-exceptで囲む）
+            # 音声データを保存（try-exceptで囲み、エラーが発生しても次の行へ進む）
             try:
-                sf.write(str(output_path), audio_data, 24000)  # 24kHz
+                sf.write(str(output_path), wav_data, 24000)  # 24kHz
                 return True
             except Exception as save_error:
                 print(f"  ✗ 保存エラー: {save_error}")
+                print(f"    データ型: {type(wav_data)}, 形状: {wav_data.shape if hasattr(wav_data, 'shape') else 'N/A'}")
                 import traceback
                 traceback.print_exc()
                 return False
