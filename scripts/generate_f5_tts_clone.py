@@ -107,7 +107,7 @@ def load_f5_tts_model(device: str = 'cpu', model_name: str = 'F5TTS_v1_Base', vo
         # モデル設定ファイルを読み込み
         model_cfg_path = files("f5_tts").joinpath(f"configs/{model_name}.yaml")
         model_cfg_full = OmegaConf.load(str(model_cfg_path))
-        # model部分のみを取得（hydraメタデータを除外）
+        # model部分のみを取得
         model_cfg = model_cfg_full.model
         
         # モデルクラスを取得
@@ -136,11 +136,13 @@ def load_f5_tts_model(device: str = 'cpu', model_name: str = 'F5TTS_v1_Base', vo
         # ボコーダー名を取得
         mel_spec_type = vocoder_name
         
-        # モデルをロード（model_cfgはmodel部分のみを渡す - hydraメタデータを除外）
-        # load_model内でmodel_cls(**model_cfg, ...)として展開されるため、model_cfgはmodel部分のみ
+        # モデルをロード（model_cfg.archのみを渡す - name, backbone, tokenizer等を除外）
+        # load_model内でmodel_cls(**model_cfg, ...)として展開されるため、arch部分のみを渡す
+        model_arch_cfg = model_cfg.arch
+        
         _model_obj = load_model(
             model_cls=model_cls,
-            model_cfg=model_cfg,  # model部分のみ（hydraメタデータなし）
+            model_cfg=model_arch_cfg,  # arch部分のみ（name, backbone等を除外）
             ckpt_path=ckpt_file,
             mel_spec_type=mel_spec_type,
             vocab_file="",  # 空文字列でデフォルト
