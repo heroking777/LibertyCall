@@ -446,8 +446,68 @@ class FreeswitchRTPMonitor:
         timer.start()
         self.gateway._asr_enable_timer = timer
     
+    def _pcap_capture_loop(self, port: int):
+        """pcap方式でRTPパケットをキャプチャするループ（別スレッドで実行）"""
+        try:
+            self.logger.info(f"[FS_RTP_MONITOR] Starting pcap capture for port {port}")
+            # scapyのsniff()を使用してパケットをキャプチャ
+            # filter: UDPパケットで、指定ポートを使用
+            # store=False: パケットをメモリに保存しない（パフォーマンス向上）
+            # prn: パケットを受信したときに呼び出すコールバック関数
+            sniff(
+                filter=f"udp port {port}",
+                prn=self._process_captured_packet,
+                stop_filter=lambda x: not self.capture_running,
+                store=False
+            )
+        except Exception as e:
+            self.logger.error(f"[FS_RTP_MONITOR] Error in pcap capture loop: {e}", exc_info=True)
+        finally:
+            self.logger.info(f"[FS_RTP_MONITOR] pcap capture loop ended for port {port}")
+    
+    def _process_captured_packet(self, packet):
+        """キャプチャしたパケットを処理"""
+        try:
+            # IP層とUDP層を確認
+            if IP in packet and UDP in packet:
+                ip_layer = packet[IP]
+                udp_layer = packet[UDP]
+                
+                # 送信元と宛先の情報を取得
+                src_ip = ip_layer.src
+                dst_ip = ip_layer.dst
+                src_port = udp_layer.sport
+                dst_port = udp_layer.dport
+                
+                # UDPペイロード（RTPデータ）を取得
+                rtp_data = bytes(udp_layer.payload)
+                
+                if len(rtp_data) > 0:
+                    # 送信元アドレスとして使用（リモートからFreeSWITCHへのパケットをキャプチャ）
+                    addr = (src_ip, src_port)
+                    
+                    # ログ出力
+                    self.logger.debug(f"[RTP_RECV] Captured {len(rtp_data)} bytes from {addr} (pcap)")
+                    self.logger.info(f"[RTP_RECV_RAW] from={addr}, len={len(rtp_data)} (pcap)")
+                    
+                    # asyncioイベントループでhandle_rtp_packetを実行
+                    # 別スレッドからasyncioを呼び出すため、新しいイベントループを作成
+                    try:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(self.gateway.handle_rtp_packet(rtp_data, addr))
+                        loop.close()
+                    except Exception as e:
+                        self.logger.error(f"[FS_RTP_MONITOR] Error processing captured packet: {e}", exc_info=True)
+        except Exception as e:
+            self.logger.error(f"[FS_RTP_MONITOR] Error in _process_captured_packet: {e}", exc_info=True)
+    
     async def stop_monitoring(self):
         """監視を停止"""
+        self.capture_running = False
+        if self.capture_thread and self.capture_thread.is_alive():
+            # スレッドの終了を待つ（最大5秒）
+            self.capture_thread.join(timeout=5.0)
         if self.monitor_transport:
             self.monitor_transport.close()
         if self.monitor_sock:
