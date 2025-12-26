@@ -240,9 +240,13 @@ class GoogleASR:
         """
         Google StreamingRecognize をバックグラウンドで回すワーカー。
         """
-        self.logger.debug("GoogleASR._stream_worker: start")
+        # 強制的にINFOレベルでログ出力（デバッグ用）
+        self.logger.info("[STREAM_WORKER_ENTRY] _stream_worker started")
         
-        def request_generator_from_queue():
+        try:
+            self.logger.info("[STREAM_WORKER_PRECHECK] About to start request generator")
+            
+            def request_generator_from_queue():
             """
             audio_queue に積まれた PCM を Google の StreamingRecognizeRequest に変換するジェネレータ。
             Asterisk 側は 20ms ごとに RTP を送ってくるが、ここで明示的に sleep する必要はない。
@@ -279,8 +283,8 @@ class GoogleASR:
                 # ここで1リクエスト分を yield して制御が呼び元に戻るので、
                 # 追加の sleep は不要
                 yield cloud_speech.StreamingRecognizeRequest(audio_content=chunk)  # type: ignore[union-attr]
-        
-        try:
+            
+            self.logger.info("[STREAM_WORKER_PRECHECK] Request generator defined, about to create config")
             
             # 2. streaming 用 config を作成
             # RecognitionConfig を作成
@@ -320,10 +324,12 @@ class GoogleASR:
                 "GoogleASR: STREAM_WORKER_LOOP_START (model=default_enhanced, "
                 f"interim_results=True, language={config.language_code})"
             )
+            self.logger.info("[STREAM_WORKER_PRECHECK] About to call streaming_recognize()")
             responses = self.client.streaming_recognize(
                 config=streaming_config,
                 requests=request_generator_from_queue(),
             )
+            self.logger.info("[STREAM_WORKER_PRECHECK] streaming_recognize() called, entering response loop")
             
             for response in responses:
                 # レスポンス全体をログに出す
