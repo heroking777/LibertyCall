@@ -2177,8 +2177,22 @@ class RealtimeGateway:
             if self.current_segment_start is None:
                 self.current_segment_start = time.time()
 
-            if self.is_user_speaking:
+            # --- streaming_enabledに関係なくis_user_speakingを更新（Batch ASRモードでも動作するように） ---
+            # BARGE_IN_THRESHOLDはTTS停止用の閾値、MIN_RMS_FOR_SPEECHはASR用の閾値として使用
+            # ここでは、音声検出用のより低い閾値を使用（または常に更新）
+            MIN_RMS_FOR_SPEECH = 80  # ASR用の最小RMS閾値（BARGE_IN_THRESHOLD=1000より低い）
+            if rms > MIN_RMS_FOR_SPEECH:
+                if not self.is_user_speaking:
+                    self.is_user_speaking = True
+                    self.last_voice_time = time.time()
                 self.turn_rms_values.append(rms)
+            elif rms <= MIN_RMS_FOR_SPEECH:
+                # 無音が続く場合はis_user_speakingをFalseに（ただし、turn_rms_valuesには追加しない）
+                # 既に蓄積されたRMS値は保持される
+                pass
+            
+            # デバッグログ
+            self.logger.info(f"[ASR_DEBUG] RMS={rms:.1f}, is_user_speaking={self.is_user_speaking}, turn_rms_count={len(self.turn_rms_values)}, streaming_enabled={self.streaming_enabled}")
 
             # --- ストリーミングモードでは従来のバッファリング処理をスキップ ---
             if self.streaming_enabled:
