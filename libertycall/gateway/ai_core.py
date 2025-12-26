@@ -198,12 +198,30 @@ class GoogleASR:
         
         # それ以外なら新しいスレッドを起動
         self._stop_event.clear()
-        self._stream_thread = threading.Thread(
-            target=self._stream_worker,
-            daemon=False  # デバッグ用にFalseに変更（例外を可視化）
-        )
+        
+        # 【緊急デバッグ】メソッド参照が正しいか確認
+        print(f"[DEBUG_METHOD_CHECK] _stream_worker method exists: {hasattr(self, '_stream_worker')}", flush=True)
+        print(f"[DEBUG_METHOD_CHECK] _stream_worker callable: {callable(self._stream_worker)}", flush=True)
+        
+        # 例外を確実にキャッチするためにtry-exceptでラップ
+        try:
+            self._stream_thread = threading.Thread(
+                target=self._stream_worker,
+                daemon=False,
+                name=f"GoogleASR-{call_id}"  # スレッド名を設定（デバッグ用）
+            )
+        except Exception as e:
+            print(f"[FATAL] Thread creation failed: {e}", flush=True)
+            self.logger.exception(f"Thread creation failed: {e}")
+            raise
+        
         self._stream_thread.start()
-        self.logger.info(f"GoogleASR: STREAM_WORKER_START call_id={call_id}")
+        # 【緊急デバッグ】スレッドが本当に起動したか確認
+        import time
+        time.sleep(0.01)  # 10ms待機
+        thread_alive = self._stream_thread.is_alive()
+        print(f"[EMERGENCY_THREAD_CHECK] Thread started and alive={thread_alive}", flush=True)
+        self.logger.info(f"GoogleASR: STREAM_WORKER_START call_id={call_id} thread_alive={thread_alive}")
     
     def restart_stream(self, call_id: str) -> None:
         """
