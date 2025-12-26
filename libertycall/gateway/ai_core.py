@@ -258,13 +258,17 @@ class GoogleASR:
         """
         Google StreamingRecognize をバックグラウンドで回すワーカー。
         """
-        # 【緊急デバッグ】強制的にstdoutに出力（ログが効かない場合の最終手段）
-        print("[EMERGENCY_DEBUG] _stream_worker() ENTERED", flush=True)
-        import sys
-        sys.stdout.flush()
-        
-        # 強制的にINFOレベルでログ出力（デバッグ用）
-        self.logger.info("[STREAM_WORKER_ENTRY] _stream_worker started")
+        # 【最終手段】すべてをtry-exceptで囲む
+        try:
+            print("[EMERGENCY_DEBUG] _stream_worker() ENTERED", flush=True)
+            import sys, traceback
+            sys.stdout.flush()
+            self.logger.info("[STREAM_WORKER_ENTRY] _stream_worker started")
+        except Exception as e:
+            # 例外を強制出力
+            traceback.print_exc()
+            print(f"[FATAL_IN_STREAM_WORKER] {e}", flush=True)
+            raise
         
         try:
             self.logger.info("[STREAM_WORKER_PRECHECK] About to start request generator")
