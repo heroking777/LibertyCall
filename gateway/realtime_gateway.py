@@ -548,6 +548,36 @@ class FreeswitchRTPMonitor:
         if not self.asr_active:
             self.asr_active = True
             self.logger.info("[FS_RTP_MONITOR] ASR enabled after 002.wav playback completion")
+            
+            # 【修正】AICore.enable_asr()を呼び出してストリームワーカーを起動
+            if self.gateway and hasattr(self.gateway, 'ai_core') and self.gateway.ai_core:
+                # call_idを取得
+                call_id = getattr(self.gateway, 'call_id', None)
+                if not call_id and hasattr(self.gateway, '_get_effective_call_id'):
+                    call_id = self.gateway._get_effective_call_id()
+                
+                # UUIDを取得（call_uuid_mapから、またはupdate_uuid_mapping_for_callで取得）
+                uuid = None
+                if call_id and hasattr(self.gateway, 'call_uuid_map'):
+                    uuid = self.gateway.call_uuid_map.get(call_id)
+                
+                # UUIDが見つからない場合は、update_uuid_mapping_for_callで取得を試みる
+                if call_id and not uuid:
+                    uuid = self.update_uuid_mapping_for_call(call_id)
+                
+                # client_idを取得
+                client_id = getattr(self.gateway, 'client_id', '000') or '000'
+                
+                if uuid:
+                    try:
+                        self.gateway.ai_core.enable_asr(uuid, client_id=client_id)
+                        self.logger.info(f"[FS_RTP_MONITOR] AICore.enable_asr() called successfully for uuid={uuid} call_id={call_id} client_id={client_id}")
+                    except Exception as e:
+                        self.logger.error(f"[FS_RTP_MONITOR] Failed to call AICore.enable_asr(): {e}", exc_info=True)
+                else:
+                    self.logger.warning(f"[FS_RTP_MONITOR] Cannot call AICore.enable_asr(): uuid is None (call_id={call_id})")
+            else:
+                self.logger.warning("[FS_RTP_MONITOR] Cannot call AICore.enable_asr(): gateway or ai_core not available")
 
     def _schedule_asr_enable_after_initial_sequence(self, base_delay: float = 3.0, max_wait: float = 10.0):
         """
