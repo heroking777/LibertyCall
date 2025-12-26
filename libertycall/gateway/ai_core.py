@@ -1660,17 +1660,20 @@ class AICore:
             audio_dir = Path(f"/opt/libertycall/clients/{effective_client_id}/audio")
             audio_file_norm = audio_dir / f"{template_id}_8k_norm.wav"
             audio_file_regular = audio_dir / f"{template_id}_8k.wav"
+            audio_file_plain = audio_dir / f"{template_id}.wav"
             
-            # _norm.wavが存在すれば優先使用
+            # _norm.wavが存在すれば優先使用、次に_8k.wav、最後に.wavのみ
             if audio_file_norm.exists():
                 audio_file = str(audio_file_norm)
             elif audio_file_regular.exists():
                 audio_file = str(audio_file_regular)
+            elif audio_file_plain.exists():
+                audio_file = str(audio_file_plain)
             else:
                 # 音声ファイルが存在しない場合は警告を出力
                 self.logger.warning(
                     f"[PLAY_TEMPLATE] Audio file not found: template_id={template_id} "
-                    f"(checked: {audio_file_norm}, {audio_file_regular})"
+                    f"(checked: {audio_file_norm}, {audio_file_regular}, {audio_file_plain})"
                 )
                 # runtime.logにも警告を出力
                 runtime_logger = logging.getLogger("runtime")
