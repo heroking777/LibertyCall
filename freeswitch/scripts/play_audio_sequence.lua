@@ -86,13 +86,19 @@ local session_client_id = client_id
 -- session:execute("set", "record_session=" .. record_session_path)
 -- session:execute("record_session", record_session_path)
 
--- GatewayへリアルタイムRTPをミラー送信（UDP経由で127.0.0.1:7002に送信）
--- mod_rtp_streamを使用してRTPストリームをUDPに送信
-freeswitch.consoleLog("INFO", "[RTP] Starting RTP stream to Gateway (127.0.0.1:7002)\n")
-local api = freeswitch.API()
--- uuid_rtp_streamを使用（FreeSWITCH 1.10以降で利用可能）
-local result = api:executeString("uuid_rtp_stream " .. uuid .. " start 127.0.0.1 7002")
-freeswitch.consoleLog("INFO", "[RTP] uuid_rtp_stream result: " .. tostring(result) .. "\n")
+-- GatewayへRTPポート情報を通知
+freeswitch.consoleLog("INFO", "[RTP] Notifying Gateway of RTP ports\n")
+local local_rtp = session:getVariable("local_media_ip") .. ":" .. session:getVariable("local_media_port")
+local remote_rtp = session:getVariable("remote_media_ip") .. ":" .. session:getVariable("remote_media_port")
+freeswitch.consoleLog("INFO", string.format("[RTP_INFO] local=%s remote=%s uuid=%s\n", local_rtp, remote_rtp, uuid))
+
+-- RTP情報をファイルに保存（Gatewayが読み取る）
+local rtp_info_file = io.open("/tmp/rtp_info_" .. uuid .. ".txt", "w")
+if rtp_info_file then
+    rtp_info_file:write(string.format("local=%s\nremote=%s\nuuid=%s\n", local_rtp, remote_rtp, uuid))
+    rtp_info_file:close()
+    freeswitch.consoleLog("INFO", "[RTP_INFO] Saved to /tmp/rtp_info_" .. uuid .. ".txt\n")
+end
 
 -- 必ず再生するアナウンス（無音削減: silence_threshold=0.1でテンプレート間の無音を削減）
 session:setVariable("silence_threshold", "0.1")
