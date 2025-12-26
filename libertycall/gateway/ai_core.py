@@ -1909,10 +1909,8 @@ class AICore:
                                     # テンプレートを取得して再生
                                     template_ids = flow_engine.get_templates(next_phase)
                                     if template_ids:
-                                        # 最終活動時刻を即座に更新（110再生前に更新してタイムアウトを防ぐ）
-                                        self.last_activity[call_id] = current_time
-                                        self.logger.debug(f"[ACTIVITY_MONITOR] Updated last_activity: call_id={call_id} time={current_time}")
-                                        
+                                        # 注意: last_activityの更新は再生成功時のみ行う（_handle_playback内で処理）
+                                        # 再生失敗時は更新しないため、タイムアウトが継続的に発生しない
                                         self._play_template_sequence(call_id, template_ids, client_id)
                                         
                                         # NOT_HEARD (110) 再提示後、QAフェーズへ復帰を保証

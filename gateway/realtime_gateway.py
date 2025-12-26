@@ -2867,9 +2867,11 @@ class RealtimeGateway:
                 self.logger.debug(f"[PLAYBACK] Using mapped UUID: call_id={call_id} -> uuid={freeswitch_uuid}")
             result = self.esl_connection.execute("playback", audio_file, uuid=freeswitch_uuid, force_async=True)
             
+            playback_success = False
             if result:
                 reply_text = result.getHeader('Reply-Text') if hasattr(result, 'getHeader') else None
                 if reply_text and '+OK' in reply_text:
+                    playback_success = True
                     self.logger.info(
                         f"[PLAYBACK] Playback started: call_id={call_id} file={audio_file}"
                     )
@@ -2880,6 +2882,12 @@ class RealtimeGateway:
                     )
             else:
                 self.logger.warning(f"[PLAYBACK] No response from ESL: call_id={call_id}")
+            
+            # 再生成功時のみlast_activityを更新（タイムアウト防止）
+            if playback_success and hasattr(self.ai_core, 'last_activity'):
+                import time
+                self.ai_core.last_activity[call_id] = time.time()
+                self.logger.debug(f"[PLAYBACK] Updated last_activity on success: call_id={call_id}")
             
             # 注意: 再生完了の検知は、FreeSWITCHのイベント（CHANNEL_EXECUTE_COMPLETE）で行う必要がある
             # ここでは、簡易的に一定時間後にis_playingをFalseにする（実際の実装ではイベントリスナーを使用）
