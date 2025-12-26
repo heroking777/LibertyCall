@@ -3038,6 +3038,15 @@ class RealtimeGateway:
         :param call_id: 通話UUID
         :param audio_file: 音声ファイルのパス
         """
+        # 【修正3】古いセッションの強制クリーンアップ: アクティブなcall_idでない場合はスキップ
+        if hasattr(self, '_active_calls') and self._active_calls:
+            if call_id not in self._active_calls:
+                self.logger.warning(
+                    f"[PLAYBACK] Skipping playback for stale session: call_id={call_id} "
+                    f"(not in active calls: {self._active_calls})"
+                )
+                return
+        
         try:
             # ESL接続が切れている場合は自動リカバリを試みる
             if not self.esl_connection or not self.esl_connection.connected():

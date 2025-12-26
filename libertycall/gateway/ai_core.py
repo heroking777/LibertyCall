@@ -3612,9 +3612,18 @@ class AICore:
                         except Exception as e:
                             self.logger.exception(f"[BACKCHANNEL_ERROR] call_id={call_id} error={e}")
             
-            # partial結果が5文字以上かつバックチャネル以外の場合、会話フローを開始（ASR高速化）
+            # 【修正4】ASRレスポンスの高速化: GREETING（もしもし等）の早期検出
             merged_text = self.partial_transcripts[call_id].get("text", "")
-            if merged_text and len(merged_text) >= 5:
+            text_stripped = merged_text.strip() if merged_text else ""
+            
+            # GREETINGキーワードの早期検出（3文字以上で検出可能）
+            greeting_keywords = ["もしもし", "もし", "おはよう", "こんにちは", "こんばんは", "失礼します"]
+            is_greeting_detected = any(keyword in text_stripped for keyword in greeting_keywords)
+            
+            # GREETING検出時は3文字以上で即座に処理開始（低遅延モード）
+            min_length_for_processing = 3 if is_greeting_detected else 5
+            
+            if merged_text and len(text_stripped) >= min_length_for_processing:
                 # processedフラグをチェック（既に処理済みなら早期return）
                 if self.partial_transcripts[call_id].get("processed"):
                     self.logger.debug(f"[ASR_SKIP_PARTIAL] Already processed: call_id={call_id} text={merged_text!r}")
@@ -3622,8 +3631,17 @@ class AICore:
                 
                 # 未処理の場合のみ処理してフラグを保存（final時に重複処理しない）
                 self.partial_transcripts[call_id]["processed"] = True
-                # 短い発話以外はpartialでも処理開始（finalを待たずに会話フローを開始）
-                self.logger.info(f"[ASR_PARTIAL_PROCESS] call_id={call_id} partial_text={merged_text!r} (>=5 chars, processing immediately)")
+                # GREETING検出時は低遅延モードで即座に処理開始
+                if is_greeting_detected:
+                    self.logger.info(
+                        f"[ASR_PARTIAL_PROCESS] call_id={call_id} partial_text={merged_text!r} "
+                        f"(GREETING detected, >=3 chars, low-latency mode)"
+                    )
+                else:
+                    self.logger.info(
+                        f"[ASR_PARTIAL_PROCESS] call_id={call_id} partial_text={merged_text!r} "
+                        f"(>=5 chars, processing immediately)"
+                    )
                 # 下の処理に進む（return Noneしない）
             else:
                 # partial の場合は会話ロジックを実行しない
