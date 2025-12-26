@@ -114,8 +114,38 @@ class FreeswitchRTPMonitor:
         self.asr_active = False  # 002.wav再生完了後にTrueになる
         
     def get_rtp_port_from_freeswitch(self) -> Optional[int]:
-        """FreeSWITCHから現在の送信RTPポートを取得（uuid_dump経由）"""
+        """FreeSWITCHから現在の送信RTPポートを取得（RTP情報ファイル優先、uuid_dumpはフォールバック）"""
         import re
+        import glob
+        from pathlib import Path
+        
+        # まず、RTP情報ファイルをチェック（Luaスクリプトが作成したファイル）
+        try:
+            rtp_info_files = list(Path("/tmp").glob("rtp_info_*.txt"))
+            if rtp_info_files:
+                # 最新のファイルを取得（複数の通話に対応）
+                latest_file = max(rtp_info_files, key=lambda p: p.stat().st_mtime)
+                self.logger.info(f"[FS_RTP_MONITOR] Found RTP info file: {latest_file}")
+                
+                with open(latest_file, 'r') as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        if line.startswith("local="):
+                            local_rtp = line.split("=", 1)[1].strip()
+                            # local_rtp形式: "160.251.170.253:7104"
+                            if ":" in local_rtp:
+                                port_str = local_rtp.split(":")[-1]
+                                try:
+                                    port = int(port_str)
+                                    self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH RTP port: {port} (from RTP info file: {latest_file})")
+                                    return port
+                                except ValueError:
+                                    self.logger.warning(f"[FS_RTP_MONITOR] Failed to parse port from local_rtp: {local_rtp}")
+                                    continue
+        except Exception as e:
+            self.logger.debug(f"[FS_RTP_MONITOR] Error reading RTP info file (non-fatal): {e}")
+        
+        # フォールバック: uuid_dump経由で取得
         try:
             # まず show channels でアクティブなチャンネルのUUIDを取得
             result = subprocess.run(
