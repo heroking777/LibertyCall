@@ -2,26 +2,15 @@
 # -*- coding: utf-8 -*-
 """
 VOICEVOXを使用した日本語TTS（音声合成）スクリプト
-電話越しの女性の声を一括生成
+クリアで綺麗なWAVファイルを一括生成
 """
 
 import os
 import sys
-import io
 import requests
 import json
 from pathlib import Path
 from typing import Optional
-
-try:
-    from pydub import AudioSegment
-    from pydub.effects import highpass_filter, lowpass_filter
-    PYDUB_AVAILABLE = True
-except ImportError:
-    PYDUB_AVAILABLE = False
-    print("エラー: pydub がインストールされていません。")
-    print("インストール: pip install pydub")
-    print("注意: pydubを使用するには ffmpeg も必要です。")
 
 # VOICEVOX設定
 VOICEVOX_URL = "http://localhost:50021"
@@ -31,11 +20,6 @@ SPEAKER_ID = 2  # 四国めたん・ノーマル
 SPEED_SCALE = 1.15      # 話速
 PITCH_SCALE = -0.05     # 音高
 INTONATION_SCALE = 1.2  # 抑揚
-
-# 電話風フィルタ設定
-HIGHPASS_FREQ = 300     # ハイパスフィルタ（300Hz）
-LOWPASS_FREQ = 3000     # ローパスフィルタ（3000Hz）
-GAIN_DB = 3.0           # ゲイン（少し歪ませる）
 
 # プロジェクトルートのパスを取得
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -122,34 +106,6 @@ def synthesize_audio(audio_query: dict) -> Optional[bytes]:
         return None
 
 
-def apply_phone_filter(audio_data: bytes) -> Optional[bytes]:
-    """電話風のフィルタを適用"""
-    if not PYDUB_AVAILABLE:
-        print("  ⚠ pydubが利用できないため、フィルタをスキップします")
-        return audio_data
-    
-    try:
-        # WAVデータを読み込み
-        audio = AudioSegment.from_wav(io.BytesIO(audio_data))
-        
-        # ハイパスフィルタ（300Hz以下をカット）
-        audio = highpass_filter(audio, HIGHPASS_FREQ)
-        
-        # ローパスフィルタ（3000Hz以上をカット）
-        audio = lowpass_filter(audio, LOWPASS_FREQ)
-        
-        # ゲインを上げて少し歪ませる（電話っぽさを出す）
-        audio = audio + GAIN_DB
-        
-        # WAV形式で出力
-        output = io.BytesIO()
-        audio.export(output, format="wav")
-        return output.getvalue()
-    except Exception as e:
-        print(f"  ✗ フィルタ適用エラー: {e}")
-        return audio_data  # エラー時は元のデータを返す
-
-
 def ensure_output_directory():
     """出力ディレクトリを作成"""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -174,17 +130,11 @@ def generate_audio_file(text: str, index: int) -> bool:
         print(f"  ✗ 失敗: 音声合成に失敗しました")
         return False
     
-    # 電話風フィルタを適用
-    filtered_audio = apply_phone_filter(audio_data)
-    if not filtered_audio:
-        print(f"  ✗ 失敗: フィルタ適用に失敗しました")
-        return False
-    
-    # ファイルに保存
+    # VOICEVOXから取得したWAVデータをそのまま保存
     try:
         with open(output_path, 'wb') as f:
-            f.write(filtered_audio)
-        file_size = len(filtered_audio)
+            f.write(audio_data)
+        file_size = len(audio_data)
         print(f"  ✓ 保存成功: {output_path.name} ({file_size:,} bytes)")
         return True
     except Exception as e:
@@ -195,21 +145,12 @@ def generate_audio_file(text: str, index: int) -> bool:
 def main():
     """メイン処理"""
     print("=" * 60)
-    print("VOICEVOX 音声生成スクリプト（電話風加工付き）")
+    print("VOICEVOX 音声生成スクリプト")
     print("=" * 60)
     
     # VOICEVOX接続確認
     if not check_voicevox_connection():
         sys.exit(1)
-    
-    # pydub確認
-    if not PYDUB_AVAILABLE:
-        print("⚠ 警告: pydubが利用できないため、電話風フィルタは適用されません")
-        print("  インストール: pip install pydub")
-        print("  注意: ffmpegも必要です (apt install ffmpeg など)")
-        response = input("  続行しますか？ (y/n): ")
-        if response.lower() != 'y':
-            sys.exit(1)
     
     # 出力ディレクトリ作成
     ensure_output_directory()
