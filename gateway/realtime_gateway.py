@@ -3072,8 +3072,8 @@ class RealtimeGateway:
             freeswitch_uuid = self.call_uuid_map.get(call_id, call_id)
             
             # UUIDの有効性を事前確認（先読み更新）
-            # マッピングが存在しない、またはcall_idと同じ場合は、UUIDを再取得
-            uuid_needs_update = (freeswitch_uuid == call_id) or (freeswitch_uuid not in self.call_uuid_map.values())
+            # 【修正1】より積極的にUUID更新を実行（常にUUID更新を試行）
+            uuid_needs_update = True  # 常にUUID更新を試行
             
             if uuid_needs_update:
                 self.logger.info(f"[PLAYBACK] Pre-emptive UUID update: call_id={call_id} current_uuid={freeswitch_uuid}")
@@ -3120,9 +3120,18 @@ class RealtimeGateway:
                     # invalid session idエラーを検知
                     if reply_text and 'invalid session id' in reply_text.lower():
                         invalid_session = True
-                        self.logger.warning(
-                            f"[PLAYBACK] Invalid session id detected: call_id={call_id} uuid={freeswitch_uuid} reply={reply_text}"
-                        )
+                        # 【修正3】invalid session id検出時は最大3回までリトライ
+                        if not hasattr(self, '_playback_retry_count'):
+                            self._playback_retry_count = {}
+                        retry_count = self._playback_retry_count.get(call_id, 0)
+                        if retry_count < 3:
+                            self.logger.warning(
+                                f"[PLAYBACK] Invalid session id detected: call_id={call_id} uuid={freeswitch_uuid} reply={reply_text} (retry {retry_count + 1}/3)"
+                            )
+                        else:
+                            self.logger.error(
+                                f"[PLAYBACK] Invalid session id detected: call_id={call_id} uuid={freeswitch_uuid} reply={reply_text} (max retries exceeded)"
+                            )
                     else:
                         self.logger.warning(
                             f"[PLAYBACK] Playback command may have failed: call_id={call_id} "
@@ -3131,17 +3140,20 @@ class RealtimeGateway:
             else:
                 self.logger.warning(f"[PLAYBACK] No response from ESL: call_id={call_id}")
             
-            # 【修正1】invalid session idエラー時、UUIDマッピングを再取得してリトライ（無限リトライ防止付き）
+            # 【修正3】invalid session idエラー時、UUIDマッピングを再取得してリトライ（最大3回まで）
             if invalid_session:
-                # 【無限リトライ防止】リトライ回数を1回に制限
-                max_retries = 1
-                retry_count = 0
+                # リトライカウントを初期化（まだ存在しない場合）
+                if not hasattr(self, '_playback_retry_count'):
+                    self._playback_retry_count = {}
+                retry_count = self._playback_retry_count.get(call_id, 0)
+                max_retries = 3
                 
-                # リトライ実行（1回のみ）
-                retry_count += 1
-                self.logger.info(
-                    f"[PLAYBACK] Attempting UUID remapping for call_id={call_id} (retry {retry_count}/{max_retries})"
-                )
+                if retry_count < max_retries:
+                    # リトライカウントを増加
+                    self._playback_retry_count[call_id] = retry_count + 1
+                    self.logger.info(
+                        f"[PLAYBACK] Attempting UUID remapping for call_id={call_id} (retry {retry_count + 1}/{max_retries})"
+                    )
                 # 【修正1】UUIDマッピングを再取得（fs_rtp_monitorを使用、見つからない場合はRealtimeGateway自身が実行）
                 new_uuid = None
                 if hasattr(self, 'fs_rtp_monitor') and self.fs_rtp_monitor:
@@ -3161,6 +3173,8 @@ class RealtimeGateway:
                             if retry_reply and '+OK' in retry_reply:
                                 playback_success = True
                                 self._last_playback_success = True
+                                # リトライ成功時はカウントをリセット
+                                self._playback_retry_count[call_id] = 0
                                 self.logger.info(
                                     f"[PLAYBACK] Playback started (after remap): call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
                                 )
@@ -3181,6 +3195,8 @@ class RealtimeGateway:
                                         if fallback_reply and '+OK' in fallback_reply:
                                             playback_success = True
                                             self._last_playback_success = True
+                                            # リトライ成功時はカウントをリセット
+                                            self._playback_retry_count[call_id] = 0
                                             self.logger.info(
                                                 f"[PLAYBACK] Playback started (final fallback): call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
                                             )
@@ -3194,34 +3210,47 @@ class RealtimeGateway:
                                     self.logger.warning(
                                         f"[PLAYBACK] Retry failed: call_id={call_id} reply={retry_reply}"
                                     )
+                                    # リトライカウントをリセット（最大リトライ回数に達した場合）
+                                    self._playback_retry_count[call_id] = 0
                                     self.logger.error(
                                         f"[PLAYBACK] Retry limit reached (max_retries={max_retries}), aborting playback: call_id={call_id}"
                                     )
                         else:
                             self.logger.warning(f"[PLAYBACK] Retry failed: no response from ESL")
+                            # リトライカウントをリセット（最大リトライ回数に達した場合）
+                            self._playback_retry_count[call_id] = 0
                             self.logger.error(
                                 f"[PLAYBACK] Retry limit reached (max_retries={max_retries}), aborting playback: call_id={call_id}"
                             )
-                    else:
-                        # UUID再取得に失敗した場合、call_idを直接使用（フォールバック、1回のみ）
-                        self.logger.warning(
-                            f"[PLAYBACK] UUID remapping failed, using call_id as UUID (fallback): call_id={call_id}"
-                        )
-                        freeswitch_uuid = call_id
-                        fallback_result = self.esl_connection.execute("playback", audio_file, uuid=freeswitch_uuid, force_async=True)
-                        if fallback_result:
-                            fallback_reply = fallback_result.getHeader('Reply-Text') if hasattr(fallback_result, 'getHeader') else None
-                            if fallback_reply and '+OK' in fallback_reply:
-                                playback_success = True
-                                self._last_playback_success = True
-                                self.logger.info(
-                                    f"[PLAYBACK] Playback started (fallback): call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
-                                )
-                            else:
-                                self.logger.error(
-                                    f"[PLAYBACK] Fallback also failed: call_id={call_id} reply={fallback_reply} (no more retries)"
-                                )
+                else:
+                    # 最大リトライ回数に達した場合
+                    self.logger.error(f"[PLAYBACK] Max retries exceeded for call_id={call_id} (retry_count={retry_count}, max_retries={max_retries})")
+                    # リトライカウントをリセット
+                    self._playback_retry_count[call_id] = 0
+                
+                # UUID再取得に失敗した場合の処理（retry_count < max_retries の外側で処理）
+                if not new_uuid and retry_count < max_retries:
+                    # UUID再取得に失敗した場合、call_idを直接使用（フォールバック、1回のみ）
+                    self.logger.warning(
+                        f"[PLAYBACK] UUID remapping failed, using call_id as UUID (fallback): call_id={call_id}"
+                    )
+                    freeswitch_uuid = call_id
+                    fallback_result = self.esl_connection.execute("playback", audio_file, uuid=freeswitch_uuid, force_async=True)
+                    if fallback_result:
+                        fallback_reply = fallback_result.getHeader('Reply-Text') if hasattr(fallback_result, 'getHeader') else None
+                        if fallback_reply and '+OK' in fallback_reply:
+                            playback_success = True
+                            self._last_playback_success = True
+                            # リトライ成功時はカウントをリセット
+                            self._playback_retry_count[call_id] = 0
+                            self.logger.info(
+                                f"[PLAYBACK] Playback started (fallback): call_id={call_id} file={audio_file} uuid={freeswitch_uuid}"
+                            )
                         else:
+                            self.logger.error(
+                                f"[PLAYBACK] Fallback also failed: call_id={call_id} reply={fallback_reply} (no more retries)"
+                            )
+                    else:
                             self.logger.error(f"[PLAYBACK] Fallback failed: no response from ESL (no more retries)")
                 else:
                         # UUID再取得に失敗した場合、call_idを直接使用（フォールバック、1回のみ）

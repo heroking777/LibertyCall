@@ -1567,6 +1567,18 @@ class AICore:
         if not template_ids:
             template_ids = flow_engine.get_templates(current_phase)
         
+        # 【修正2】テンプレートが取得できた後、重複チェックを実施
+        if template_ids:
+            filtered_templates = []
+            for tid in template_ids:
+                # 10秒以内に再生されたテンプレートはスキップ
+                last_play = self.last_template_play.get(call_id, {}).get(tid, 0)
+                if time.time() - last_play >= 10.0:
+                    filtered_templates.append(tid)
+                else:
+                    self.logger.info(f"[FLOW_ENGINE] Skipping recently played template: {tid} (last_play={last_play:.2f}s ago)")
+            template_ids = filtered_templates
+        
         # テンプレートIDリストから実際に使用するテンプレートを選択
         # 複数のテンプレートIDがある場合は、Intentやテキストに基づいて選択
         if template_ids and len(template_ids) > 1:
