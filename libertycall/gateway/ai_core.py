@@ -1664,6 +1664,10 @@ class AICore:
         # 重複防止: 同じテンプレートを10秒以内に連続再生しない
         DUPLICATE_PREVENTION_SEC = 10.0
         
+        # 【修正2】再生キューの即時処理: 最初のテンプレートでUUID更新を確実に実行
+        # 最初のテンプレート再生前にUUIDを更新し、失敗したテンプレートも含めて確実に順番通り再生
+        failed_templates = []  # 失敗したテンプレートを記録
+        
         # 応答速度最適化: すべてのテンプレートを即座に再生開始（待機なし）
         # FreeSWITCHは自動的に順番に再生するため、各再生の完了を待つ必要はない
         for template_id in template_ids:
@@ -1734,11 +1738,41 @@ class AICore:
                     )
                 except Exception as e:
                     self.logger.exception(
-                        f"[PLAY_TEMPLATE] Failed to send playback request: {e}"
+                        f"[PLAY_TEMPLATE] Failed to send playback request: call_id={call_id} template_id={template_id} error={e}"
                     )
+                    # 失敗したテンプレートを記録（後でリトライ）
+                    failed_templates.append((template_id, audio_file))
             else:
                 # フォールバック: HTTP API経由
-                self._send_playback_request_http(call_id, audio_file)
+                try:
+                    self._send_playback_request_http(call_id, audio_file)
+                except Exception as e:
+                    self.logger.exception(
+                        f"[PLAY_TEMPLATE] HTTP playback request failed: call_id={call_id} template_id={template_id} error={e}"
+                    )
+                    failed_templates.append((template_id, audio_file))
+        
+        # 【修正2】失敗したテンプレートのリトライ（UUID更新後に再試行）
+        if failed_templates:
+            self.logger.info(
+                f"[PLAY_TEMPLATE] Retrying {len(failed_templates)} failed templates after UUID update: call_id={call_id}"
+            )
+            # 短い待機時間後にリトライ（UUID更新の完了を待つ）
+            import time
+            time.sleep(0.1)  # 100ms待機
+            
+            for template_id, audio_file in failed_templates:
+                if hasattr(self, 'playback_callback') and self.playback_callback:
+                    try:
+                        self.playback_callback(call_id, audio_file)
+                        self.last_template_play[call_id][template_id] = time.time()
+                        self.logger.info(
+                            f"[PLAY_TEMPLATE] Retry successful: call_id={call_id} template_id={template_id} file={audio_file}"
+                        )
+                    except Exception as e:
+                        self.logger.error(
+                            f"[PLAY_TEMPLATE] Retry failed: call_id={call_id} template_id={template_id} error={e}"
+                        )
     
     def _send_playback_request_http(self, call_id: str, audio_file: str) -> None:
         """
@@ -1885,8 +1919,30 @@ class AICore:
                     current_time = time.time()
                     timeout_sec = 10.0  # 無音タイムアウト: 10秒
                     
+                    # 【修正3】古いセッションの強制クリーンアップ
+                    # 現在の稼働中のcall_idを取得（_active_callsから）
+                    active_call_ids = set()
+                    if hasattr(self, 'gateway') and hasattr(self.gateway, '_active_calls'):
+                        active_call_ids = set(self.gateway._active_calls) if self.gateway._active_calls else set()
+                    
                     # 各call_idの最終活動時刻をチェック
                     for call_id, last_activity_time in list(self.last_activity.items()):
+                        # 【修正3】古いセッションの除外: アクティブなcall_idリストに存在しない場合はスキップ
+                        if active_call_ids and call_id not in active_call_ids:
+                            # 古いセッションのクリーンアップ（最終活動時刻が30秒以上経過している場合）
+                            elapsed_since_last = current_time - last_activity_time
+                            if elapsed_since_last >= 30.0:
+                                self.logger.debug(
+                                    f"[ACTIVITY_MONITOR] Cleaning up stale session: call_id={call_id} "
+                                    f"elapsed={elapsed_since_last:.1f}s (not in active calls)"
+                                )
+                                # 古いセッションのデータをクリーンアップ
+                                self.last_activity.pop(call_id, None)
+                                self.is_playing.pop(call_id, None)
+                                self.partial_transcripts.pop(call_id, None)
+                                self.last_template_play.pop(call_id, None)
+                            continue
+                        
                         # 再生中は無音タイムアウトをスキップ
                         if self.is_playing.get(call_id, False):
                             continue

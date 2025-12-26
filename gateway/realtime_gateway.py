@@ -3058,10 +3058,31 @@ class RealtimeGateway:
                 self.ai_core.is_playing[call_id] = True
                 self.logger.info(f"[PLAYBACK] is_playing[{call_id}] = True")
             
-            # 【修正1】UUIDマッピングの動的更新とセッション有効性チェック
+            # 【修正1】再生前のUUID先読み更新（Pre-emptive Update）
             # call_idからFreeSWITCH UUIDに変換（マッピングが存在する場合）
             freeswitch_uuid = self.call_uuid_map.get(call_id, call_id)
-            if freeswitch_uuid != call_id:
+            
+            # UUIDの有効性を事前確認（先読み更新）
+            # マッピングが存在しない、またはcall_idと同じ場合は、UUIDを再取得
+            uuid_needs_update = (freeswitch_uuid == call_id) or (freeswitch_uuid not in self.call_uuid_map.values())
+            
+            if uuid_needs_update:
+                self.logger.info(f"[PLAYBACK] Pre-emptive UUID update: call_id={call_id} current_uuid={freeswitch_uuid}")
+                # UUIDを先読み更新
+                new_uuid = None
+                if hasattr(self, 'fs_rtp_monitor') and self.fs_rtp_monitor:
+                    new_uuid = self.fs_rtp_monitor.update_uuid_mapping_for_call(call_id)
+                
+                if not new_uuid:
+                    self.logger.info(f"[PLAYBACK] Pre-emptive UUID lookup: executing direct lookup for call_id={call_id}")
+                    new_uuid = self._update_uuid_mapping_directly(call_id)
+                
+                if new_uuid:
+                    freeswitch_uuid = new_uuid
+                    self.logger.info(f"[PLAYBACK] Pre-emptive UUID update successful: call_id={call_id} -> uuid={freeswitch_uuid}")
+                else:
+                    self.logger.warning(f"[PLAYBACK] Pre-emptive UUID update failed, using current UUID: call_id={call_id} uuid={freeswitch_uuid}")
+            else:
                 self.logger.debug(f"[PLAYBACK] Using mapped UUID: call_id={call_id} -> uuid={freeswitch_uuid}")
             
             # 【修正3】110連打防止: 再生リクエスト送信時にlast_activityを更新（成否に関わらず）
