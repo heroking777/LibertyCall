@@ -11,7 +11,7 @@ Restart=always
 RestartSec=5
 StartLimitIntervalSec=60
 StartLimitBurst=5
-WatchdogSec=30
+# WatchdogSec=30  # watchdog timeoutを無効化（Gatewayが正常に動作するまで）
 Environment="PYTHONUNBUFFERED=1"
 StandardOutput=append:/opt/libertycall/logs/gateway_stdout.log
 StandardError=append:/opt/libertycall/logs/gateway_stderr.log
