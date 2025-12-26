@@ -249,7 +249,6 @@ class GoogleASR:
         
         self._stream_thread.start()
         # 【緊急デバッグ】スレッドが本当に起動したか確認
-        import time
         time.sleep(0.01)  # 10ms待機
         thread_alive = self._stream_thread.is_alive()
         print(f"[EMERGENCY_THREAD_CHECK] Thread started and alive={thread_alive}", flush=True)
