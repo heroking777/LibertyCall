@@ -87,14 +87,17 @@ class FlowEngine:
                 self.logger.warning(f"No templates found for phase: {phase_name}, using fallback")
                 return ["110"]
             
-            # テンプレートIDの存在チェック
+            # 【修正3】テンプレートIDの存在チェック（.wavファイルも検出）
             missing_templates = []
             for template_id in templates:
                 audio_dir = Path(f"/opt/libertycall/clients/{self.client_id}/audio")
-                audio_file_norm = audio_dir / f"{template_id}_8k_norm.wav"
+                # ファイル名の候補（優先順位: .wav → _8k.wav → _8k_norm.wav）
+                audio_file_plain = audio_dir / f"{template_id}.wav"
                 audio_file_regular = audio_dir / f"{template_id}_8k.wav"
+                audio_file_norm = audio_dir / f"{template_id}_8k_norm.wav"
                 
-                if not audio_file_norm.exists() and not audio_file_regular.exists():
+                # いずれかのファイルが存在すればOK
+                if not audio_file_plain.exists() and not audio_file_regular.exists() and not audio_file_norm.exists():
                     missing_templates.append(template_id)
             
             # 欠落テンプレートがあれば警告を出力

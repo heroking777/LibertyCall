@@ -2930,6 +2930,107 @@ class RealtimeGateway:
         self.esl_listener_thread.start()
         self.logger.info("[ESL_LISTENER] ESL event listener thread started")
     
+    def _update_uuid_mapping_directly(self, call_id: str) -> Optional[str]:
+        """
+        RealtimeGateway自身がshow channelsを実行してUUIDを取得（Monitorに依存しない）
+        
+        :param call_id: 通話ID
+        :return: 取得したUUID（失敗時はNone）
+        """
+        import subprocess
+        import re
+        from pathlib import Path
+        
+        uuid = None
+        
+        # 方法1: RTP情報ファイルから取得（優先）
+        try:
+            rtp_info_files = list(Path("/tmp").glob("rtp_info_*.txt"))
+            if rtp_info_files:
+                latest_file = max(rtp_info_files, key=lambda p: p.stat().st_mtime)
+                with open(latest_file, 'r') as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        if line.startswith("uuid="):
+                            uuid = line.split("=", 1)[1].strip()
+                            self.logger.info(f"[UUID_UPDATE] Found UUID from RTP info file: uuid={uuid} call_id={call_id}")
+                            break
+        except Exception as e:
+            self.logger.debug(f"[UUID_UPDATE] Error reading RTP info file: {e}")
+        
+        # 方法2: show channelsから取得（フォールバック、call_idに紐付く正確なUUIDを抽出）
+        if not uuid:
+            try:
+                result = subprocess.run(
+                    ["fs_cli", "-x", "show", "channels"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split('\n')
+                    if len(lines) >= 2 and not lines[0].startswith('0 total'):
+                        # ヘッダー行を解析（CSV形式）
+                        header_line = lines[0] if lines[0].startswith('uuid,') else None
+                        headers = header_line.split(',') if header_line else []
+                        
+                        # UUID形式の正規表現（8-4-4-4-12形式）
+                        uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+                        
+                        # 各行を解析してcall_idに一致するUUIDを探す
+                        for line in lines[1:]:
+                            if not line.strip() or line.startswith('uuid,'):
+                                continue
+                            
+                            parts = line.split(',')
+                            if not parts or not parts[0].strip():
+                                continue
+                            
+                            # 先頭のUUIDを取得
+                            candidate_uuid = parts[0].strip()
+                            if not uuid_pattern.match(candidate_uuid):
+                                continue
+                            
+                            # call_idが行内に含まれているか確認（cid_name, name, presence_id等に含まれる可能性）
+                            # call_idは通常 "in-YYYYMMDDHHMMSS" 形式
+                            if call_id in line:
+                                uuid = candidate_uuid
+                                self.logger.info(
+                                    f"[UUID_UPDATE] Found UUID from show channels (matched call_id): "
+                                    f"uuid={uuid} call_id={call_id}"
+                                )
+                                break
+                        
+                        # call_idに一致するものが見つからなかった場合、最初の有効なUUIDを使用（フォールバック）
+                        if not uuid:
+                            for line in lines[1:]:
+                                if not line.strip() or line.startswith('uuid,'):
+                                    continue
+                                parts = line.split(',')
+                                if parts and parts[0].strip():
+                                    candidate_uuid = parts[0].strip()
+                                    if uuid_pattern.match(candidate_uuid):
+                                        uuid = candidate_uuid
+                                        self.logger.warning(
+                                            f"[UUID_UPDATE] Using first available UUID (call_id match failed): "
+                                            f"uuid={uuid} call_id={call_id}"
+                                        )
+                                        break
+            except Exception as e:
+                self.logger.warning(f"[UUID_UPDATE] Error getting UUID from show channels: {e}")
+        
+        # マッピングを更新
+        if uuid and hasattr(self, 'call_uuid_map'):
+            old_uuid = self.call_uuid_map.get(call_id)
+            self.call_uuid_map[call_id] = uuid
+            if old_uuid != uuid:
+                self.logger.info(f"[UUID_UPDATE] Updated mapping: call_id={call_id} old_uuid={old_uuid} -> new_uuid={uuid}")
+            else:
+                self.logger.debug(f"[UUID_UPDATE] Mapping unchanged: call_id={call_id} uuid={uuid}")
+            return uuid
+        
+        return None
+    
     def _handle_playback(self, call_id: str, audio_file: str) -> None:
         """
         FreeSWITCHに音声再生リクエストを送信（ESL使用、自動リカバリ対応）
@@ -3011,9 +3112,15 @@ class RealtimeGateway:
                 self.logger.info(
                     f"[PLAYBACK] Attempting UUID remapping for call_id={call_id} (retry {retry_count}/{max_retries})"
                 )
-                # UUIDマッピングを再取得
-                if hasattr(self, 'freeswitch_rtp_monitor') and self.freeswitch_rtp_monitor:
-                    new_uuid = self.freeswitch_rtp_monitor.update_uuid_mapping_for_call(call_id)
+                # 【修正1】UUIDマッピングを再取得（fs_rtp_monitorを使用、見つからない場合はRealtimeGateway自身が実行）
+                new_uuid = None
+                if hasattr(self, 'fs_rtp_monitor') and self.fs_rtp_monitor:
+                    new_uuid = self.fs_rtp_monitor.update_uuid_mapping_for_call(call_id)
+                
+                # 【修正2】Monitorが見つからない場合でも、RealtimeGateway自身がshow channelsを実行
+                if not new_uuid:
+                    self.logger.info(f"[PLAYBACK] fs_rtp_monitor not available, executing UUID lookup directly: call_id={call_id}")
+                    new_uuid = self._update_uuid_mapping_directly(call_id)
                     if new_uuid:
                         self.logger.info(f"[PLAYBACK] UUID remapped: call_id={call_id} -> new_uuid={new_uuid} (remapping successful)")
                         # 再取得したUUIDでリトライ
@@ -3087,9 +3194,9 @@ class RealtimeGateway:
                         else:
                             self.logger.error(f"[PLAYBACK] Fallback failed: no response from ESL (no more retries)")
                 else:
-                        # freeswitch_rtp_monitorが存在しない場合、call_idを直接使用（フォールバック、1回のみ）
+                        # UUID再取得に失敗した場合、call_idを直接使用（フォールバック、1回のみ）
                         self.logger.warning(
-                            f"[PLAYBACK] freeswitch_rtp_monitor not available, using call_id as UUID (fallback): call_id={call_id}"
+                            f"[PLAYBACK] UUID remapping failed (both monitor and direct lookup), using call_id as UUID (fallback): call_id={call_id}"
                         )
                         freeswitch_uuid = call_id
                         fallback_result = self.esl_connection.execute("playback", audio_file, uuid=freeswitch_uuid, force_async=True)
