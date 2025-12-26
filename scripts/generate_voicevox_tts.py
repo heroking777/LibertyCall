@@ -24,7 +24,8 @@ SPEAKER_ID = 2  # 四国めたん・ノーマル（デフォルト）
 MALE_SPEAKER_ID = 11  # 玄野武宏・ノーマル（000番用）
 
 # 音声パラメータ
-SPEED_SCALE = 1.15      # 話速
+SPEED_SCALE = 1.15      # 話速（デフォルト）
+SPEED_SCALE_000 = 1.0   # 話速（000番用：ゆっくり）
 PITCH_SCALE = -0.05     # 音高
 INTONATION_SCALE = 1.2  # 抑揚
 
@@ -99,11 +100,11 @@ def get_audio_query(text: str, speaker_id: int = SPEAKER_ID) -> Optional[dict]:
         return None
 
 
-def synthesize_audio(audio_query: dict, speaker_id: int = SPEAKER_ID) -> Optional[bytes]:
+def synthesize_audio(audio_query: dict, speaker_id: int = SPEAKER_ID, speed_scale: float = SPEED_SCALE) -> Optional[bytes]:
     """音声を合成"""
     try:
         # パラメータを設定
-        audio_query["speedScale"] = SPEED_SCALE
+        audio_query["speedScale"] = speed_scale
         audio_query["pitchScale"] = PITCH_SCALE
         audio_query["intonationScale"] = INTONATION_SCALE
         
@@ -140,11 +141,12 @@ def generate_audio_file(audio_id: str, text: str) -> bool:
         print(f"\n[{audio_id}] スキップ: 既に存在します")
         return True
     
-    # 000番は男性の声を使用
+    # 000番は男性の声を使用し、話速も遅くする
     speaker_id = MALE_SPEAKER_ID if audio_id == "000" else SPEAKER_ID
+    speed_scale = SPEED_SCALE_000 if audio_id == "000" else SPEED_SCALE
     speaker_name = "玄野武宏（男性）" if audio_id == "000" else "四国めたん（女性）"
     
-    print(f"\n[{audio_id}] 処理中: {text[:50]}... ({speaker_name})")
+    print(f"\n[{audio_id}] 処理中: {text[:50]}... ({speaker_name}, 話速: {speed_scale})")
     
     # 音声クエリを取得
     audio_query = get_audio_query(text, speaker_id=speaker_id)
@@ -153,7 +155,7 @@ def generate_audio_file(audio_id: str, text: str) -> bool:
         return False
     
     # 音声を合成
-    audio_data = synthesize_audio(audio_query, speaker_id=speaker_id)
+    audio_data = synthesize_audio(audio_query, speaker_id=speaker_id, speed_scale=speed_scale)
     if not audio_data:
         print(f"  ✗ 失敗: 音声合成に失敗しました")
         return False
