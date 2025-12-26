@@ -1554,8 +1554,14 @@ class AICore:
                 f"(call_id={call_id}, client_id={client_id}, intent={intent})"
             )
         
-        # 次のフェーズのテンプレートを取得
-        template_ids = flow_engine.get_templates(next_phase)
+        # フェーズ遷移のテンプレート選択ロジック
+        # ENTRY -> 他フェーズの遷移時は、ENTRYのテンプレートを使用
+        # それ以外は次のフェーズのテンプレートを使用
+        if current_phase == "ENTRY" and next_phase != "ENTRY":
+            template_ids = flow_engine.get_templates(current_phase)
+            self.logger.info(f"[FLOW_ENGINE] Using ENTRY phase templates for transition: {current_phase} -> {next_phase}")
+        else:
+            template_ids = flow_engine.get_templates(next_phase)
         
         # テンプレートが空の場合は、現在のフェーズのテンプレートを使用
         if not template_ids:
