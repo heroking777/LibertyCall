@@ -2068,6 +2068,8 @@ class RealtimeGateway:
                         "[INITIAL_SEQUENCE] ASR_SKIP: initial_sequence_playing=True, skipping ASR feed (recording continues)"
                     )
                     self._asr_skip_logged = True
+                # デバッグログ追加
+                self.logger.debug(f"[ASR_DEBUG] initial_sequence_playing={self.initial_sequence_playing}, streaming_enabled={self.streaming_enabled}, skipping ASR feed")
                 return
             # 初回シーケンス終了後はログフラグをリセット
             if hasattr(self, '_asr_skip_logged'):
@@ -2128,6 +2130,7 @@ class RealtimeGateway:
                 
                 # ASRへ送信（エラーハンドリング付き）
                 try:
+                    self.logger.info(f"[ASR_DEBUG] Calling on_new_audio with {len(pcm16k_chunk)} bytes (streaming_enabled=True, call_id={effective_call_id})")
                     self.ai_core.on_new_audio(effective_call_id, pcm16k_chunk)
                 except Exception as e:
                     self.logger.error(f"ASR feed error: {e}", exc_info=True)
@@ -2164,9 +2167,11 @@ class RealtimeGateway:
             # --- バッファリング（非ストリーミングモード） ---
             # 初回シーケンス再生中は ASR をブロック（000→001→002 が必ず流れるように）
             if self.initial_sequence_playing:
+                self.logger.debug(f"[ASR_DEBUG] initial_sequence_playing={self.initial_sequence_playing}, streaming_enabled={self.streaming_enabled}, skipping audio_buffer (Batch ASR mode)")
                 return
             
             self.audio_buffer.extend(pcm16k_chunk)
+            self.logger.debug(f"[ASR_DEBUG] Added {len(pcm16k_chunk)} bytes to audio_buffer (total={len(self.audio_buffer)} bytes, streaming_enabled={self.streaming_enabled})")
             
             # ★ 最初の音声パケット到達時刻を記録
             if self.current_segment_start is None:
