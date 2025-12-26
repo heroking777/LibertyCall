@@ -169,6 +169,8 @@ class FreeswitchRTPMonitor:
                 latest_file = max(rtp_info_files, key=lambda p: p.stat().st_mtime)
                 self.logger.info(f"[FS_RTP_MONITOR] Found RTP info file: {latest_file}")
                 
+                port = None
+                uuid = None
                 with open(latest_file, 'r') as f:
                     lines = f.readlines()
                     for line in lines:
@@ -179,11 +181,24 @@ class FreeswitchRTPMonitor:
                                 port_str = local_rtp.split(":")[-1]
                                 try:
                                     port = int(port_str)
-                                    self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH RTP port: {port} (from RTP info file: {latest_file})")
-                                    return port
                                 except ValueError:
                                     self.logger.warning(f"[FS_RTP_MONITOR] Failed to parse port from local_rtp: {local_rtp}")
                                     continue
+                        elif line.startswith("uuid="):
+                            uuid = line.split("=", 1)[1].strip()
+                            self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH UUID: {uuid} (from RTP info file: {latest_file})")
+                
+                if port:
+                    self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH RTP port: {port} (from RTP info file: {latest_file})")
+                    # UUIDも見つかった場合は、gatewayのcall_uuid_mapに保存（最新のcall_idとマッピング）
+                    if uuid and hasattr(self.gateway, 'call_uuid_map'):
+                        # 最新のcall_idを取得（ai_coreから）
+                        if hasattr(self.gateway, 'ai_core') and hasattr(self.gateway.ai_core, 'call_id'):
+                            latest_call_id = self.gateway.ai_core.call_id
+                            if latest_call_id:
+                                self.gateway.call_uuid_map[latest_call_id] = uuid
+                                self.logger.info(f"[FS_RTP_MONITOR] Mapped call_id={latest_call_id} -> uuid={uuid}")
+                    return port
         except Exception as e:
             self.logger.debug(f"[FS_RTP_MONITOR] Error reading RTP info file (non-fatal): {e}")
         
@@ -611,6 +626,9 @@ class RealtimeGateway:
             "HANGUP_CALLBACK_SET: hangup_callback=%s",
             "set" if self.ai_core.hangup_callback else "none"
         )
+        
+        # call_id -> FreeSWITCH UUID のマッピング
+        self.call_uuid_map: Dict[str, str] = {}
         
         # ストリーミングモード判定
         self.streaming_enabled = os.getenv("LC_ASR_STREAMING_ENABLED", "0") == "1"
@@ -2843,7 +2861,11 @@ class RealtimeGateway:
             # 非同期で実行するか、bgapiを使用する必要がある
             # ここでは、execute()を使用して非同期実行（force_async=True）
             # 応答速度最適化: 再生完了を待たずに即座に次の処理に進む
-            result = self.esl_connection.execute("playback", audio_file, uuid=call_id, force_async=True)
+            # call_idからFreeSWITCH UUIDに変換（マッピングが存在する場合）
+            freeswitch_uuid = self.call_uuid_map.get(call_id, call_id)
+            if freeswitch_uuid != call_id:
+                self.logger.debug(f"[PLAYBACK] Using mapped UUID: call_id={call_id} -> uuid={freeswitch_uuid}")
+            result = self.esl_connection.execute("playback", audio_file, uuid=freeswitch_uuid, force_async=True)
             
             if result:
                 reply_text = result.getHeader('Reply-Text') if hasattr(result, 'getHeader') else None
