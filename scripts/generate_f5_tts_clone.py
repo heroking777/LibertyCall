@@ -87,7 +87,7 @@ def ensure_output_directory():
     print(f"✓ 出力ディレクトリ: {OUTPUT_DIR}")
 
 
-def load_f5_tts_model(device: str = 'cpu') -> Tuple[Optional[object], Optional[object]]:
+def load_f5_tts_model(device: str = 'cpu', model_name: str = 'F5TTS_v1_Base', vocoder_name: str = 'vocos') -> Tuple[Optional[object], Optional[object]]:
     """F5-TTSモデルをロード（初回のみ）"""
     global _model_obj, _vocoder
     
@@ -97,36 +97,56 @@ def load_f5_tts_model(device: str = 'cpu') -> Tuple[Optional[object], Optional[o
     try:
         from f5_tts.infer.utils_infer import load_model, load_vocoder
         from importlib.resources import files
-        import tomli
         from omegaconf import OmegaConf
         from hydra.utils import get_class
+        from cached_path import cached_path
         
-        # デフォルト設定ファイルのパス
-        config_path = files("f5_tts").joinpath("infer/examples/basic/basic.toml")
-        
-        # 設定ファイルを読み込み
-        with open(config_path, 'rb') as f:
-            config = tomli.load(f)
-        
-        model_cfg = OmegaConf.create(config['model'])
-        model_cls = get_class(model_cfg['_target_'])
-        
-        # モデル名（デフォルトはF5TTS_v1_Base）
-        model_name = config.get('model_name', 'F5TTS_v1_Base')
-        
-        # チェックポイントパス（自動ダウンロードされる）
-        ckpt_path = config.get('ckpt_path', '')
-        
-        print(f"\n[F5-TTS] モデルをロード中... (device={device}, model={model_name})")
+        print(f"\n[F5-TTS] モデルをロード中... (device={device}, model={model_name}, vocoder={vocoder_name})")
         print("  注意: 初回実行時はモデルのダウンロード（数GB）が発生します")
         
-        # モデルとボコーダーをロード
+        # モデル設定ファイルを読み込み
+        model_cfg_path = files("f5_tts").joinpath(f"configs/{model_name}.yaml")
+        model_cfg_full = OmegaConf.load(str(model_cfg_path))
+        # model部分のみを取得（hydraメタデータを除外）
+        model_cfg = model_cfg_full.model
+        
+        # モデルクラスを取得
+        model_cls = get_class(f"f5_tts.model.{model_cfg.backbone}")
+        
+        # チェックポイントの設定
+        repo_name, ckpt_step, ckpt_type = "F5-TTS", 1250000, "safetensors"
+        
+        if model_name != "F5TTS_Base":
+            assert vocoder_name == model_cfg.mel_spec.mel_spec_type
+        
+        # 以前のモデル用のオーバーライド
+        if model_name == "F5TTS_Base":
+            if vocoder_name == "vocos":
+                ckpt_step = 1200000
+            elif vocoder_name == "bigvgan":
+                model_name = "F5TTS_Base_bigvgan"
+                ckpt_type = "pt"
+        elif model_name == "E2TTS_Base":
+            repo_name = "E2-TTS"
+            ckpt_step = 1200000
+        
+        # チェックポイントファイルのパス（自動ダウンロード）
+        ckpt_file = str(cached_path(f"hf://SWivid/{repo_name}/{model_name}/model_{ckpt_step}.{ckpt_type}"))
+        
+        # ボコーダー名を取得
+        mel_spec_type = vocoder_name
+        
+        # モデルをロード（model_cfg_fullを渡す必要がある）
         _model_obj = load_model(
             model_cls=model_cls,
-            model_cfg=model_cfg,
-            ckpt_path=ckpt_path,
+            model_cfg=model_cfg_full,  # 完全な設定を渡す
+            ckpt_path=ckpt_file,
+            mel_spec_type=mel_spec_type,
+            vocab_file="",  # 空文字列でデフォルト
             device=device
         )
+        
+        # ボコーダーをロード
         _vocoder = load_vocoder(device=device)
         
         print("  ✓ モデルのロードが完了しました\n")
