@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 # VOICEVOX設定（SSHポートフォワーディング経由でローカルPCのVOICEVOXに接続）
-VOICEVOX_URL = "http://127.0.0.1:50021"
+VOICEVOX_URL = "http://127.0.0.1:50022"
 SPEAKER_ID = 2  # 四国めたん・ノーマル
 
 # 音声パラメータ
@@ -48,7 +48,7 @@ def check_voicevox_connection() -> bool:
         print(f"✗ VOICEVOXエンジンに接続できませんでした: {e}")
         print(f"  確認: {VOICEVOX_URL} が起動しているか確認してください")
         print(f"  注意: SSHポートフォワーディングが設定されているか確認してください")
-        print(f"        ssh -R 50021:localhost:50021 user@vps")
+        print(f"        ssh -R 50022:localhost:50021 user@vps")
         return False
 
 
