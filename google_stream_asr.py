@@ -115,7 +115,7 @@ class GoogleStreamingASR:
                 # streaming_configは最初のリクエストに含めるため、ここでは渡さない
                 logger.warning(f"[ASR_STREAM_START] streaming_recognize started for call_id={getattr(self, 'call_id', 'unknown')}")
                 logger.warning(f"[ASR_STREAM_ITER] Starting to iterate responses")
-                responses = self.client.streaming_recognize(request_gen())
+                responses = self.client.streaming_recognize(requests=request_gen())
                 logger.info("[GOOGLE_ASR_STREAM] streaming_recognize called, waiting for responses...")
                 
                 response_count = 0
