@@ -26,6 +26,7 @@ from .intent_rules import (
     select_template_ids,
 )
 from .flow_engine import FlowEngine
+from .dialogue_flow import get_response as dialogue_get_response
 
 # WhisperLocalASR は whisper プロバイダ使用時のみインポート（google 使用時は絶対にインポートしない）
 
@@ -3147,6 +3148,56 @@ class AICore:
         state = self._get_session_state(call_id)
         handoff_state = state.handoff_state
         transfer_requested = state.transfer_requested
+        
+        # ========================================
+        # 対話フロー方式を試す（フェーズ1: 料金のみ）
+        # ========================================
+        dialogue_templates = None
+        try:
+            # handoff_stateが"confirming"の場合はdialogue_flowをスキップ
+            # （ハンドオフ確認中の応答はIntent方式で処理）
+            if handoff_state != "confirming":
+                dialogue_templates, dialogue_phase, dialogue_state = dialogue_get_response(
+                    user_text=raw_text,
+                    current_phase=state.phase,
+                    state={
+                        "silence_count": getattr(state, "silence_count", 0),
+                        "waiting_retry_count": getattr(state, "waiting_retry_count", 0),
+                    }
+                )
+                
+                if dialogue_templates and len(dialogue_templates) > 0:
+                    # 対話フロー方式で応答が見つかった
+                    self.logger.info(
+                        f"DIALOGUE_FLOW使用: call_id={call_id}, "
+                        f"templates={dialogue_templates}, "
+                        f"phase={state.phase}->{dialogue_phase}"
+                    )
+                    
+                    # Phase更新
+                    state.phase = dialogue_phase
+                    
+                    # State更新
+                    for key, value in dialogue_state.items():
+                        setattr(state, key, value)
+                    
+                    # template_idsを設定
+                    template_ids = dialogue_templates
+                    intent = "DIALOGUE_FLOW"  # ログ用
+                    
+                    # テンプレートレンダリング
+                    reply_text = self._render_templates(template_ids)
+                    state.last_intent = intent
+                    return reply_text, template_ids, intent, False
+                    
+        except Exception as e:
+            self.logger.error(f"DIALOGUE_FLOW エラー: call_id={call_id}, error={e}", exc_info=True)
+            # エラーの場合は、通常のIntent方式にフォールバック
+            dialogue_templates = None
+        
+        # ========================================
+        # 対話フロー方式で応答が見つからなければ、Intent方式を使用
+        # ========================================
         
         # handoff_state == "confirming" の場合は context="handoff_confirming" を渡す
         # これにより、「はい」などの肯定応答が HANDOFF_YES として正しく判定される
