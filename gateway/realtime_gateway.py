@@ -3074,7 +3074,17 @@ class RealtimeGateway:
         """
         # 【修正3】古いセッションの強制クリーンアップ: アクティブなcall_idでない場合はスキップ
         if hasattr(self, '_active_calls') and self._active_calls:
-            if call_id not in self._active_calls:
+            # UUIDとcall_id両方をチェック
+            call_id_found = call_id in self._active_calls
+            
+            # call_uuid_mapでUUID→call_id変換も試す
+            if not call_id_found and hasattr(self, 'call_uuid_map'):
+                for mapped_call_id, mapped_uuid in self.call_uuid_map.items():
+                    if mapped_uuid == call_id and mapped_call_id in self._active_calls:
+                        call_id_found = True
+                        break
+            
+            if not call_id_found:
                 self.logger.warning(
                     f"[PLAYBACK] Skipping playback for stale session: call_id={call_id} "
                     f"(not in active calls: {self._active_calls})"
