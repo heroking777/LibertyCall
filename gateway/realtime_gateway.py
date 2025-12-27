@@ -2040,6 +2040,7 @@ class RealtimeGateway:
         if hasattr(self, '_active_calls') and effective_call_id not in self._active_calls:
             current_time = time.time()
             self.logger.warning(f"[RTP_RECOVERY] [LOC_01] Time={current_time:.3f} call_id={effective_call_id} not in active_calls but receiving RTP. Auto-registering.")
+            self.logger.warning(f"[RTP_RECOVERY] [LOC_01] This is a recovery call. Initial sequence may need to be queued if not already played.")
             self._active_calls.add(effective_call_id)
             # return はしない！そのまま処理を続行させる
         
@@ -3817,10 +3818,8 @@ class RealtimeGateway:
             self.logger.warning(f"[INIT_SEQ] Skipping initial sequence for {effective_call_id} (already played, checked after call_id resolution).")
             return
         
-        # フラグをセット（effective_call_idが確定している場合のみ）
-        if effective_call_id:
-            self._initial_sequence_played.add(effective_call_id)
-            self.logger.warning(f"[INIT_SEQ] Queueing initial sequence for {effective_call_id} (first time).")
+        # ★フラグセットは削除（キュー追加成功後に移動）★
+        
         if effective_call_id:
             current_time = time.monotonic()
             self._last_tts_end_time[effective_call_id] = current_time
@@ -3849,6 +3848,8 @@ class RealtimeGateway:
 
         try:
             audio_paths = self.audio_manager.play_incoming_sequence(effective_client_id)
+            # 【追加】デバッグログ：audio_pathsの取得結果を詳細に出力
+            self.logger.warning(f"[INIT_DEBUG] audio_paths={[str(p) for p in audio_paths]} (count={len(audio_paths)})")
         except Exception as e:
             self.logger.error(f"[client={effective_client_id}] Failed to load incoming sequence: {e}")
             return
@@ -3885,12 +3886,15 @@ class RealtimeGateway:
             )
 
         file_entries = []
-        for audio_path in audio_paths:
+        for idx, audio_path in enumerate(audio_paths):
+            # 【追加】デバッグログ：各ファイルの処理状況を詳細に出力
+            self.logger.warning(f"[INIT_DEBUG] Processing audio_path[{idx}]={audio_path} exists={audio_path.exists()}")
             if not audio_path.exists():
                 self.logger.warning(f"[client={effective_client_id}] audio file missing: {audio_path}")
                 continue
             try:
                 ulaw_payload = self._load_wav_as_ulaw8k(audio_path)
+                self.logger.warning(f"[INIT_DEBUG] Loaded audio_path[{idx}]={audio_path} payload_len={len(ulaw_payload)}")
             except Exception as e:
                 self.logger.error(f"[client={effective_client_id}] failed to prepare {audio_path}: {e}")
                 continue
@@ -3925,6 +3929,11 @@ class RealtimeGateway:
             )
 
         if queued_chunks:
+            # ★キュー追加成功後、ここで初めてフラグを立てる★
+            if effective_call_id:
+                self._initial_sequence_played.add(effective_call_id)
+                self.logger.warning(f"[INIT_SEQ] Flag set for {effective_call_id}. Queued {queued_chunks} chunks.")
+            
             self.is_speaking_tts = True
             self.initial_sequence_played = True
             self.initial_sequence_playing = True  # 初回シーケンス再生中フラグを立てる
@@ -3937,6 +3946,9 @@ class RealtimeGateway:
             self.logger.info(
                 "[client=%s] initial greeting enqueued (%d chunks)", effective_client_id, queued_chunks
             )
+        else:
+            # キューに追加できなかった場合
+            self.logger.warning(f"[INIT_SEQ] No chunks queued for {effective_call_id}. Flag NOT set.")
 
     def _generate_silence_ulaw(self, duration_sec: float) -> bytes:
         samples = max(1, int(8000 * duration_sec))
