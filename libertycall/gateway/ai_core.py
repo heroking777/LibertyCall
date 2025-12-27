@@ -350,6 +350,7 @@ class GoogleASR:
                     # 追加の sleep は不要
                     # 【デバッグ】yield前
                     self.logger.debug(f"[REQUEST_GEN] Yielding request with audio")
+                    self.logger.info(f"[REQUEST_GEN_DEBUG] About to yield audio chunk to Google ASR")
                     yield cloud_speech.StreamingRecognizeRequest(audio_content=chunk)  # type: ignore[union-attr]
             
             self.logger.info("[STREAM_WORKER_PRECHECK] Request generator defined, about to create config")
@@ -398,8 +399,10 @@ class GoogleASR:
                 requests=request_generator_from_queue(),
             )
             self.logger.info("[STREAM_WORKER_PRECHECK] streaming_recognize() called, entering response loop")
+            self.logger.info(f"[STREAM_WORKER_DEBUG] streaming_recognize returned, type={type(responses)}")
             
             for response in responses:
+                self.logger.info(f"[STREAM_WORKER_DEBUG] Got response from Google ASR, type={type(response)}")
                 # 【修正5】280秒（4分40秒）経過時に予防的再起動
                 stream_start_time = getattr(self, '_stream_start_time', None)
                 if stream_start_time:
