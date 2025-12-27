@@ -103,7 +103,7 @@ def generate_audio_files(
     results: Dict[str, Tuple[Path, float]] = {}
 
     # 対象IDのみを処理（000〜002は除外）
-    for audio_id in sorted(voice_lines.keys()):
+    for audio_id in sorted(k for k in voice_lines.keys() if k != 'voice'):
         if audio_id not in TARGET_IDS:
             continue
 

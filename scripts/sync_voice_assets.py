@@ -282,7 +282,8 @@ def verify_audio_content(
 def find_mismatches(template_config: Dict, voice_lines: Dict) -> Dict[str, Tuple[str, str]]:
     """テキスト不一致を検出"""
     mismatches = {}
-    common_ids = set(template_config.keys()) & set(voice_lines.keys())
+    voice_template_ids = {k for k in voice_lines.keys() if k != 'voice'}
+    common_ids = set(template_config.keys()) & voice_template_ids
     
     for tid in common_ids:
         template_text = template_config.get(tid, {}).get('text', '').strip()
@@ -314,9 +315,9 @@ def update_voice_lines(template_config: Dict, voice_lines: Dict) -> Dict:
                 'rate': config.get('rate', 1.1)
             }
     
-    # intent_rules.py に存在しないテンプレートを削除
+    # intent_rules.py に存在しないテンプレートを削除（voiceキーは保持）
     template_ids = set(template_config.keys())
-    to_remove = [tid for tid in updated.keys() if tid not in template_ids]
+    to_remove = [tid for tid in updated.keys() if tid not in template_ids and tid != 'voice']
     for tid in to_remove:
         del updated[tid]
     
@@ -350,7 +351,7 @@ def generate_report(
     
     # 統計情報
     template_ids = set(template_config.keys())
-    voice_ids = set(voice_lines.keys())
+    voice_ids = {k for k in voice_lines.keys() if k != 'voice'}
     common_ids = template_ids & voice_ids
     only_in_template = template_ids - voice_ids
     only_in_voice = voice_ids - template_ids
@@ -387,6 +388,8 @@ def generate_report(
     if only_in_voice:
         report_lines.append(f"➖ voice_lines_000.json のみに存在（削除対象） ({len(only_in_voice)}件):")
         for tid in sorted(only_in_voice):
+            if tid == 'voice':
+                continue
             text = voice_lines.get(tid, {}).get('text', 'N/A')
             report_lines.append(f"  - {tid}: {text[:70]}...")
         report_lines.append("")
@@ -464,7 +467,7 @@ def verify_only(template_config: Dict, voice_lines: Dict, audio_files: Set[str],
     print()
     
     template_ids = set(template_config.keys())
-    voice_ids = set(voice_lines.keys())
+    voice_ids = {k for k in voice_lines.keys() if k != 'voice'}
     
     mismatches = find_mismatches(template_config, voice_lines)
     missing_audio = template_ids - audio_files
@@ -554,7 +557,7 @@ def main():
     audio_files = get_audio_files()
     
     template_ids = set(template_config.keys())
-    voice_ids = set(voice_lines.keys())
+    voice_ids = {k for k in voice_lines.keys() if k != 'voice'}
     
     # 検証モードの場合は検証のみ実行
     if args.verify:

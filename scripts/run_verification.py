@@ -37,7 +37,7 @@ def main():
     audio_files = get_audio_files()
     
     template_ids = set(template_config.keys())
-    voice_ids = set(voice_lines.keys())
+    voice_ids = {k for k in voice_lines.keys() if k != 'voice'}
     
     print(f"  - intent_rules.py テンプレート数: {len(template_ids)}")
     print(f"  - voice_lines_000.json テンプレート数: {len(voice_ids)}")

@@ -24,7 +24,7 @@ if audio_dir.exists():
         audio_files.add(tid)
 
 template_ids = set(TEMPLATE_CONFIG.keys())
-voice_ids = set(voice_lines.keys())
+voice_ids = {k for k in voice_lines.keys() if k != 'voice'}
 
 # テキスト不一致
 mismatches = {}

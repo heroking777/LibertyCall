@@ -45,7 +45,7 @@ def main():
     
     # テンプレートIDのセットを取得
     template_config_ids = set(TEMPLATE_CONFIG.keys())
-    voice_lines_ids = set(voice_lines.keys())
+    voice_lines_ids = {k for k in voice_lines.keys() if k != 'voice'}
     
     # 差分を計算
     only_in_template = template_config_ids - voice_lines_ids
@@ -73,6 +73,8 @@ def main():
     if only_in_voice_lines:
         print(f"⚠ TEMPLATE_CONFIG に存在しない ID ({len(only_in_voice_lines)}件):")
         for tid in sorted(only_in_voice_lines, key=lambda x: (len(x), x)):
+            if tid == 'voice':
+                continue
             vline = voice_lines[tid]
             print(f"  - {tid}: {vline.get('text', '')[:50]}...")
         print()

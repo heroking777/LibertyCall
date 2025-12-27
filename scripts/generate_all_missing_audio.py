@@ -32,7 +32,7 @@ with open(voice_lines_path, 'r', encoding='utf-8') as f:
 OUTPUT_DIR = PROJECT_ROOT / "clients" / "000" / "audio"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-voice_lines_ids = set(voice_lines.keys())
+voice_lines_ids = {k for k in voice_lines.keys() if k != 'voice'}
 template_config_ids = set(TEMPLATE_CONFIG.keys())
 common_ids = voice_lines_ids & template_config_ids
 
