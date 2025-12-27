@@ -1982,7 +1982,7 @@ class RealtimeGateway:
         
         # 通話が既に終了している場合は処理をスキップ（ゾンビ化防止）
         if hasattr(self, '_active_calls') and effective_call_id not in self._active_calls:
-            self.logger.debug(f"[RTP_SKIP] call_id={effective_call_id} already ended, skipping handle_rtp_packet")
+            self.logger.info(f"[RTP_SKIP] call_id={effective_call_id} already ended, skipping handle_rtp_packet")
             return
         
         # ログ出力（RTP受信時のcall_id確認用）
