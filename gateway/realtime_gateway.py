@@ -2306,6 +2306,10 @@ class RealtimeGateway:
                 # call_idがNoneでも一時的なIDで処理（WebSocket initが来る前でも動作するように）
                 effective_call_id = self._get_effective_call_id()
                 
+                # 再生中はASRに送らない（システム再生音の混入を防ぐ）
+                if hasattr(self.ai_core, 'is_playing') and self.ai_core.is_playing.get(effective_call_id, False):
+                    return
+                
                 # 通常のストリーミング処理
                 self._stream_chunk_counter += 1
                 
