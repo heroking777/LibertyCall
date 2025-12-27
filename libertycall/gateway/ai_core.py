@@ -3235,28 +3235,24 @@ class AICore:
             dialogue_templates = None
         
         # ========================================
-        # 対話フロー方式で応答が見つからなければ、Intent方式を使用
+        # 対話フロー方式で応答が見つからなければ、デフォルト応答
         # ========================================
         
-        # handoff_state == "confirming" の場合は context="handoff_confirming" を渡す
-        # これにより、「はい」などの肯定応答が HANDOFF_YES として正しく判定される
-        context = "handoff_confirming" if handoff_state == "confirming" else None
-        intent = classify_intent(raw_text, context=context) or "UNKNOWN"
+        # dialogue_flowで応答が見つからなかった場合のデフォルト処理
+        self.logger.warning(f"DIALOGUE_FLOW未対応: call_id={call_id}, text='{raw_text}', handoff_state={handoff_state}")
         
-        # 【迷子判定】unclear_streak が一定回数以上で、handoff_state が idle または done の場合、
-        # かつ明示的なハンドオフ要求でない場合、強制的に HANDOFF_REQUEST にして 0604 を出す
-        intent, auto_handoff_triggered = self._mis_guard.check_auto_handoff_from_unclear(
-            call_id, state, intent
-        )
-        
-        # 【保険ロジック】handoff_state が confirming 以外なのに HANDOFF_YES が来た場合は、
-        # 新しいハンドオフリクエストとして扱う（0604 を出す）ようにする
-        if intent == "HANDOFF_YES" and handoff_state != "confirming":
-            self.logger.info(
-                "INTENT_ADJUST: HANDOFF_YES received outside confirming state (handoff_state=%s). Downgrading to HANDOFF_REQUEST.",
-                handoff_state
-            )
-            intent = "HANDOFF_REQUEST"
+        # handoff_state == "confirming" の場合は、ハンドオフ確認処理に委譲
+        if handoff_state == "confirming":
+            # ハンドオフ確認中の応答は _handle_handoff_confirm で処理
+            # ここでは intent を "UNKNOWN" として設定（後続処理で適切に処理される）
+            intent = "UNKNOWN"
+        else:
+            # 通常の場合はデフォルト応答
+            intent = "UNKNOWN"
+            template_ids = ["114"]  # "ご要件をもう一度お願いできますでしょうか？"
+            reply_text = self._render_templates(template_ids)
+            state.last_intent = intent
+            return reply_text, template_ids, intent, False
         
         # 【新規】担当者不在時は 0605 でAI継続を案内
         if intent == "HANDOFF_REQUEST" and not getattr(self, "transfer_callback", None):
