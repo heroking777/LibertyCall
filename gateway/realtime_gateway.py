@@ -710,6 +710,8 @@ class RealtimeGateway:
         self._debug_packet_count = 0
         # RTPパケット重複処理ガード用（各通話ごとの最新シーケンス番号を保持）
         self._last_processed_sequence = {}  # {call_id: sequence_number}
+        # 初期アナウンス実行済みフラグ（各通話ごとの初期アナウンス状態を保持）
+        self._initial_sequence_played = set()  # {call_id}
         self.rtp_host = config["rtp"]["listen_host"]
         # ポート番号の優先順位: コマンドライン引数 > LC_RTP_PORT > LC_GATEWAY_PORT > gateway.yaml > 固定値 7100
         if rtp_port_override is not None:
@@ -3797,15 +3799,28 @@ class RealtimeGateway:
         # 【診断用】強制的に可視化
         effective_call_id = self._get_effective_call_id()
         self.logger.warning(f"[DEBUG_PRINT] _queue_initial_audio_sequence called client_id={client_id} call_id={effective_call_id}")
-        if self.initial_sequence_played:
+        
+        # 【追加】二重実行ガード（通話ごとのフラグチェック）
+        if effective_call_id and effective_call_id in self._initial_sequence_played:
+            self.logger.warning(f"[INIT_SEQ] Skipping initial sequence for {effective_call_id} (already played).")
             return
-
+        
         effective_client_id = client_id or self.default_client_id
         if not effective_client_id:
             return
 
         # 無音監視基準時刻を初期化（通話開始時）
         effective_call_id = self._get_effective_call_id()
+        
+        # 【追加】effective_call_idが確定した時点で再度チェック
+        if effective_call_id and effective_call_id in self._initial_sequence_played:
+            self.logger.warning(f"[INIT_SEQ] Skipping initial sequence for {effective_call_id} (already played, checked after call_id resolution).")
+            return
+        
+        # フラグをセット（effective_call_idが確定している場合のみ）
+        if effective_call_id:
+            self._initial_sequence_played.add(effective_call_id)
+            self.logger.warning(f"[INIT_SEQ] Queueing initial sequence for {effective_call_id} (first time).")
         if effective_call_id:
             current_time = time.monotonic()
             self._last_tts_end_time[effective_call_id] = current_time
