@@ -925,6 +925,7 @@ class RealtimeGateway:
         self._initial_tts_sent: set = set()  # 初期TTS送信済みの通話IDセット
         self._last_tts_text: Optional[str] = None  # 直前のTTSテキスト（重複防止用）
         self._call_addr_map: Dict[Tuple[str, int], str] = {}  # (host, port) -> call_id のマッピング
+        self._recovery_counts: Dict[str, int] = {}  # call_id -> RTP_RECOVERY回数（ゾンビ蘇生防止）
         
         # 録音機能の初期化
         self.recording_enabled = os.getenv("LC_ENABLE_RECORDING", "0") == "1"
@@ -2057,9 +2058,18 @@ class RealtimeGateway:
         
         # 通話が既に終了している場合は処理をスキップ（ゾンビ化防止）
         # 【修正】RTPパケットが届いているという事実は「通話が生きている」証拠なので、強制登録する
+        # ★RTP_RECOVERY の回数制限（ゾンビ蘇生防止）★
         if hasattr(self, '_active_calls') and effective_call_id not in self._active_calls:
+            count = self._recovery_counts.get(effective_call_id, 0)
+            if count >= 1:
+                # 2回目以降はリカバリしない（ゾンビ蘇生防止）
+                if count == 1:  # ログ抑制のため1回だけ出す
+                    self.logger.warning(f"[RTP_SKIP] Call {effective_call_id} recovery limit reached (count={count+1}), skipping recovery.")
+                return
+            
             current_time = time.time()
-            self.logger.warning(f"[RTP_RECOVERY] [LOC_01] Time={current_time:.3f} call_id={effective_call_id} not in active_calls but receiving RTP. Auto-registering.")
+            self._recovery_counts[effective_call_id] = count + 1
+            self.logger.warning(f"[RTP_RECOVERY] [LOC_01] Time={current_time:.3f} call_id={effective_call_id} not in active_calls but receiving RTP. Auto-registering (Attempt {count+1}).")
             self.logger.warning(f"[RTP_RECOVERY] [LOC_01] This is a recovery call. Initial sequence may need to be queued if not already played.")
             self._active_calls.add(effective_call_id)
             # return はしない！そのまま処理を続行させる
@@ -3879,14 +3889,22 @@ class RealtimeGateway:
             self.logger.warning(f"[INIT_DEBUG] Calling play_incoming_sequence for client={effective_client_id}")
             try:
                 # 同期関数をスレッドプールで実行（I/Oブロッキングを回避）
+                # ★タイムアウト設定（3秒）★
                 loop = asyncio.get_running_loop()
-                audio_paths = await loop.run_in_executor(
-                    None,
-                    self.audio_manager.play_incoming_sequence,
-                    effective_client_id
+                audio_paths = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        self.audio_manager.play_incoming_sequence,
+                        effective_client_id
+                    ),
+                    timeout=3.0
                 )
                 # 【追加】デバッグログ：audio_pathsの取得結果を詳細に出力
                 self.logger.warning(f"[INIT_DEBUG] audio_paths result: {[str(p) for p in audio_paths]} (count={len(audio_paths)})")
+            except asyncio.TimeoutError:
+                self.logger.error(f"[INIT_ERR] Initial sequence timed out for client={effective_client_id} (timeout=3.0s)")
+                # タイムアウト時は空リストとして扱う
+                audio_paths = []
             except Exception as e:
                 self.logger.error(f"[INIT_ERR] Failed to load incoming sequence for client={effective_client_id}: {e}\n{traceback.format_exc()}")
                 return
