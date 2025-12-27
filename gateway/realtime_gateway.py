@@ -1614,7 +1614,16 @@ class RealtimeGateway:
                                         
                                         self._ensure_console_session(call_id_override=req_call_id)
                                         # 非同期タスクとして実行（結果を待たない）
-                                        asyncio.create_task(self._queue_initial_audio_sequence(self.client_id))
+                                        task = asyncio.create_task(self._queue_initial_audio_sequence(self.client_id))
+                                        def _log_init_task_result(t):
+                                            try:
+                                                t.result()  # 例外があればここで再送出される
+                                                # self.logger.warning(f"[INIT_TASK_DONE] Initial sequence task completed successfully.")
+                                            except Exception as e:
+                                                import traceback
+                                                self.logger.error(f"[INIT_TASK_ERR] Initial sequence task failed: {e}\n{traceback.format_exc()}")
+                                        task.add_done_callback(_log_init_task_result)
+                                        self.logger.warning(f"[INIT_TASK_START] Created task for {self.client_id}")
 
                                         self.logger.debug(f"[Init] Loaded: {self.config.get('client_name')}")
                                     except Exception as e:
@@ -1864,7 +1873,16 @@ class RealtimeGateway:
                 self.logger.warning(f"[CallInfo] failed to log call info for UI: {e}")
             
             # 非同期タスクとして実行（結果を待たない）
-            asyncio.create_task(self._queue_initial_audio_sequence(self.client_id))
+            task = asyncio.create_task(self._queue_initial_audio_sequence(self.client_id))
+            def _log_init_task_result(t):
+                try:
+                    t.result()  # 例外があればここで再送出される
+                    # self.logger.warning(f"[INIT_TASK_DONE] Initial sequence task completed successfully.")
+                except Exception as e:
+                    import traceback
+                    self.logger.error(f"[INIT_TASK_ERR] Initial sequence task failed: {e}\n{traceback.format_exc()}")
+            task.add_done_callback(_log_init_task_result)
+            self.logger.warning(f"[INIT_TASK_START] Created task for {self.client_id}")
 
             self.logger.debug(f"[Init from Asterisk] Loaded: {self.config.get('client_name', 'Default')}")
             
@@ -2248,7 +2266,16 @@ class RealtimeGateway:
             effective_client_id = self.client_id or self.default_client_id
             if effective_client_id:
                 # 非同期タスクとして実行（結果を待たない）
-                asyncio.create_task(self._queue_initial_audio_sequence(effective_client_id))
+                task = asyncio.create_task(self._queue_initial_audio_sequence(effective_client_id))
+                def _log_init_task_result(t):
+                    try:
+                        t.result()  # 例外があればここで再送出される
+                        # self.logger.warning(f"[INIT_TASK_DONE] Initial sequence task completed successfully.")
+                    except Exception as e:
+                        import traceback
+                        self.logger.error(f"[INIT_TASK_ERR] Initial sequence task failed: {e}\n{traceback.format_exc()}")
+                task.add_done_callback(_log_init_task_result)
+                self.logger.warning(f"[INIT_TASK_START] Created task for {effective_client_id}")
             else:
                 self.logger.warning("No client_id available for initial sequence, skipping")
             
@@ -3800,6 +3827,8 @@ class RealtimeGateway:
         return audioop.lin2ulaw(frames, sample_width)
 
     async def _queue_initial_audio_sequence(self, client_id: Optional[str]) -> None:
+        # ★関数の最初でログ★
+        self.logger.warning(f"[INIT_METHOD_ENTRY] Called with client_id={client_id}")
         import traceback
         import asyncio
         try:
@@ -4771,7 +4800,16 @@ class RealtimeGateway:
                             
                             # 初回アナウンス再生処理を実行（非同期タスクとして実行）
                             try:
-                                asyncio.create_task(self._queue_initial_audio_sequence(client_id))
+                                task = asyncio.create_task(self._queue_initial_audio_sequence(client_id))
+                                def _log_init_task_result(t):
+                                    try:
+                                        t.result()  # 例外があればここで再送出される
+                                        # self.logger.warning(f"[INIT_TASK_DONE] Initial sequence task completed successfully.")
+                                    except Exception as e:
+                                        import traceback
+                                        self.logger.error(f"[INIT_TASK_ERR] Initial sequence task failed: {e}\n{traceback.format_exc()}")
+                                task.add_done_callback(_log_init_task_result)
+                                self.logger.warning(f"[INIT_TASK_START] Created task for {client_id}")
                                 self.logger.info(f"[EVENT_SOCKET] _queue_initial_audio_sequence() called for call_id={effective_call_id} client_id={client_id}")
                             except Exception as e:
                                 self.logger.exception(f"[EVENT_SOCKET] Error calling _queue_initial_audio_sequence(): {e}")
