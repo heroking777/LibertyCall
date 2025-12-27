@@ -3603,93 +3603,111 @@ class RealtimeGateway:
         # 発信者番号を取得（ログ出力用）
         caller_number = getattr(self.ai_core, "caller_number", None) or "未設定"
         
-        self.logger.debug(f"[FORCE_HANGUP] HANGUP_REQUEST: call_id={call_id} self.call_id={self.call_id} caller={caller_number}")
-        self.logger.info(
-            f"[FORCE_HANGUP] HANGUP_REQUEST: call_id={call_id} self.call_id={self.call_id} caller={caller_number}"
-        )
+        # クリーンアップ用のcall_idを確定（finallyブロックで使用）
+        call_id_to_cleanup = None
         
-        # call_id が未設定の場合はパラメータから設定
-        if not self.call_id and call_id:
-            self.call_id = call_id
+        try:
+            self.logger.warning(f"[HANGUP_START] Processing hangup for call_id={call_id} self.call_id={self.call_id}")
+            
+            self.logger.debug(f"[FORCE_HANGUP] HANGUP_REQUEST: call_id={call_id} self.call_id={self.call_id} caller={caller_number}")
             self.logger.info(
-                f"[FORCE_HANGUP] HANGUP_REQUEST: set self.call_id={call_id} from parameter caller={caller_number}"
+                f"[FORCE_HANGUP] HANGUP_REQUEST: call_id={call_id} self.call_id={self.call_id} caller={caller_number}"
             )
-        
-        if not self.call_id:
+            
+            # call_id が未設定の場合はパラメータから設定
+            if not self.call_id and call_id:
+                self.call_id = call_id
+                self.logger.info(
+                    f"[FORCE_HANGUP] HANGUP_REQUEST: set self.call_id={call_id} from parameter caller={caller_number}"
+                )
+            
+            if not self.call_id:
+                self.logger.warning(
+                    f"[FORCE_HANGUP] HANGUP_REQUEST_SKIP: call_id={call_id} caller={caller_number} reason=no_self_call_id"
+                )
+                return
+            
+            call_id_to_cleanup = self.call_id or call_id
+            
+            # 無音経過時間をログに記録
+            elapsed = self._no_input_elapsed.get(self.call_id, 0.0)
+            no_input_streak = 0
+            state = self.ai_core._get_session_state(self.call_id)
+            if state:
+                no_input_streak = state.no_input_streak
+            
             self.logger.warning(
-                f"[FORCE_HANGUP] HANGUP_REQUEST_SKIP: call_id={call_id} caller={caller_number} reason=no_self_call_id"
+                f"[FORCE_HANGUP] Disconnecting call_id={self.call_id} caller={caller_number} "
+                f"after {elapsed:.1f}s of silence (streak={no_input_streak}, MAX_NO_INPUT_TIME={self.MAX_NO_INPUT_TIME}s)"
             )
-            return
-        
-        # 無音経過時間をログに記録
-        elapsed = self._no_input_elapsed.get(self.call_id, 0.0)
-        no_input_streak = 0
-        state = self.ai_core._get_session_state(self.call_id)
-        if state:
-            no_input_streak = state.no_input_streak
-        
-        self.logger.warning(
-            f"[FORCE_HANGUP] Disconnecting call_id={self.call_id} caller={caller_number} "
-            f"after {elapsed:.1f}s of silence (streak={no_input_streak}, MAX_NO_INPUT_TIME={self.MAX_NO_INPUT_TIME}s)"
-        )
-        
-        # 録音を停止
-        self._stop_recording()
-        
-        # console_bridge に切断を記録
-        if self.console_bridge.enabled:
-            self.console_bridge.complete_call(self.call_id, ended_at=datetime.utcnow())
-            self.logger.info(
-                f"[FORCE_HANGUP] console_bridge marked hangup call_id={self.call_id} caller={caller_number}"
-            )
-        
-        # 通話終了時の状態クリーンアップ
-        call_id_to_cleanup = self.call_id or call_id
-        if call_id_to_cleanup:
-            if hasattr(self, '_active_calls'):
-                cleanup_time = time.time()
-                self.logger.warning(f"[CALL_END_TRACE] [LOC_02] Setting is_active=False for {call_id_to_cleanup} at {cleanup_time:.3f}")
-                self.logger.info(f"[CALL_END_TRACE] [LOC_02] Discarding call_id={call_id_to_cleanup} from _active_calls at {cleanup_time:.3f}")
-                self._active_calls.discard(call_id_to_cleanup)
-            self._last_voice_time.pop(call_id_to_cleanup, None)
-            self._last_silence_time.pop(call_id_to_cleanup, None)
-            self._last_tts_end_time.pop(call_id_to_cleanup, None)
-            self._last_user_input_time.pop(call_id_to_cleanup, None)
-            self._silence_warning_sent.pop(call_id_to_cleanup, None)
-            if hasattr(self, '_initial_tts_sent'):
-                self._initial_tts_sent.discard(call_id_to_cleanup)
+            
+            # 録音を停止
+            self._stop_recording()
+            
+            # console_bridge に切断を記録
+            if self.console_bridge.enabled:
+                self.console_bridge.complete_call(self.call_id, ended_at=datetime.utcnow())
+                self.logger.info(
+                    f"[FORCE_HANGUP] console_bridge marked hangup call_id={self.call_id} caller={caller_number}"
+                )
+            
             # 明示的な通話終了処理（フラグクリア）
             if hasattr(self.ai_core, 'on_call_end'):
                 self.ai_core.on_call_end(call_id_to_cleanup, source="_handle_hangup")
-            self.logger.debug(f"[CALL_CLEANUP] Cleared state for call_id={call_id_to_cleanup}")
-        
-        # Asterisk に hangup を依頼（非同期で実行）
-        try:
+            
+            # Asterisk に hangup を依頼（非同期で実行）
             try:
-                project_root = _PROJECT_ROOT  # 既存の定義を優先
-            except NameError:
-                project_root = "/opt/libertycall"
-            script_path = os.path.join(project_root, "scripts", "hangup_call.py")
+                try:
+                    project_root = _PROJECT_ROOT  # 既存の定義を優先
+                except NameError:
+                    project_root = "/opt/libertycall"
+                script_path = os.path.join(project_root, "scripts", "hangup_call.py")
+                self.logger.info(
+                    f"[FORCE_HANGUP] HANGUP_REQUEST: Spawning hangup_call script_path={script_path} call_id={self.call_id} caller={caller_number}"
+                )
+                proc = subprocess.Popen(
+                    [sys.executable, script_path, self.call_id],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                self.logger.info(
+                    f"[FORCE_HANGUP] HANGUP_REQUEST: hangup_call spawned pid={proc.pid} call_id={self.call_id} caller={caller_number}"
+                )
+            except Exception as e:
+                self.logger.exception(
+                    f"[FORCE_HANGUP] HANGUP_REQUEST_FAILED: Failed to spawn hangup_call call_id={self.call_id} caller={caller_number} error={e!r}"
+                )
+            
             self.logger.info(
-                f"[FORCE_HANGUP] HANGUP_REQUEST: Spawning hangup_call script_path={script_path} call_id={self.call_id} caller={caller_number}"
-            )
-            proc = subprocess.Popen(
-                [sys.executable, script_path, self.call_id],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            self.logger.info(
-                f"[FORCE_HANGUP] HANGUP_REQUEST: hangup_call spawned pid={proc.pid} call_id={self.call_id} caller={caller_number}"
+                "HANGUP_REQUEST_DONE: call_id=%s",
+                self.call_id
             )
         except Exception as e:
-            self.logger.exception(
-                f"[FORCE_HANGUP] HANGUP_REQUEST_FAILED: Failed to spawn hangup_call call_id={self.call_id} caller={caller_number} error={e!r}"
-            )
-        
-        self.logger.info(
-            "HANGUP_REQUEST_DONE: call_id=%s",
-            self.call_id
-        )
+            self.logger.error(f"[HANGUP_ERR] Error during hangup for call_id={call_id_to_cleanup or call_id}: {e}", exc_info=True)
+        finally:
+            # ★どんなエラーがあっても、ここは必ず実行する★
+            if call_id_to_cleanup:
+                cleanup_time = time.time()
+                # _active_calls から削除
+                if hasattr(self, '_active_calls') and call_id_to_cleanup in self._active_calls:
+                    self._active_calls.remove(call_id_to_cleanup)
+                    self.logger.warning(f"[HANGUP_DONE] Removed {call_id_to_cleanup} from active_calls (finally block) at {cleanup_time:.3f}")
+                
+                # 管理用データのクリーンアップ
+                if call_id_to_cleanup in self._recovery_counts:
+                    del self._recovery_counts[call_id_to_cleanup]
+                if call_id_to_cleanup in self._initial_sequence_played:
+                    self._initial_sequence_played.discard(call_id_to_cleanup)
+                if call_id_to_cleanup in self._last_processed_sequence:
+                    del self._last_processed_sequence[call_id_to_cleanup]
+                self._last_voice_time.pop(call_id_to_cleanup, None)
+                self._last_silence_time.pop(call_id_to_cleanup, None)
+                self._last_tts_end_time.pop(call_id_to_cleanup, None)
+                self._last_user_input_time.pop(call_id_to_cleanup, None)
+                self._silence_warning_sent.pop(call_id_to_cleanup, None)
+                if hasattr(self, '_initial_tts_sent'):
+                    self._initial_tts_sent.discard(call_id_to_cleanup)
+                self.logger.debug(f"[CALL_CLEANUP] Cleared state for call_id={call_id_to_cleanup}")
 
     def _build_handover_summary(self, state_label: str) -> str:
         lines = ["■ 要件", f"- 推定意図: {state_label or '不明'}", "", "■ 直近の会話"]
@@ -3777,36 +3795,48 @@ class RealtimeGateway:
         if not self.console_bridge.enabled or not self.call_id or self.call_completed:
             return
         call_id_to_complete = self.call_id
-        self.console_bridge.complete_call(call_id_to_complete, ended_at=datetime.utcnow())
-        # ストリーミングモード: call_idの状態をリセット
-        if self.streaming_enabled:
-            self.ai_core.reset_call(call_id_to_complete)
-        # 明示的な通話終了処理（フラグクリア）
-        if hasattr(self.ai_core, 'on_call_end'):
-            self.ai_core.on_call_end(call_id_to_complete, source="_complete_console_call")
-        # アクティブな通話から削除
-        if hasattr(self, '_active_calls'):
-            complete_time = time.time()
-            self.logger.warning(f"[CALL_END_TRACE] [LOC_03] Setting is_active=False for {call_id_to_complete} at {complete_time:.3f}")
-            self.logger.info(f"[CALL_END_TRACE] [LOC_03] Discarding call_id={call_id_to_complete} from _active_calls at {complete_time:.3f}")
-            self._active_calls.discard(call_id_to_complete)
-        # 通話終了時の状態クリーンアップ
-        self._last_voice_time.pop(call_id_to_complete, None)
-        self._last_silence_time.pop(call_id_to_complete, None)
-        self._last_tts_end_time.pop(call_id_to_complete, None)
-        self._last_user_input_time.pop(call_id_to_complete, None)
-        self._silence_warning_sent.pop(call_id_to_complete, None)
-        if hasattr(self, '_initial_tts_sent'):
-            self._initial_tts_sent.discard(call_id_to_complete)
-        self.logger.debug(f"[CALL_CLEANUP] Cleared state for call_id={call_id_to_complete}")
-        self.call_completed = True
-        self.call_id = None
-        self.recent_dialogue.clear()
-        self.transfer_notified = False
-        # 音量レベル送信もリセット
-        self.last_audio_level_sent = 0.0
-        self.last_audio_level_time = 0.0
-        # 補正用の変数もリセット
+        try:
+            self.console_bridge.complete_call(call_id_to_complete, ended_at=datetime.utcnow())
+            # ストリーミングモード: call_idの状態をリセット
+            if self.streaming_enabled:
+                self.ai_core.reset_call(call_id_to_complete)
+            # 明示的な通話終了処理（フラグクリア）
+            if hasattr(self.ai_core, 'on_call_end'):
+                self.ai_core.on_call_end(call_id_to_complete, source="_complete_console_call")
+            self.call_completed = True
+            self.call_id = None
+            self.recent_dialogue.clear()
+            self.transfer_notified = False
+            # 音量レベル送信もリセット
+            self.last_audio_level_sent = 0.0
+            self.last_audio_level_time = 0.0
+            # 補正用の変数もリセット
+        except Exception as e:
+            self.logger.error(f"[COMPLETE_CALL_ERR] Error during _complete_console_call for call_id={call_id_to_complete}: {e}", exc_info=True)
+        finally:
+            # ★どんなエラーがあっても、ここは必ず実行する★
+            if call_id_to_complete:
+                complete_time = time.time()
+                # _active_calls から削除
+                if hasattr(self, '_active_calls') and call_id_to_complete in self._active_calls:
+                    self._active_calls.remove(call_id_to_complete)
+                    self.logger.warning(f"[COMPLETE_CALL_DONE] Removed {call_id_to_complete} from active_calls (finally block) at {complete_time:.3f}")
+                
+                # 管理用データのクリーンアップ
+                if call_id_to_complete in self._recovery_counts:
+                    del self._recovery_counts[call_id_to_complete]
+                if call_id_to_complete in self._initial_sequence_played:
+                    self._initial_sequence_played.discard(call_id_to_complete)
+                if call_id_to_complete in self._last_processed_sequence:
+                    del self._last_processed_sequence[call_id_to_complete]
+                self._last_voice_time.pop(call_id_to_complete, None)
+                self._last_silence_time.pop(call_id_to_complete, None)
+                self._last_tts_end_time.pop(call_id_to_complete, None)
+                self._last_user_input_time.pop(call_id_to_complete, None)
+                self._silence_warning_sent.pop(call_id_to_complete, None)
+                if hasattr(self, '_initial_tts_sent'):
+                    self._initial_tts_sent.discard(call_id_to_complete)
+                self.logger.debug(f"[CALL_CLEANUP] Cleared state for call_id={call_id_to_complete}")
         self.user_turn_index = 0
         self.call_start_time = None
         self._reset_call_state()
@@ -4828,53 +4858,74 @@ class RealtimeGateway:
                             
                         elif event_type == 'call_end':
                             # CHANNEL_HANGUPイベント
-                            if call_id:
-                                effective_call_id = call_id
-                            elif uuid:
-                                # UUIDからcall_idを逆引き
-                                effective_call_id = None
-                                for cid, u in self.call_uuid_map.items():
-                                    if u == uuid:
-                                        effective_call_id = cid
-                                        break
-                                
-                                if not effective_call_id:
-                                    self.logger.warning(f"[EVENT_SOCKET] call_end event: uuid={uuid} not found in call_uuid_map")
-                                    writer.write(b'{"status": "error", "message": "uuid not found"}\n')
+                            effective_call_id = None
+                            try:
+                                if call_id:
+                                    effective_call_id = call_id
+                                elif uuid:
+                                    # UUIDからcall_idを逆引き
+                                    effective_call_id = None
+                                    for cid, u in self.call_uuid_map.items():
+                                        if u == uuid:
+                                            effective_call_id = cid
+                                            break
+                                    
+                                    if not effective_call_id:
+                                        self.logger.warning(f"[EVENT_SOCKET] call_end event: uuid={uuid} not found in call_uuid_map")
+                                        writer.write(b'{"status": "error", "message": "uuid not found"}\n')
+                                        await writer.drain()
+                                        continue
+                                else:
+                                    self.logger.warning(f"[EVENT_SOCKET] call_end event missing call_id and uuid")
+                                    writer.write(b'{"status": "error", "message": "missing call_id or uuid"}\n')
                                     await writer.drain()
                                     continue
-                            else:
-                                self.logger.warning(f"[EVENT_SOCKET] call_end event missing call_id and uuid")
-                                writer.write(b'{"status": "error", "message": "missing call_id or uuid"}\n')
+                                
+                                # on_call_end()を呼び出す
+                                try:
+                                    if hasattr(self.ai_core, 'on_call_end'):
+                                        self.ai_core.on_call_end(effective_call_id, source="gateway_event_listener")
+                                        self.logger.info(f"[EVENT_SOCKET] on_call_end() called for call_id={effective_call_id}")
+                                    else:
+                                        self.logger.error(f"[EVENT_SOCKET] ai_core.on_call_end() not found")
+                                except Exception as e:
+                                    self.logger.exception(f"[EVENT_SOCKET] Error calling on_call_end(): {e}")
+                                
+                                if self.call_id == effective_call_id:
+                                    self.call_id = None
+                                
+                                # UUIDとcall_idのマッピングを削除
+                                if effective_call_id in self.call_uuid_map:
+                                    del self.call_uuid_map[effective_call_id]
+                                
+                                writer.write(b'{"status": "ok"}\n')
                                 await writer.drain()
-                                continue
-                            
-                            # on_call_end()を呼び出す
-                            try:
-                                if hasattr(self.ai_core, 'on_call_end'):
-                                    self.ai_core.on_call_end(effective_call_id, source="gateway_event_listener")
-                                    self.logger.info(f"[EVENT_SOCKET] on_call_end() called for call_id={effective_call_id}")
-                                else:
-                                    self.logger.error(f"[EVENT_SOCKET] ai_core.on_call_end() not found")
                             except Exception as e:
-                                self.logger.exception(f"[EVENT_SOCKET] Error calling on_call_end(): {e}")
-                            
-                            # RealtimeGateway側の状態をクリーンアップ
-                            call_end_time = time.time()
-                            self.logger.warning(f"[CALL_END_TRACE] [LOC_04] Setting is_active=False for {effective_call_id} at {call_end_time:.3f}")
-                            self.logger.info(f"[CALL_STATE] Ending call {effective_call_id} at {call_end_time:.3f}")
-                            self.logger.info(f"[CALL_END_TRACE] [LOC_04] Discarding call_id={effective_call_id} from _active_calls at {call_end_time:.3f}")
-                            self._active_calls.discard(effective_call_id)
-                            if self.call_id == effective_call_id:
-                                self.call_id = None
-                            self.logger.info(f"[EVENT_SOCKET] Removed call_id={effective_call_id} from _active_calls at {call_end_time:.3f}")
-                            
-                            # UUIDとcall_idのマッピングを削除
-                            if effective_call_id in self.call_uuid_map:
-                                del self.call_uuid_map[effective_call_id]
-                            
-                            writer.write(b'{"status": "ok"}\n')
-                            await writer.drain()
+                                self.logger.error(f"[EVENT_SOCKET_ERR] Error during call_end processing for call_id={effective_call_id}: {e}", exc_info=True)
+                            finally:
+                                # ★どんなエラーがあっても、ここは必ず実行する★
+                                if effective_call_id:
+                                    call_end_time = time.time()
+                                    # _active_calls から削除
+                                    if hasattr(self, '_active_calls') and effective_call_id in self._active_calls:
+                                        self._active_calls.remove(effective_call_id)
+                                        self.logger.warning(f"[EVENT_SOCKET_DONE] Removed {effective_call_id} from active_calls (finally block) at {call_end_time:.3f}")
+                                    
+                                    # 管理用データのクリーンアップ
+                                    if effective_call_id in self._recovery_counts:
+                                        del self._recovery_counts[effective_call_id]
+                                    if effective_call_id in self._initial_sequence_played:
+                                        self._initial_sequence_played.discard(effective_call_id)
+                                    if effective_call_id in self._last_processed_sequence:
+                                        del self._last_processed_sequence[effective_call_id]
+                                    self._last_voice_time.pop(effective_call_id, None)
+                                    self._last_silence_time.pop(effective_call_id, None)
+                                    self._last_tts_end_time.pop(effective_call_id, None)
+                                    self._last_user_input_time.pop(effective_call_id, None)
+                                    self._silence_warning_sent.pop(effective_call_id, None)
+                                    if hasattr(self, '_initial_tts_sent'):
+                                        self._initial_tts_sent.discard(effective_call_id)
+                                    self.logger.debug(f"[CALL_CLEANUP] Cleared state for call_id={effective_call_id}")
                         else:
                             self.logger.warning(f"[EVENT_SOCKET] Unknown event type: {event_type}")
                             writer.write(b'{"status": "error", "message": "unknown event type"}\n')
