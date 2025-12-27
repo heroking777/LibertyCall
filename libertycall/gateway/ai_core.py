@@ -413,6 +413,12 @@ class GoogleASR:
             self.logger.info(f"[STREAM_WORKER_DEBUG] streaming_recognize returned, type={type(responses)}")
             
             for response in responses:
+                # 【追加】レスポンス受信直後のログ（生のレスポンス情報をダンプ）
+                results_count = len(response.results) if response.results else 0
+                error_code = response.error.code if response.error else None
+                error_message = response.error.message if response.error else None
+                self.logger.warning(f"[ASR_RAW_RES] Response received. results={results_count} error_code={error_code} error_message={error_message}")
+                
                 self.logger.info(f"[STREAM_WORKER_DEBUG] Got response from Google ASR, type={type(response)}")
                 # 【修正5】280秒（4分40秒）経過時に予防的再起動
                 stream_start_time = getattr(self, '_stream_start_time', None)

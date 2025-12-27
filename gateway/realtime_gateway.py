@@ -1915,6 +1915,7 @@ class RealtimeGateway:
         self.logger.warning(f"[RTP_ENTRY] Time={current_time:.3f} Len={len(data)} Addr={addr}")
         
         # 先頭12バイト(RTPヘッダ)を解析
+        sequence_number = None
         try:
             if len(data) >= 12:
                 v_p_x_cc = data[0]
@@ -2039,6 +2040,21 @@ class RealtimeGateway:
             self.logger.warning(f"[RTP_RECOVERY] [LOC_01] Time={current_time:.3f} call_id={effective_call_id} not in active_calls but receiving RTP. Auto-registering.")
             self._active_calls.add(effective_call_id)
             # return はしない！そのまま処理を続行させる
+        
+        # RTPパケットの重複処理ガード（シーケンス番号チェック）
+        if sequence_number is not None:
+            # effective_call_idが確定している場合はそれを使用、そうでない場合はaddrを使用
+            check_key = effective_call_id if effective_call_id else str(addr)
+            last_seq = self._last_processed_sequence.get(check_key)
+            if last_seq is not None and last_seq == sequence_number:
+                # 既に処理済みなので、ログを出さずに静かにスキップ
+                self.logger.debug(f"[RTP_DUP] Skipping duplicate packet Seq={sequence_number} Key={check_key}")
+                return
+            # 未処理なら更新して続行
+            self._last_processed_sequence[check_key] = sequence_number
+            # シーケンス番号をログ出力（100パケットごと）
+            if sequence_number % 100 == 0:
+                self.logger.warning(f"[RTP_SEQ] Processing Seq={sequence_number} for {check_key}")
         
         # ログ出力（RTP受信時のcall_id確認用）
         self.logger.debug(f"[HANDLE_RTP_ENTRY] len={len(data)} addr={addr} call_id={effective_call_id}")
