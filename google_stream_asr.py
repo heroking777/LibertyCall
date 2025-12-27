@@ -74,36 +74,55 @@ class GoogleStreamingASR:
         
         # リクエストジェネレータ
         def request_gen():
+            logger.info("[GOOGLE_ASR_REQUEST] Starting request generator, sending initial config")
             # 最初のリクエストにはstreaming_configを含める（必須）
-            yield speech.StreamingRecognizeRequest(streaming_config=streaming_config)
+            initial_request = speech.StreamingRecognizeRequest(streaming_config=streaming_config)
+            logger.info(f"[GOOGLE_ASR_REQUEST] Yielding initial request with streaming_config")
+            yield initial_request
             
+            request_count = 0
             # その後、音声データを送信
             while self.active:
                 try:
                     chunk = self.requests.get(timeout=1.0)
                     if chunk is None:
+                        logger.info("[GOOGLE_ASR_REQUEST] Received None chunk, ending request generator")
                         break
+                    request_count += 1
+                    if request_count % 50 == 0:  # 50リクエストごとにログ出力
+                        logger.info(f"[GOOGLE_ASR_REQUEST] Yielding audio chunk #{request_count}, size={len(chunk)} bytes")
                     yield speech.StreamingRecognizeRequest(audio_content=chunk)
                 except queue.Empty:
                     # タイムアウト時は空のリクエストを送信（ストリーム維持）
                     # Google ASRは約5秒間音声が送られないとタイムアウトするため、
                     # 空のリクエストを送信してストリームを維持する
+                    logger.debug("[GOOGLE_ASR_REQUEST] Queue empty, sending empty audio request to maintain stream")
                     yield speech.StreamingRecognizeRequest(audio_content=b'')
                     continue
                 except Exception as e:
-                    logger.error(f"[GoogleStreamingASR] Error in request_gen: {e}")
+                    logger.error(f"[GoogleStreamingASR] Error in request_gen: {e}", exc_info=True)
                     break
+            
+            logger.info(f"[GOOGLE_ASR_REQUEST] Request generator ended, total requests: {request_count}")
         
         # ストリーミング認識を開始
         def start_recognition():
             try:
+                logger.info("[GOOGLE_ASR_STREAM] Starting streaming_recognize call")
                 # streaming_configは最初のリクエストに含めるため、ここでは渡さない
                 responses = self.client.streaming_recognize(request_gen())
+                logger.info("[GOOGLE_ASR_STREAM] streaming_recognize called, waiting for responses...")
                 
+                response_count = 0
                 for response in responses:
+                    response_count += 1
+                    logger.info(f"[GOOGLE_ASR_RESPONSE] Received response #{response_count}")
+                    
                     if not self.active:
+                        logger.info("[GOOGLE_ASR_RESPONSE] Active flag is False, breaking loop")
                         break
                     
+                    logger.debug(f"[GOOGLE_ASR_RESPONSE] Response has {len(response.results)} results")
                     for result in response.results:
                         if result.is_final_result:
                             with self._lock:
@@ -112,7 +131,10 @@ class GoogleStreamingASR:
                         else:
                             # 中間結果も記録（必要に応じて）
                             interim_text = result.alternatives[0].transcript
-                            logger.debug(f"[ASR] Interim result: {interim_text}")
+                            logger.info(f"[ASR] Interim result: {interim_text}")
+                
+                if response_count == 0:
+                    logger.warning("[GOOGLE_ASR_RESPONSE] No responses received from Google ASR")
             except Exception as e:
                 logger.error(f"[GoogleStreamingASR] Recognition error: {e}", exc_info=True)
                 self.active = False
