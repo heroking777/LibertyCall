@@ -1983,6 +1983,15 @@ class RealtimeGateway:
         
         # 最初のRTP到着時に初期音声を強制再生
         effective_call_id = self._get_effective_call_id(addr)
+        
+        # 【診断用】RTPペイロード抽出直後の確認（最初の数回のみ）
+        if not hasattr(self, '_rtp_payload_debug_count'):
+            self._rtp_payload_debug_count = 0
+        if self._rtp_payload_debug_count < 5 and effective_call_id:
+            # μ-lawデータのサンプル値を確認（最初の10バイト）
+            sample_bytes = pcm_data[:min(10, len(pcm_data))]
+            self.logger.info(f"[RTP_PAYLOAD_DEBUG] call_id={effective_call_id} payload_len={len(pcm_data)} first_bytes={sample_bytes.hex()}")
+            self._rtp_payload_debug_count += 1
         if not effective_call_id:
             self.logger.warning(f"[RTP_WARN] Unknown RTP source {addr}, skipping frame")
             return  # TEMP_CALLを使わずスキップ
@@ -2204,15 +2213,23 @@ class RealtimeGateway:
             pcm16_8k = audioop.ulaw2lin(pcm_data, 2)
             rms = audioop.rms(pcm16_8k, 2)
             
-            # --- RMS計算のデバッグ（最初の数回のみ出力） ---
+            # 【診断用】μ-lawデコード後のRMS値確認（常に出力、最初の50回のみ詳細）
             if not hasattr(self, '_rms_debug_count'):
                 self._rms_debug_count = 0
-            if self._rms_debug_count < 5:
+            if self._rms_debug_count < 50:
                 import struct
                 # PCM16 (8kHz) データのサンプルを確認
                 samples_8k = struct.unpack(f'{len(pcm16_8k)//2}h', pcm16_8k)
                 max_sample_8k = max(abs(s) for s in samples_8k) if samples_8k else 0
-                self.logger.info(f"[RTP_DEBUG] PCM16_8k: {len(samples_8k)} samples, max_amplitude={max_sample_8k}, rms={rms:.1f}, pcm_data_len={len(pcm_data)}")
+                self.logger.info(f"[RTP_AUDIO_RMS] call_id={effective_call_id} stage=ulaw_decode len={len(pcm16_8k)} rms={rms} max_amplitude={max_sample_8k} pcm_data_len={len(pcm_data)}")
+                # 最初の5サンプルをログ出力
+                if len(samples_8k) >= 5:
+                    self.logger.info(f"[RTP_AUDIO_SAMPLES] call_id={effective_call_id} first_5_samples={samples_8k[:5]}")
+                self._rms_debug_count += 1
+            else:
+                # 50回以降はRMS値のみ（頻度を下げる：10回に1回）
+                if self._rms_debug_count % 10 == 0:
+                    self.logger.info(f"[RTP_AUDIO_RMS] call_id={effective_call_id} stage=ulaw_decode rms={rms}")
                 self._rms_debug_count += 1
             
             # --- 音量レベル送信（管理画面用） ---
@@ -2352,6 +2369,29 @@ class RealtimeGateway:
                     self.logger.debug(
                         f"STREAMING_FEED: idx={self._stream_chunk_counter} dt={dt_ms:.1f}ms"
                     )
+                
+                # 【診断用】16kHz変換後、on_new_audio呼び出し直前のRMS値確認
+                try:
+                    import audioop
+                    rms_16k = audioop.rms(pcm16k_chunk, 2)
+                    if not hasattr(self, '_rms_16k_debug_count'):
+                        self._rms_16k_debug_count = 0
+                    if self._rms_16k_debug_count < 50:
+                        import struct
+                        samples_16k = struct.unpack(f'{len(pcm16k_chunk)//2}h', pcm16k_chunk)
+                        max_sample_16k = max(abs(s) for s in samples_16k) if samples_16k else 0
+                        self.logger.info(f"[RTP_AUDIO_RMS] call_id={effective_call_id} stage=16khz_resample len={len(pcm16k_chunk)} rms={rms_16k} max_amplitude={max_sample_16k}")
+                        # 最初の5サンプルをログ出力
+                        if len(samples_16k) >= 5:
+                            self.logger.info(f"[RTP_AUDIO_SAMPLES] call_id={effective_call_id} stage=16khz first_5_samples={samples_16k[:5]}")
+                        self._rms_16k_debug_count += 1
+                    else:
+                        # 50回以降はRMS値のみ（頻度を下げる：10回に1回）
+                        if self._rms_16k_debug_count % 10 == 0:
+                            self.logger.info(f"[RTP_AUDIO_RMS] call_id={effective_call_id} stage=16khz_resample rms={rms_16k}")
+                        self._rms_16k_debug_count += 1
+                except Exception as e:
+                    self.logger.debug(f"[RTP_AUDIO_RMS] Failed to calculate RMS: {e}")
                 
                 # ASRへ送信（エラーハンドリング付き）
                 try:
