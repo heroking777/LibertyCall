@@ -74,6 +74,10 @@ class GoogleStreamingASR:
         
         # リクエストジェネレータ
         def request_gen():
+            # 最初のリクエストにはstreaming_configを含める（必須）
+            yield speech.StreamingRecognizeRequest(streaming_config=streaming_config)
+            
+            # その後、音声データを送信
             while self.active:
                 try:
                     chunk = self.requests.get(timeout=1.0)
@@ -82,6 +86,9 @@ class GoogleStreamingASR:
                     yield speech.StreamingRecognizeRequest(audio_content=chunk)
                 except queue.Empty:
                     # タイムアウト時は空のリクエストを送信（ストリーム維持）
+                    # Google ASRは約5秒間音声が送られないとタイムアウトするため、
+                    # 空のリクエストを送信してストリームを維持する
+                    yield speech.StreamingRecognizeRequest(audio_content=b'')
                     continue
                 except Exception as e:
                     logger.error(f"[GoogleStreamingASR] Error in request_gen: {e}")
@@ -90,7 +97,8 @@ class GoogleStreamingASR:
         # ストリーミング認識を開始
         def start_recognition():
             try:
-                responses = self.client.streaming_recognize(streaming_config, request_gen())
+                # streaming_configは最初のリクエストに含めるため、ここでは渡さない
+                responses = self.client.streaming_recognize(request_gen())
                 
                 for response in responses:
                     if not self.active:
