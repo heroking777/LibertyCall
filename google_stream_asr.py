@@ -8,7 +8,8 @@ import queue
 import threading
 import logging
 from typing import Optional
-from google.cloud import speech
+from google.cloud.speech_v1p1beta1 import SpeechClient  # type: ignore
+from google.cloud.speech_v1p1beta1.types import cloud_speech  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class GoogleStreamingASR:
             language_code: 言語コード（デフォルト: ja-JP）
             sample_rate: サンプルレート（デフォルト: 16000Hz）
         """
-        self.client = speech.SpeechClient()
+        self.client = SpeechClient()
         self.requests = queue.Queue()
         self.result_text: Optional[str] = None
         self.active = True
@@ -59,14 +60,14 @@ class GoogleStreamingASR:
         self.result_text = None
         
         # ストリーミング設定
-        config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+        config = cloud_speech.RecognitionConfig(  # type: ignore[union-attr]
+            encoding=cloud_speech.RecognitionConfig.AudioEncoding.LINEAR16,  # type: ignore[union-attr]
             sample_rate_hertz=self.sample_rate,
             language_code=self.language_code,
             enable_automatic_punctuation=True
         )
         
-        streaming_config = speech.StreamingRecognitionConfig(
+        streaming_config = cloud_speech.StreamingRecognitionConfig(  # type: ignore[union-attr]
             config=config,
             interim_results=False,
             single_utterance=False
@@ -77,7 +78,7 @@ class GoogleStreamingASR:
         def request_gen():
             logger.info("[GOOGLE_ASR_REQUEST] Starting request generator, sending initial config")
             # 最初のリクエストにはstreaming_configを含める（必須）
-            initial_request = speech.StreamingRecognizeRequest(streaming_config=streaming_config)
+            initial_request = cloud_speech.StreamingRecognizeRequest(streaming_config=streaming_config)  # type: ignore[union-attr]
             logger.info(f"[GOOGLE_ASR_REQUEST] Yielding initial request with streaming_config")
             yield initial_request
             
@@ -94,13 +95,13 @@ class GoogleStreamingASR:
                     if request_count % 50 == 0:  # 50リクエストごとにログ出力
                         logger.info(f"[GOOGLE_ASR_REQUEST] Yielding audio chunk #{request_count}, size={len(chunk)} bytes")
                     logger.warning(f"[ASR_YIELD_REQUEST] Yielding audio request to Google ASR, chunk_size={len(chunk)}")
-                    yield speech.StreamingRecognizeRequest(audio_content=chunk)
+                    yield cloud_speech.StreamingRecognizeRequest(audio_content=chunk)  # type: ignore[union-attr]
                 except queue.Empty:
                     # タイムアウト時は空のリクエストを送信（ストリーム維持）
                     # Google ASRは約5秒間音声が送られないとタイムアウトするため、
                     # 空のリクエストを送信してストリームを維持する
                     logger.debug("[GOOGLE_ASR_REQUEST] Queue empty, sending empty audio request to maintain stream")
-                    yield speech.StreamingRecognizeRequest(audio_content=b'')
+                    yield cloud_speech.StreamingRecognizeRequest(audio_content=b'')  # type: ignore[union-attr]
                     continue
                 except Exception as e:
                     logger.error(f"[GoogleStreamingASR] Error in request_gen: {e}", exc_info=True)
