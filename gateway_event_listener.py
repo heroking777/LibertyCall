@@ -14,6 +14,14 @@ sys.path.insert(0, str(project_root))
 
 from libs.esl.ESL import ESLconnection
 
+# クライアントIDマッピング機能をインポート
+try:
+    from libertycall.gateway.client_mapper import resolve_client_id
+except ImportError:
+    # フォールバック: client_mapperが利用できない場合はNone
+    resolve_client_id = None
+    logger.warning("[CLIENT_MAPPER] client_mapper module not available, using fallback")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
@@ -260,14 +268,21 @@ def main():
                     logger.info(f"通話開始: ANSWER イベント UUID={uuid}")
                     
                     # realtime_gatewayにcall_startイベントを送信
-                    client_id = e.getHeader("Caller-Destination-Number") or "000"
-                    # クライアントIDを正規化（destination_numberから取得）
-                    if client_id and client_id.isdigit():
-                        # destination_numberが数字の場合はそのまま使用
-                        pass
+                    # 着信番号を取得
+                    destination_number = e.getHeader("Caller-Destination-Number")
+                    
+                    # client_mapperを使用してクライアントIDを取得
+                    if resolve_client_id:
+                        try:
+                            client_id = resolve_client_id(destination_number=destination_number)
+                            logger.info(f"[CLIENT_MAPPER] destination={destination_number} -> client_id={client_id}")
+                        except Exception as ex:
+                            logger.warning(f"[CLIENT_MAPPER] Failed to resolve client_id: {ex}", exc_info=True)
+                            client_id = "000"  # フォールバック
                     else:
-                        # デフォルトクライアントIDを使用
+                        # client_mapperが利用できない場合はフォールバック
                         client_id = "000"
+                        logger.warning(f"[CLIENT_MAPPER] client_mapper not available, using fallback client_id={client_id}")
                     
                     # call_idを生成（UUIDから）
                     call_id = None  # realtime_gateway側で生成される
