@@ -293,6 +293,188 @@ def get_response(user_text: str, current_phase: str) -> tuple[list[str], str]:
 
 ---
 
+## エッジケース対応
+
+### ケース1: ユーザーが無言（無音）
+
+**対応フロー:**
+```
+聞き返し → 3秒無音 → 催促 → 3秒無音 → ハンドオフ
+```
+
+**実装:**
+- 1回目の無音（3秒）: テンプレート110 "もしもし？お声が遠いようです。"
+- 2回目の無音（3秒）: ハンドオフ "詳しい者におつなぎいたします。"
+- Phase: `WAITING_XXX` のまま（催促後）→ `HANDOFF_CONFIRM_WAIT`（2回目）
+
+---
+
+### ケース2: ユーザーが「わからない」「全部」と答える
+
+**対応フロー:**
+```
+AI: "どの料金でしょうか？初期費用、通話料、月額のどれですか？"
+ユーザー: "わからない" / "全部"
+AI: "初期費用は0円、月額は20万円、通話料は1分3円です。"
+```
+
+**実装:**
+- 検出キーワード: "わからない", "全部", "全て", "すべて"
+- 応答: 新テンプレート122（料金の全体説明）
+- Phase: `QA` に戻る
+
+**新テンプレート:**
+- **ID**: 122
+- **内容**: "初期費用は0円、月額は20万円、通話料は1分3円です。"
+
+---
+
+### ケース3: 聞き返し中に別の質問をされる
+
+**対応フロー:**
+```
+AI: "どの料金でしょうか？初期費用、通話料、月額のどれですか？"
+ユーザー: "途中で話しても大丈夫なの？"（割り込み）
+AI: "リアルタイムで発話割り込みに対応いたします。"
+```
+
+**優先順位ルール:**
+1. **最優先（Phaseに関係なく処理）**
+   - ハンドオフ系: "担当者に代わって" → 即ハンドオフ
+   - 終了系: "ありがとうございました" → 即終了
+   - NOT_HEARD系: "ゴニョゴニョ" → 聞き返し
+
+2. **次に優先（明確な質問）**
+   - "月額いくら？" → Phase無視して即答、Phaseを`QA`に戻す
+   - "途中で話しても大丈夫？" → Phase無視して即答、Phaseを`QA`に戻す
+
+3. **最後（Phase依存）**
+   - WAITING_PRICE_TYPE で "月額" → 040を返す
+
+**実装:**
+- 応答判定ロジックの順序を変更
+- 最優先・次に優先の処理を、Phase判定より前に実行
+
+---
+
+### ケース4: 聞き返し後、関係ない答えが返る
+
+**対応フロー:**
+```
+AI: "どの料金でしょうか？初期費用、通話料、月額のどれですか？"
+ユーザー: "バナナ"
+AI: "恐れ入ります、よく聞き取れませんでした。初期費用、通話料、月額のどれでしょうか？"
+ユーザー: "バナナ！"
+AI: "詳しい者におつなぎいたします。" → ハンドオフ
+```
+
+**実装:**
+- 1回目の意味不明な回答: もう一度同じ聞き返しを返す（テンプレート115を再度）
+- 2回目の意味不明な回答: ハンドオフ
+- カウンター: `retry_count` を Phase状態に保存
+
+**新しいState管理:**
+- `waiting_retry_count`: 聞き返しの再試行回数
+- 0 → 初回の聞き返し
+- 1 → もう一度聞き返し
+- 2 → 諦めてハンドオフ
+
+---
+
+## 更新された応答判定ロジック
+
+```python
+def get_response(user_text: str, current_phase: str, state: dict) -> tuple[list[str], str, dict]:
+    """
+    ユーザーの発話から応答テンプレート、Phase、更新されたStateを返す
+    
+    Returns:
+        (template_ids, new_phase, updated_state)
+    """
+    
+    # ステップ0: 無音検知（3秒無音）
+    if is_silence(user_text):
+        silence_count = state.get("silence_count", 0) + 1
+        if silence_count == 1:
+            # 1回目: 催促
+            return (["110"], current_phase, {"silence_count": 1})
+        else:
+            # 2回目: ハンドオフ
+            return (["0604"], "HANDOFF_CONFIRM_WAIT", {})
+    
+    # ステップ1: 最優先（Phaseに関係なく処理）
+    if is_handoff_request(user_text):
+        return (["0604"], "HANDOFF_CONFIRM_WAIT", {})
+    
+    if is_end_call(user_text):
+        return (["086"], "END", {})
+    
+    if is_not_heard(user_text):
+        return (["0602"], current_phase, state)
+    
+    # ステップ2: Phase別の処理
+    if current_phase == "WAITING_PRICE_TYPE":
+        return handle_price_type_response(user_text, state)
+    
+    if current_phase == "WAITING_FUNCTION_TYPE":
+        return handle_function_type_response(user_text, state)
+    
+    if current_phase == "WAITING_SETUP_TYPE":
+        return handle_setup_type_response(user_text, state)
+    
+    # ステップ3: 明確な質問の判定（即答）
+    response = check_clear_questions(user_text)
+    if response:
+        return (response, "QA", {})
+    
+    # ステップ4: 曖昧な質問の判定（聞き返し）
+    if is_ambiguous_price_question(user_text):
+        return (["115"], "WAITING_PRICE_TYPE", {"waiting_retry_count": 0})
+    
+    if is_ambiguous_function_question(user_text):
+        return (["117"], "WAITING_FUNCTION_TYPE", {"waiting_retry_count": 0})
+    
+    if is_ambiguous_setup_question(user_text):
+        return (["120"], "WAITING_SETUP_TYPE", {"waiting_retry_count": 0})
+    
+    # ステップ5: その他の処理（GREETING, etc）
+    # ...
+    
+    # ステップ6: どれにも該当しない場合
+    return (["114"], "QA", {})
+
+
+def handle_price_type_response(user_text: str, state: dict) -> tuple[list[str], str, dict]:
+    """WAITING_PRICE_TYPE でのユーザー回答処理"""
+    
+    # "わからない" "全部" → 全体説明
+    if contains_any(user_text, ["わからない", "全部", "全て", "すべて"]):
+        return (["122"], "QA", {})
+    
+    # "初期費用" → 042
+    if contains_any(user_text, ["初期", "初期費用"]):
+        return (["042"], "QA", {})
+    
+    # "通話料" → 116
+    if "通話" in user_text:
+        return (["116"], "QA", {})
+    
+    # "月額" → 040
+    if "月額" in user_text:
+        return (["040"], "QA", {})
+    
+    # 意味不明な回答 → もう一度聞く or ハンドオフ
+    retry_count = state.get("waiting_retry_count", 0)
+    if retry_count == 0:
+        # 1回目: もう一度聞く
+        return (["115"], "WAITING_PRICE_TYPE", {"waiting_retry_count": 1})
+    else:
+        # 2回目: 諦めてハンドオフ
+        return (["0604"], "HANDOFF_CONFIRM_WAIT", {})
+```
+
+---
+
 ## 新規テンプレートリスト
 
 ### 追加が必要なテンプレート
@@ -306,6 +488,7 @@ def get_response(user_text: str, current_phase: str) -> tuple[list[str], str]:
 | 119 | "24時間365日対応、方言対応、詳細な対応履歴など、様々な機能がございます。詳しくはどの機能が気になりますか？" | 機能の全体説明 |
 | 120 | "導入について何が気になりますか？導入期間、設定の難易度、サポート体制？" | 導入の聞き返し |
 | 121 | "24時間365日、休日・夜間も対応いたします。" | 24時間対応の説明 |
+| 122 | "初期費用は0円、月額は20万円、通話料は1分3円です。" | 料金の全体説明（新規） |
 
 ---
 
