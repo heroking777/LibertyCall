@@ -216,6 +216,18 @@
       "description": "会話終了フェーズ。自動切断タイマー（60秒）がセットされる",
       "transitions": [],
       "templates": ["086", "087", "088"]
+    },
+    
+    "WAITING_PRICE_TYPE": {
+      "name": "料金の種類を待っている",
+      "description": "料金の種類を待っている",
+      "transitions": [
+        {
+          "condition": "その他",
+          "target": "QA"
+        }
+      ],
+      "templates": []
     }
   },
   
