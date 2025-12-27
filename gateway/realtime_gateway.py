@@ -3859,14 +3859,14 @@ class RealtimeGateway:
             # ★フラグセットは削除（キュー追加成功後に移動）★
             
             if effective_call_id:
-            current_time = time.monotonic()
-            self._last_tts_end_time[effective_call_id] = current_time
-            self._last_user_input_time[effective_call_id] = current_time
-            # アクティブな通話として登録（重複登録を防ぐ）
-            if effective_call_id not in self._active_calls:
-                self.logger.warning(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (_queue_initial_audio_sequence) at {time.time():.3f}")
-                self._active_calls.add(effective_call_id)
-            self.logger.debug(
+                current_time = time.monotonic()
+                self._last_tts_end_time[effective_call_id] = current_time
+                self._last_user_input_time[effective_call_id] = current_time
+                # アクティブな通話として登録（重複登録を防ぐ）
+                if effective_call_id not in self._active_calls:
+                    self.logger.warning(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (_queue_initial_audio_sequence) at {time.time():.3f}")
+                    self._active_calls.add(effective_call_id)
+                self.logger.debug(
                 f"[CALL_START] Initialized silence monitoring timestamps for call_id={effective_call_id}"
             )
             
@@ -3899,99 +3899,99 @@ class RealtimeGateway:
             except Exception as e:
                 self.logger.error(f"[INIT_ERR] Failed to load incoming sequence for client={effective_client_id}: {e}\n{traceback.format_exc()}")
                 return
-        
-        if audio_paths:
-            self.logger.info(
-                "[client=%s] initial greeting files=%s",
-                effective_client_id,
-                [str(p) for p in audio_paths],
-            )
-        else:
-            self.logger.warning(f"[client={effective_client_id}] No audio files found for initial sequence")
-
-        chunk_size = 160
-        queued_chunks = 0
-        queue_labels = []
-
-        # 1) 0.5秒の無音を000よりも前に必ず積む（RTP開始時のノイズ防止）
-        silence_payload = self._generate_silence_ulaw(self.initial_silence_sec)
-        silence_samples = len(silence_payload)
-        silence_chunks = 0
-        for i in range(0, len(silence_payload), chunk_size):
-            self.tts_queue.append(silence_payload[i : i + chunk_size])
-            silence_chunks += 1
-            queued_chunks += 1
-        if silence_chunks:
-            queue_labels.append(f"silence({self.initial_silence_sec:.1f}s)")
-            self.logger.info(
-                "[client=%s] initial silence queued samples=%d chunks=%d duration=%.3fs",
-                effective_client_id,
-                silence_samples,
-                silence_chunks,
-                silence_samples / 8000.0,
-            )
-
-        file_entries = []
-        for idx, audio_path in enumerate(audio_paths):
-            # 【追加】デバッグログ：各ファイルの処理状況を詳細に出力
-            self.logger.warning(f"[INIT_DEBUG] Processing audio_path[{idx}]={audio_path} exists={audio_path.exists()}")
-            if not audio_path.exists():
-                self.logger.warning(f"[client={effective_client_id}] audio file missing: {audio_path}")
-                continue
-            try:
-                ulaw_payload = self._load_wav_as_ulaw8k(audio_path)
-                self.logger.warning(f"[INIT_DEBUG] Loaded audio_path[{idx}]={audio_path} payload_len={len(ulaw_payload)}")
-            except Exception as e:
-                self.logger.error(f"[client={effective_client_id}] failed to prepare {audio_path}: {e}")
-                continue
-            size = None
-            try:
-                size = audio_path.stat().st_size
-            except OSError:
-                size = None
-            try:
-                rel = str(audio_path.relative_to(_PROJECT_ROOT))
-            except ValueError:
-                rel = str(audio_path)
-            file_entries.append({"path": rel, "size": size})
-
-            queue_labels.append(audio_path.stem)
-            # 2) クライアント設定順（例: 000→001→002）に従い各ファイルを順番に積む
-            for i in range(0, len(ulaw_payload), chunk_size):
-                self.tts_queue.append(ulaw_payload[i : i + chunk_size])
-                queued_chunks += 1
-
-        if file_entries:
-            self.logger.info("[client=%s] initial greeting files=%s", effective_client_id, file_entries)
-
-        if queue_labels:
-            pretty_order = " -> ".join(queue_labels)
-            pretty_paths = " -> ".join(str(p) for p in audio_paths) or "n/a"
-            self.logger.info(
-                "[client=%s] initial queue order=%s (paths=%s)",
-                effective_client_id,
-                pretty_order,
-                pretty_paths,
-            )
-
-        if queued_chunks:
-            # ★キュー追加成功後、ここで初めてフラグを立てる★
-            if effective_call_id:
-                self._initial_sequence_played.add(effective_call_id)
-                self.logger.warning(f"[INIT_SEQ] Flag set for {effective_call_id}. Queued {queued_chunks} chunks.")
             
-            self.is_speaking_tts = True
-            self.initial_sequence_played = True
-            self.initial_sequence_playing = True  # 初回シーケンス再生中フラグを立てる
-            self.initial_sequence_completed = False
-            self.initial_sequence_completed_time = None
-            self.logger.info(
-                "[INITIAL_SEQUENCE] ON: client=%s initial_sequence_playing=True (ASR will be disabled during playback)",
-                effective_client_id
-            )
-            self.logger.info(
-                "[client=%s] initial greeting enqueued (%d chunks)", effective_client_id, queued_chunks
-            )
+            if audio_paths:
+                self.logger.info(
+                    "[client=%s] initial greeting files=%s",
+                    effective_client_id,
+                    [str(p) for p in audio_paths],
+                )
+            else:
+                self.logger.warning(f"[client={effective_client_id}] No audio files found for initial sequence")
+
+            chunk_size = 160
+            queued_chunks = 0
+            queue_labels = []
+
+            # 1) 0.5秒の無音を000よりも前に必ず積む（RTP開始時のノイズ防止）
+            silence_payload = self._generate_silence_ulaw(self.initial_silence_sec)
+            silence_samples = len(silence_payload)
+            silence_chunks = 0
+            for i in range(0, len(silence_payload), chunk_size):
+                self.tts_queue.append(silence_payload[i : i + chunk_size])
+                silence_chunks += 1
+                queued_chunks += 1
+            if silence_chunks:
+                queue_labels.append(f"silence({self.initial_silence_sec:.1f}s)")
+                self.logger.info(
+                    "[client=%s] initial silence queued samples=%d chunks=%d duration=%.3fs",
+                    effective_client_id,
+                    silence_samples,
+                    silence_chunks,
+                    silence_samples / 8000.0,
+                )
+
+            file_entries = []
+            for idx, audio_path in enumerate(audio_paths):
+                # 【追加】デバッグログ：各ファイルの処理状況を詳細に出力
+                self.logger.warning(f"[INIT_DEBUG] Processing audio_path[{idx}]={audio_path} exists={audio_path.exists()}")
+                if not audio_path.exists():
+                    self.logger.warning(f"[client={effective_client_id}] audio file missing: {audio_path}")
+                    continue
+                try:
+                    ulaw_payload = self._load_wav_as_ulaw8k(audio_path)
+                    self.logger.warning(f"[INIT_DEBUG] Loaded audio_path[{idx}]={audio_path} payload_len={len(ulaw_payload)}")
+                except Exception as e:
+                    self.logger.error(f"[client={effective_client_id}] failed to prepare {audio_path}: {e}")
+                    continue
+                size = None
+                try:
+                    size = audio_path.stat().st_size
+                except OSError:
+                    size = None
+                try:
+                    rel = str(audio_path.relative_to(_PROJECT_ROOT))
+                except ValueError:
+                    rel = str(audio_path)
+                file_entries.append({"path": rel, "size": size})
+
+                queue_labels.append(audio_path.stem)
+                # 2) クライアント設定順（例: 000→001→002）に従い各ファイルを順番に積む
+                for i in range(0, len(ulaw_payload), chunk_size):
+                    self.tts_queue.append(ulaw_payload[i : i + chunk_size])
+                    queued_chunks += 1
+
+            if file_entries:
+                self.logger.info("[client=%s] initial greeting files=%s", effective_client_id, file_entries)
+
+            if queue_labels:
+                pretty_order = " -> ".join(queue_labels)
+                pretty_paths = " -> ".join(str(p) for p in audio_paths) or "n/a"
+                self.logger.info(
+                    "[client=%s] initial queue order=%s (paths=%s)",
+                    effective_client_id,
+                    pretty_order,
+                    pretty_paths,
+                )
+
+            if queued_chunks:
+                # ★キュー追加成功後、ここで初めてフラグを立てる★
+                if effective_call_id:
+                    self._initial_sequence_played.add(effective_call_id)
+                    self.logger.warning(f"[INIT_SEQ] Flag set for {effective_call_id}. Queued {queued_chunks} chunks.")
+                
+                self.is_speaking_tts = True
+                self.initial_sequence_played = True
+                self.initial_sequence_playing = True  # 初回シーケンス再生中フラグを立てる
+                self.initial_sequence_completed = False
+                self.initial_sequence_completed_time = None
+                self.logger.info(
+                    "[INITIAL_SEQUENCE] ON: client=%s initial_sequence_playing=True (ASR will be disabled during playback)",
+                    effective_client_id
+                )
+                self.logger.info(
+                    "[client=%s] initial greeting enqueued (%d chunks)", effective_client_id, queued_chunks
+                )
             else:
                 # キューに追加できなかった場合
                 self.logger.warning(f"[INIT_SEQ] No chunks queued for {effective_call_id}. Flag NOT set.")
