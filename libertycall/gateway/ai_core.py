@@ -3735,6 +3735,9 @@ class AICore:
         # ここから下は final（is_final=True）のときだけ実行される
         # ============================================================
         
+        # partial_textを初期化（is_final=Falseの場合も使用される可能性があるため）
+        partial_text = ""
+        
         # final処理時にpartial処理済みなら早期return（重複再生防止）
         if is_final:
             # 【修正3】テキスト正規化: 句読点・記号を除去して比較
@@ -3788,7 +3791,6 @@ class AICore:
                         return None
             
             # is_final=Trueで重複チェックを通過した場合のみ、partial_transcriptsを取り出してクリア
-            partial_text = ""
             if call_id in self.partial_transcripts:
                 partial_text = self.partial_transcripts[call_id].get("text", "")
                 self.logger.debug(f"[ASR_FINAL_MERGE] Merging partial='{partial_text}' with final='{text}'")
