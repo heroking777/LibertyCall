@@ -3686,12 +3686,15 @@ class RealtimeGateway:
             self.logger.error(f"[HANGUP_ERR] Error during hangup for call_id={call_id_to_cleanup or call_id}: {e}", exc_info=True)
         finally:
             # ★どんなエラーがあっても、ここは必ず実行する★
+            self.logger.warning(f"[FINALLY_BLOCK_ENTRY] Entered finally block for call_id={call_id_to_cleanup or call_id}")
             if call_id_to_cleanup:
                 cleanup_time = time.time()
                 # _active_calls から削除
+                self.logger.warning(f"[FINALLY_ACTIVE_CALLS] Before removal: call_id={call_id_to_cleanup} in _active_calls={call_id_to_cleanup in self._active_calls if hasattr(self, '_active_calls') else False}")
                 if hasattr(self, '_active_calls') and call_id_to_cleanup in self._active_calls:
                     self._active_calls.remove(call_id_to_cleanup)
                     self.logger.warning(f"[HANGUP_DONE] Removed {call_id_to_cleanup} from active_calls (finally block) at {cleanup_time:.3f}")
+                self.logger.warning(f"[FINALLY_ACTIVE_CALLS_REMOVED] After removal: call_id={call_id_to_cleanup} in _active_calls={call_id_to_cleanup in self._active_calls if hasattr(self, '_active_calls') else False}")
                 
                 # 管理用データのクリーンアップ
                 if call_id_to_cleanup in self._recovery_counts:
@@ -3815,12 +3818,15 @@ class RealtimeGateway:
             self.logger.error(f"[COMPLETE_CALL_ERR] Error during _complete_console_call for call_id={call_id_to_complete}: {e}", exc_info=True)
         finally:
             # ★どんなエラーがあっても、ここは必ず実行する★
+            self.logger.warning(f"[FINALLY_BLOCK_ENTRY] Entered finally block for call_id={call_id_to_complete}")
             if call_id_to_complete:
                 complete_time = time.time()
                 # _active_calls から削除
+                self.logger.warning(f"[FINALLY_ACTIVE_CALLS] Before removal: call_id={call_id_to_complete} in _active_calls={call_id_to_complete in self._active_calls if hasattr(self, '_active_calls') else False}")
                 if hasattr(self, '_active_calls') and call_id_to_complete in self._active_calls:
                     self._active_calls.remove(call_id_to_complete)
                     self.logger.warning(f"[COMPLETE_CALL_DONE] Removed {call_id_to_complete} from active_calls (finally block) at {complete_time:.3f}")
+                self.logger.warning(f"[FINALLY_ACTIVE_CALLS_REMOVED] After removal: call_id={call_id_to_complete} in _active_calls={call_id_to_complete in self._active_calls if hasattr(self, '_active_calls') else False}")
                 
                 # 管理用データのクリーンアップ
                 if call_id_to_complete in self._recovery_counts:
@@ -4911,12 +4917,15 @@ class RealtimeGateway:
                                 self.logger.error(f"[EVENT_SOCKET_ERR] Error during call_end processing for call_id={effective_call_id}: {e}", exc_info=True)
                             finally:
                                 # ★どんなエラーがあっても、ここは必ず実行する★
+                                self.logger.warning(f"[FINALLY_BLOCK_ENTRY] Entered finally block for call_id={effective_call_id}")
                                 if effective_call_id:
                                     call_end_time = time.time()
                                     # _active_calls から削除
+                                    self.logger.warning(f"[FINALLY_ACTIVE_CALLS] Before removal: call_id={effective_call_id} in _active_calls={effective_call_id in self._active_calls if hasattr(self, '_active_calls') else False}")
                                     if hasattr(self, '_active_calls') and effective_call_id in self._active_calls:
                                         self._active_calls.remove(effective_call_id)
                                         self.logger.warning(f"[EVENT_SOCKET_DONE] Removed {effective_call_id} from active_calls (finally block) at {call_end_time:.3f}")
+                                    self.logger.warning(f"[FINALLY_ACTIVE_CALLS_REMOVED] After removal: call_id={effective_call_id} in _active_calls={effective_call_id in self._active_calls if hasattr(self, '_active_calls') else False}")
                                     
                                     # 管理用データのクリーンアップ
                                     if effective_call_id in self._recovery_counts:
