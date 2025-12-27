@@ -3487,6 +3487,11 @@ class AICore:
         if not self.streaming_enabled:
             return
         
+        # 通話が既に終了している場合は処理をスキップ（ゾンビ化防止）
+        if call_id not in self._call_started_calls:
+            self.logger.debug(f"[ASR_SKIP] call_id={call_id} already ended, skipping on_new_audio")
+            return
+        
         # GoogleASR の場合は feed_audio を呼び出す（feed_audio 内で最初のチャンクを first_chunk として start_stream に渡す）
         if self.asr_provider == "google":
             self.logger.debug(f"AICore: on_new_audio (provider=google) call_id={call_id} len={len(pcm16k_bytes)} bytes")
@@ -4160,6 +4165,10 @@ class AICore:
         
         :param call_id: 通話ID
         """
+        # 通話開始フラグをクリア（on_new_audioでのスキップに必要）
+        self._call_started_calls.discard(call_id)
+        self.logger.info(f"[CLEANUP] Removed call_id={call_id} from _call_started_calls")
+        
         if self.streaming_enabled and self.asr_model is not None:
             # GoogleASR の場合は end_stream を呼び出す
             if self.asr_provider == "google":
