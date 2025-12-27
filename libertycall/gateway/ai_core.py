@@ -3700,6 +3700,11 @@ class AICore:
                 
                 # 未処理の場合のみ処理してフラグを保存（final時に重複処理しない）
                 self.partial_transcripts[call_id]["processed"] = True
+                # デバッグ: processedフラグ設定後の状態を確認
+                self.logger.info(
+                    f"[ASR_DEBUG_PARTIAL] call_id={call_id} "
+                    f"partial_data_after_processed={self.partial_transcripts[call_id]}"
+                )
                 # GREETING検出時は低遅延モードで即座に処理開始
                 if is_greeting_detected:
                     self.logger.info(
@@ -3743,6 +3748,19 @@ class AICore:
             text_normalized = normalize_text_for_comparison(text)
             
             # partial_transcriptsに保存されている正規化テキストと比較
+            # デバッグ: partial_transcriptsの内容を確認
+            if call_id in self.partial_transcripts:
+                self.logger.info(
+                    f"[ASR_DEBUG_FINAL] call_id={call_id} "
+                    f"partial_data={self.partial_transcripts[call_id]} "
+                    f"text_normalized={text_normalized}"
+                )
+            else:
+                self.logger.info(
+                    f"[ASR_DEBUG_FINAL] call_id={call_id} "
+                    f"partial_transcripts EMPTY, text_normalized={text_normalized}"
+                )
+            
             if call_id in self.partial_transcripts:
                 partial_text_normalized = self.partial_transcripts[call_id].get("text_normalized", "")
                 # 保存されているtext_normalizedも再正規化（句読点除去）
