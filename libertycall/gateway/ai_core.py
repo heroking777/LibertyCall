@@ -3711,7 +3711,11 @@ class AICore:
                         f"[ASR_PARTIAL_PROCESS] call_id={call_id} partial_text={merged_text!r} "
                         f"(>=5 chars, processing immediately)"
                     )
-                # 下の処理に進む（return Noneしない）
+                # partialで処理した場合は、final処理には進まない（重要！）
+                # is_final=Falseの場合は、ここでreturnして下の処理（final処理）に進まないようにする
+                # 実際の会話ロジックは下のfinal処理部分で実行されるが、
+                # is_final=Falseの時は下の処理に進むと重複処理になってしまうため、ここでreturnする
+                return None
             else:
                 # partial の場合は会話ロジックを実行しない
                 return None
