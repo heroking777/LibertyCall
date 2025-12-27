@@ -2125,6 +2125,13 @@ class AICore:
         
         # 【セッションサマリー保存】セッション終了時にsummary.jsonを保存
         self._save_session_summary(call_id)
+        
+        # 【ASRストリーム停止】通話終了時にASRストリームを完全に停止
+        try:
+            self.reset_call(call_id)
+            self.logger.info(f"[CLEANUP] reset_call() executed for call_id={call_id}")
+        except Exception as e:
+            self.logger.error(f"[CLEANUP] Failed to reset_call(): call_id={call_id} error={e}", exc_info=True)
 
     def _load_flow(self, client_id: str) -> dict:
         """
@@ -3779,6 +3786,14 @@ class AICore:
                         self.logger.info(f"[ASR_SKIP_FINAL] Already processed as partial: call_id={call_id} text={text_normalized!r} (normalized)")
                         del self.partial_transcripts[call_id]
                         return None
+            
+            # is_final=Trueで重複チェックを通過した場合のみ、partial_transcriptsを取り出してクリア
+            partial_text = ""
+            if call_id in self.partial_transcripts:
+                partial_text = self.partial_transcripts[call_id].get("text", "")
+                self.logger.debug(f"[ASR_FINAL_MERGE] Merging partial='{partial_text}' with final='{text}'")
+                # partial_transcripts をクリア
+                del self.partial_transcripts[call_id]
         
         # 【最終活動時刻を更新】
         self.last_activity[call_id] = time.time()
@@ -3797,12 +3812,7 @@ class AICore:
             # これにより「割り込んだ瞬間に返す」自然な会話感を実現
             time.sleep(0.05)  # 50msの軽い待機（割り込み処理の完了を待つ）
         
-        # 過去の partial を取り出す
-        partial_text = ""
-        if call_id in self.partial_transcripts:
-            partial_text = self.partial_transcripts[call_id].get("text", "")
-            # partial_transcripts をクリア
-            del self.partial_transcripts[call_id]
+        # （partial_transcriptsの処理はis_finalブロック内に移動）
         
         # Google ASR の final は通常、全ての partial を含むため、
         # final が空でない限り final を使用
