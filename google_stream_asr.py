@@ -71,6 +71,7 @@ class GoogleStreamingASR:
             interim_results=False,
             single_utterance=False
         )
+        logger.warning(f"[ASR_STREAM_INIT] StreamingRecognitionConfig created: interim={streaming_config.interim_results}, single_utterance={streaming_config.single_utterance}")
         
         # リクエストジェネレータ
         def request_gen():
@@ -110,11 +111,14 @@ class GoogleStreamingASR:
             try:
                 logger.info("[GOOGLE_ASR_STREAM] Starting streaming_recognize call")
                 # streaming_configは最初のリクエストに含めるため、ここでは渡さない
+                logger.warning(f"[ASR_STREAM_START] streaming_recognize started for call_id={getattr(self, 'call_id', 'unknown')}")
+                logger.warning(f"[ASR_STREAM_ITER] Starting to iterate responses")
                 responses = self.client.streaming_recognize(request_gen())
                 logger.info("[GOOGLE_ASR_STREAM] streaming_recognize called, waiting for responses...")
                 
                 response_count = 0
                 for response in responses:
+                    logger.warning(f"[ASR_RESPONSE_RECEIVED] Response received from Google ASR")
                     response_count += 1
                     logger.info(f"[GOOGLE_ASR_RESPONSE] Received response #{response_count}")
                     

@@ -83,13 +83,23 @@ class AudioManager:
         Returns:
             音声ファイルのパスリスト
         """
+        logger.warning(f"[PLAY_SEQ_START] play_incoming_sequence called for client_id={client_id}")
+        # 利用可能なクライアント情報を取得（config_loader経由）
+        try:
+            available_clients = self.config_loader.list_clients()
+            logger.warning(f"[PLAY_SEQ_CLIENTS] Available clients: {available_clients}")
+        except Exception as e:
+            logger.warning(f"[PLAY_SEQ_CLIENTS] Failed to list clients: {e}")
+        
         sequence = self.get_incoming_sequence(client_id)
         
         # ログ出力（ユーザー要求の形式に合わせる）
         logger.info(f"[client={client_id}] incoming call audio sequence: {sequence}")
+        logger.warning(f"[PLAY_SEQ_CLIENT_DATA] sequence={sequence}")
         
         # 音声ファイルのパスを取得
         audio_paths = self.get_audio_file_paths(client_id, sequence)
+        logger.warning(f"[PLAY_SEQ_AUDIO_PATHS] audio_paths={[str(p) for p in audio_paths]} (count={len(audio_paths) if audio_paths else 0})")
         
         # ファイルの存在確認
         missing_files = [p for p in audio_paths if not p.exists()]
