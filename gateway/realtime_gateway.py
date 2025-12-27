@@ -1904,8 +1904,9 @@ class RealtimeGateway:
             return False
 
     async def handle_rtp_packet(self, data: bytes, addr: Tuple[str, int]):
-        # 【追加】受信直後の生ログ（デバッグ用）
+        # 【修正】条件分岐の「外」でログを出す（flush=True必須）
         current_time = time.time()
+        print(f"[RTP_ENTRY] Time={current_time:.3f} Len={len(data)} Addr={addr}", flush=True)
         
         # 先頭12バイト(RTPヘッダ)を解析
         try:
@@ -2110,6 +2111,7 @@ class RealtimeGateway:
         # 最初のRTPパケット受信時に _active_calls に登録（確実なタイミング）
         # effective_call_id は上記の無音判定ブロックで取得済み
         if effective_call_id and effective_call_id not in self._active_calls:
+            print(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls at {time.time():.3f}", flush=True)
             self._active_calls.add(effective_call_id)
             self.logger.debug(f"[RTP_ACTIVE] Registered call_id={effective_call_id} to _active_calls")
             # アドレスとcall_idのマッピングを保存
@@ -2136,6 +2138,7 @@ class RealtimeGateway:
                 )
             
             # 強制登録
+            print(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (fallback) at {time.time():.3f}", flush=True)
             self._active_calls.add(effective_call_id)
             # アドレスとcall_idのマッピングを保存
             if addr:
@@ -3767,6 +3770,7 @@ class RealtimeGateway:
             self._last_tts_end_time[effective_call_id] = current_time
             self._last_user_input_time[effective_call_id] = current_time
             # アクティブな通話として登録
+            print(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (_queue_initial_audio_sequence) at {time.time():.3f}", flush=True)
             self._active_calls.add(effective_call_id)
             self.logger.debug(
                 f"[CALL_START] Initialized silence monitoring timestamps for call_id={effective_call_id}"
@@ -4670,6 +4674,7 @@ class RealtimeGateway:
                                 self.logger.exception(f"[EVENT_SOCKET] Error calling on_call_start(): {e}")
                             
                             # RealtimeGateway側の状態を更新
+                            print(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (event_socket) at {time.time():.3f}", flush=True)
                             self._active_calls.add(effective_call_id)
                             self.call_id = effective_call_id
                             self.client_id = client_id
