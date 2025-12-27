@@ -1073,7 +1073,7 @@ class HandoffStateMachine:
             # phase を更新（自動切断ロジック用）
             state["phase"] = "HANDOFF_DONE"
             state["handoff_completed"] = True
-            template_ids = ["081", "082"]
+            template_ids = select_template_ids("HANDOFF_YES", raw_text)
             return template_ids, "HANDOFF_YES", True, state
         
         # NO → do not transfer, end conversation
@@ -1091,7 +1091,7 @@ class HandoffStateMachine:
             # phase を更新（自動切断ロジック用）
             state["phase"] = "END"
             state["handoff_completed"] = True
-            template_ids = ["086", "087"]
+            template_ids = select_template_ids("HANDOFF_NO", raw_text)
             return template_ids, "HANDOFF_NO", False, state
         
         # それ以外は「まだ YES/NO がはっきりしない」ものとして処理
@@ -1134,7 +1134,7 @@ class HandoffStateMachine:
         # phase を更新（自動切断ロジック用）
         state["phase"] = "HANDOFF_DONE"
         state["handoff_completed"] = True
-        template_ids = ["081", "082"]
+        template_ids = select_template_ids("HANDOFF_YES", raw_text)
         return template_ids, "HANDOFF_FALLBACK_YES", True, state
 
 
