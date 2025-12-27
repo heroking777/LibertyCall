@@ -528,7 +528,6 @@ class GoogleASR:
                 # 一時的なエラーの場合、3秒待ってから自動的に再起動を試みる
                 self.logger.info("[ASR_RECOVERY] Attempting to restart ASR stream worker in 3 seconds...")
                 import threading
-                import time
                 
                 def _recover_stream_worker():
                     time.sleep(3)
