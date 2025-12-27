@@ -654,11 +654,9 @@ def select_template_ids(intent: str, text: str) -> list[str]:
     
     # HANDOFF関連の意図判定
     if intent == "HANDOFF_YES":
-        # YESの場合は空リストを返す（ai_core側で081+082を返す）
-        return []
+        return ["081", "082"]
     if intent == "HANDOFF_NO":
-        # NOの場合は空リストを返す（ai_core側で086+087を返す）
-        return []
+        return ["086", "087"]
     
     # 営業電話
     if intent == "SALES_CALL":
@@ -676,11 +674,11 @@ def select_template_ids(intent: str, text: str) -> list[str]:
 
     # システム説明
     if intent == "SYSTEM_EXPLAIN":
-        return ["020", "023", "021", "085"]
+        return ["020"]
 
     # 混雑
     if intent == "BUSY":
-        return ["090", "098"]
+        return ["090"]
 
     # 折り返しリクエスト
     if intent == "CALLBACK_REQUEST":
@@ -689,38 +687,22 @@ def select_template_ids(intent: str, text: str) -> list[str]:
     # 設定難易度
     if intent == "SETUP_DIFFICULTY":
         return ["0603"]
-    
-    # AI電話の件
-    if intent == "AI_CALL_TOPIC":
-        return ["0600"]
-    
-    # 設定難易度
-    if intent == "SETUP_DIFFICULTY":
-        return ["0603"]
 
     # 方言
     if intent == "DIALECT":
-        return ["066", "085"]
+        return ["066"]
 
     # 割り込み
     if intent == "INTERRUPT":
-        return ["065", "085"]
+        return ["065"]
 
     # 予約機能
     if intent == "RESERVATION":
-        if contains("ダブルブッキング"):
-            return ["071", "085"]
-        if contains("席", "何席", "席数"):
-            return ["072", "085"]
-        if contains("スタッフ別", "スタッフ"):
-            return ["072", "085"]
-        if contains("予約", "変更", "キャンセル", "取れる"):
-            return ["070", "085"]
-        return ["070", "085"]
+        return ["070"]
 
     # 複数店舗
     if intent == "MULTI_STORE":
-        return ["069", "085"]
+        return ["069"]
 
     if intent == "GREETING":
         return ["004"]
@@ -732,18 +714,7 @@ def select_template_ids(intent: str, text: str) -> list[str]:
         return ["006_SYS"]
     
     if intent == "INQUIRY":
-        # 【システム問い合わせ用テンプレ分岐追加】「システム」という語を含む場合は006_SYSを使用
-        if "システム" in t:
-            return ["006_SYS"]
-        if contains("ホームページ", "hp", "lp", "dm", "メール", "メッセージ"):
-            return ["006"]
-        if contains("システム導入したいねんけど", "入れたいねんけど"):
-            return ["006"]
-        if contains("導入", "入れたい", "導入したい", "いれたい"):
-            return ["006", "010"]
-        if contains("飲食", "美容", "医療", "クリニック", "小規模", "小さい店", "他の店", "導入実績"):
-            return ["0280", "0281", "0283"]
-        return ["006", "010"]
+        return ["006"]
     
     # 温度の低いリード（検討中・迷っている）への対応
     if intent == "INQUIRY_PASSIVE":
@@ -752,49 +723,13 @@ def select_template_ids(intent: str, text: str) -> list[str]:
         return random.choice([["089"], ["090"]])
 
     if intent == "PRICE":
-        if contains("初期費用"):
-            return ["042"]
-        if contains("最低契約", "最低期間"):
-            return ["045"]
-        if contains("解約"):
-            return ["046"]
-        if contains("トライアル", "初月無料", "無料", "返金"):
-            return ["029"]
-        if contains("人件費", "コスト", "削減", "効果"):
-            return ["049", "048", "047"]
-        if contains("ストレス"):
-            return ["048"]
-        if contains("金額", "料金", "月額", "値段", "費用"):
-            return ["040"]
         return ["040"]
 
     if intent == "SETUP":
-        if contains("すぐ使える", "いつから", "どれくらい", "導入したら"):
-            return ["060"]
-        if contains("転送先番号"):
-            return ["061"]
-        if contains("どうやって", "パソコン", "スマホ", "電話番号", "番号変える", "環境"):
-            return ["061"]
-        return ["061"]
+        return ["060"]
 
     if intent == "FUNCTION":
-        if contains("セキュリティ", "個人情報") or ("情報" in t and "保存" in t):
-            return ["063"]
-        if contains("間違", "クレーム"):
-            return ["021"]
-        if "転送" in t and "番号" not in t:
-            return ["023"]
-        if contains("転送", "引き継ぎ", "ダブルブッキング"):
-            return ["023"]
-        if contains("個人情報", "セキュリティ", "録音", "情報"):
-            return ["063"]
-        if contains("他の店", "他店", "他の店舗"):
-            return ["0280", "0283"]
-        if contains("飲食", "美容", "医療", "店舗", "導入実績", "小規模"):
-            return ["0280", "0281", "0283"]
-        if contains("サポート", "不具合"):
-            return ["0284"]
-        return ["026"]
+        return ["023"]
 
     if intent == "SUPPORT":
         if contains("不具合", "故障", "エラー", "障害"):
@@ -802,14 +737,14 @@ def select_template_ids(intent: str, text: str) -> list[str]:
         return ["0284"]
 
     if intent == "END_CALL":
-        return ["086", "087", "088"]
+        return ["086"]
     
     # UNKNOWN の場合、114を返す（「もう一度お伺いしてもよろしいでしょうか？」）
     if intent == "UNKNOWN":
         return ["114"]  # 「ご要件をもう一度お伺いしてもよろしいでしょうか？」
-    # HANDOFF_REQUEST の場合、空リストを返す（0604は ai_core 側で出す）
+    # HANDOFF_REQUEST の場合、0604を返す
     if intent == "HANDOFF_REQUEST":
-        return []
+        return ["0604"]
 
     return ["110"]
 
