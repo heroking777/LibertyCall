@@ -613,6 +613,11 @@ class GoogleASR:
         if not pcm16k_bytes or len(pcm16k_bytes) == 0:
             return
         
+        # 通話が終了している場合は処理をスキップ（予防的チェック）
+        if self._stop_event.is_set():
+            self.logger.debug(f"[FEED_AUDIO_SKIP] call_id={call_id} stopped, skipping feed_audio")
+            return
+        
         # 【修正】ストリームが起動しているかチェック
         stream_running = (self._stream_thread is not None and self._stream_thread.is_alive())
         
