@@ -1613,7 +1613,8 @@ class RealtimeGateway:
                                             self.logger.debug("[Init] caller_number not provided in init message")
                                         
                                         self._ensure_console_session(call_id_override=req_call_id)
-                                        self._queue_initial_audio_sequence(self.client_id)
+                                        # 非同期タスクとして実行（結果を待たない）
+                                        asyncio.create_task(self._queue_initial_audio_sequence(self.client_id))
 
                                         self.logger.debug(f"[Init] Loaded: {self.config.get('client_name')}")
                                     except Exception as e:
@@ -1862,7 +1863,8 @@ class RealtimeGateway:
             except Exception as e:
                 self.logger.warning(f"[CallInfo] failed to log call info for UI: {e}")
             
-            self._queue_initial_audio_sequence(self.client_id)
+            # 非同期タスクとして実行（結果を待たない）
+            asyncio.create_task(self._queue_initial_audio_sequence(self.client_id))
 
             self.logger.debug(f"[Init from Asterisk] Loaded: {self.config.get('client_name', 'Default')}")
             
@@ -2245,7 +2247,8 @@ class RealtimeGateway:
         if not self.initial_sequence_played and self.rtp_packet_count == 1:
             effective_client_id = self.client_id or self.default_client_id
             if effective_client_id:
-                self._queue_initial_audio_sequence(effective_client_id)
+                # 非同期タスクとして実行（結果を待たない）
+                asyncio.create_task(self._queue_initial_audio_sequence(effective_client_id))
             else:
                 self.logger.warning("No client_id available for initial sequence, skipping")
             
@@ -3796,9 +3799,12 @@ class RealtimeGateway:
             frames, _ = audioop.ratecv(frames, sample_width, 1, framerate, 8000, None)
         return audioop.lin2ulaw(frames, sample_width)
 
-    def _queue_initial_audio_sequence(self, client_id: Optional[str]) -> None:
+    async def _queue_initial_audio_sequence(self, client_id: Optional[str]) -> None:
         import traceback
+        import asyncio
         try:
+            # 【追加】タスク開始ログ
+            self.logger.warning(f"[INIT_TASK] Task started for client_id={client_id}")
             # 【診断用】強制的に可視化
             effective_call_id = self._get_effective_call_id()
             self.logger.warning(f"[DEBUG_PRINT] _queue_initial_audio_sequence called client_id={client_id} call_id={effective_call_id}")
@@ -3852,7 +3858,13 @@ class RealtimeGateway:
             # ★ここでログ出力★
             self.logger.warning(f"[INIT_DEBUG] Calling play_incoming_sequence for client={effective_client_id}")
             try:
-                audio_paths = self.audio_manager.play_incoming_sequence(effective_client_id)
+                # 同期関数をスレッドプールで実行（I/Oブロッキングを回避）
+                loop = asyncio.get_running_loop()
+                audio_paths = await loop.run_in_executor(
+                    None,
+                    self.audio_manager.play_incoming_sequence,
+                    effective_client_id
+                )
                 # 【追加】デバッグログ：audio_pathsの取得結果を詳細に出力
                 self.logger.warning(f"[INIT_DEBUG] audio_paths result: {[str(p) for p in audio_paths]} (count={len(audio_paths)})")
             except Exception as e:
@@ -4757,9 +4769,9 @@ class RealtimeGateway:
                             self.client_id = client_id
                             self.logger.info(f"[EVENT_SOCKET] Added call_id={effective_call_id} to _active_calls, set call_id and client_id={client_id}")
                             
-                            # 初回アナウンス再生処理を実行
+                            # 初回アナウンス再生処理を実行（非同期タスクとして実行）
                             try:
-                                self._queue_initial_audio_sequence(client_id)
+                                asyncio.create_task(self._queue_initial_audio_sequence(client_id))
                                 self.logger.info(f"[EVENT_SOCKET] _queue_initial_audio_sequence() called for call_id={effective_call_id} client_id={client_id}")
                             except Exception as e:
                                 self.logger.exception(f"[EVENT_SOCKET] Error calling _queue_initial_audio_sequence(): {e}")
