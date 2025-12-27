@@ -3123,12 +3123,8 @@ class AICore:
 
         if not template_ids and state.phase != "END":
             intent = intent or "UNKNOWN"
-            # HANDOFF 系のときは 110 を当てず、上位ロジックに任せる
-            if intent in ("HANDOFF_REQUEST", "HANDOFF_YES", "HANDOFF_NO"):
-                template_ids = []
-            else:
-                # 無言を絶対出さないフォールバック
-                template_ids = ["110"]
+            # 無言を絶対出さないフォールバック
+            template_ids = ["110"]
         
         # 直前のAIテンプレートをstateに保存（HANDOFF判定用）
         state.last_ai_templates = template_ids
@@ -3194,36 +3190,6 @@ class AICore:
             state.last_intent = "INQUIRY"
             return reply_text, template_ids, "HANDOFF_UNAVAILABLE", False
 
-        # 【修正】HANDOFF_REQUEST は handoff_state に関係なく、常に 0604 を返す
-        # handoff_state == "done" の状態でも「担当者お願いします」と言われたら、再度確認文を返す
-        # 
-        # テストケース:
-        # - state.phase = "AFTER_085", state.handoff_state = "done" で
-        #   intent = "HANDOFF_REQUEST" が来た場合:
-        #   → templates = ["0604"], handoff_state = "confirming" になることを確認
-        if intent == "HANDOFF_REQUEST":
-            state.handoff_state = "confirming"
-            state.handoff_retry_count = 0
-            state.handoff_prompt_sent = True
-            state.transfer_requested = False
-            state.transfer_executed = False  # 転送フラグもリセット
-            # 既存の HANDOFF_REQUEST（明示的な要求）の場合は、メタ情報が設定されていない
-            # 強制ハンドオフの場合は既に state.meta が設定されているので、そのまま維持
-            template_ids = ["0604"]
-            reply_text = self._render_templates(template_ids)
-            # 【追加】最終決定直前のログ（DEBUGレベルに変更）
-            self.logger.debug(
-                "[NLG_DEBUG] call_id=%s intent=%s base_intent=%s tpl=%s phase=%s handoff_state=%s not_heard_streak=%s",
-                call_id or "GLOBAL_CALL",
-                intent,
-                "HANDOFF_REQUEST",
-                template_ids,
-                state.phase,
-                state.handoff_state,
-                state.not_heard_streak,
-            )
-            return reply_text, template_ids, "HANDOFF_REQUEST", False
-        
         # HANDOFF already completed → never output 0604/104 again
         if handoff_state == "done" and not state.transfer_requested:
             template_ids, base_intent, transfer_requested = self._run_conversation_flow(call_id, raw_text)
@@ -3287,26 +3253,6 @@ class AICore:
         # (do not speak both in the same turn)
         if "0604" in template_ids and "104" in template_ids:
             template_ids = [tid for tid in template_ids if tid != "104"]
-        
-        # 【フォールバック】HANDOFF_REQUEST で template_ids が空の場合は必ず 0604 を返す
-        # これにより、どのフェーズでも HANDOFF_REQUEST に対して無言になることを防ぐ
-        # 注意: 通常は 1376行目で HANDOFF_REQUEST を処理するが、何らかの理由で
-        # _run_conversation_flow に到達した場合の保険としてここでも処理する
-        if (intent == "HANDOFF_REQUEST" or base_intent == "HANDOFF_REQUEST") and not template_ids:
-            self.logger.warning(
-                "HANDOFF_REQUEST_FALLBACK: call_id=%s phase=%s handoff_state=%s template_ids was empty, forcing 0604",
-                call_id or "GLOBAL_CALL",
-                state.phase,
-                state.handoff_state,
-            )
-            state.handoff_state = "confirming"
-            state.handoff_retry_count = 0
-            state.handoff_prompt_sent = True
-            state.transfer_requested = False
-            state.transfer_executed = False
-            template_ids = ["0604"]
-            base_intent = "HANDOFF_REQUEST"
-            # reply_text は後で _render_templates で生成される
         
         # 【修正理由】フォールバック処理の前にストリーク処理を実行すると、
         # フォールバックで ["110"] が設定された場合にストリークが正しく動作しない
