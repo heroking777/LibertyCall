@@ -3243,24 +3243,31 @@ class RealtimeGateway:
         :param call_id: 通話UUID
         :param audio_file: 音声ファイルのパス
         """
-        # 【修正3】古いセッションの強制クリーンアップ: アクティブなcall_idでない場合はスキップ
-        if hasattr(self, '_active_calls') and self._active_calls:
-            # UUIDとcall_id両方をチェック
-            call_id_found = call_id in self._active_calls
-            
-            # call_uuid_mapでUUID→call_id変換も試す
-            if not call_id_found and hasattr(self, 'call_uuid_map'):
+        # 【修正】call_idが_active_callsに存在しない場合は自動追加
+        if not hasattr(self, '_active_calls'):
+            self._active_calls = set()
+        elif not self._active_calls:
+            self._active_calls = set()
+
+        if call_id not in self._active_calls:
+            # call_uuid_mapでUUID→call_id変換を試す
+            call_id_found = False
+            if hasattr(self, 'call_uuid_map'):
                 for mapped_call_id, mapped_uuid in self.call_uuid_map.items():
                     if mapped_uuid == call_id and mapped_call_id in self._active_calls:
                         call_id_found = True
+                        self.logger.info(
+                            f"[PLAYBACK] Found call_id via UUID mapping: {call_id} -> {mapped_call_id}"
+                        )
                         break
             
             if not call_id_found:
-                self.logger.warning(
-                    f"[PLAYBACK] Skipping playback for stale session: call_id={call_id} "
-                    f"(not in active calls: {self._active_calls})"
+                # 自動追加（再生リクエストがある = 通話がアクティブ）
+                self.logger.info(
+                    f"[PLAYBACK] Auto-adding call_id={call_id} to _active_calls "
+                    f"(playback request received, current active_calls: {self._active_calls})"
                 )
-                return
+                self._active_calls.add(call_id)
         
         try:
             # ESL接続が切れている場合は自動リカバリを試みる
