@@ -804,8 +804,11 @@ def select_template_ids(intent: str, text: str) -> list[str]:
     if intent == "END_CALL":
         return ["086", "087", "088"]
     
-    # HANDOFF_REQUEST / UNKNOWN の場合、空リストを返す（0604は ai_core 側で出す）
-    if intent in ("UNKNOWN", "HANDOFF_REQUEST"):
+    # UNKNOWN の場合、114を返す（「もう一度お伺いしてもよろしいでしょうか？」）
+    if intent == "UNKNOWN":
+        return ["114"]  # 「ご要件をもう一度お伺いしてもよろしいでしょうか？」
+    # HANDOFF_REQUEST の場合、空リストを返す（0604は ai_core 側で出す）
+    if intent == "HANDOFF_REQUEST":
         return []
 
     return ["110"]
