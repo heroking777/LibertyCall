@@ -706,6 +706,8 @@ class RealtimeGateway:
         self.logger = logging.getLogger(__name__)
         # 起動確認用ログ（修正版が起動したことを示す）
         self.logger.warning("[DEBUG_VERSION] RealtimeGateway initialized with UPDATED LOGGING logic.")
+        # デバッグ用パケットカウンター初期化
+        self._debug_packet_count = 0
         self.rtp_host = config["rtp"]["listen_host"]
         # ポート番号の優先順位: コマンドライン引数 > LC_RTP_PORT > LC_GATEWAY_PORT > gateway.yaml > 固定値 7100
         if rtp_port_override is not None:
@@ -2003,6 +2005,9 @@ class RealtimeGateway:
         # RTPペイロードを抽出（μ-law）
         pcm_data = data[12:]
         
+        # 音声デコード確認ログ用カウンター（デコード処理後に出力）
+        self._debug_packet_count += 1
+        
         # 最初のRTP到着時に初期音声を強制再生
         effective_call_id = self._get_effective_call_id(addr)
         
@@ -2238,6 +2243,14 @@ class RealtimeGateway:
             # μ-law → PCM16 (8kHz) に変換
             pcm16_8k = audioop.ulaw2lin(pcm_data, 2)
             rms = audioop.rms(pcm16_8k, 2)
+            
+            # 音声デコード確認ログ（デコード後のデータを更新）
+            if self._debug_packet_count <= 50 or self._debug_packet_count % 100 == 0:
+                # デコード後（PCM16）の先頭10バイト（5サンプル分）
+                decoded_preview = pcm16_8k[:10].hex() if len(pcm16_8k) >= 10 else "N/A"
+                # デコード前（μ-law）の先頭10バイト（既に取得済み）
+                raw_preview = pcm_data[:10].hex() if len(pcm_data) >= 10 else "N/A"
+                self.logger.warning(f"[AUDIO_DEBUG] Cnt={self._debug_packet_count} RawHead={raw_preview} DecodedHead={decoded_preview} RawLen={len(pcm_data)} DecodedLen={len(pcm16_8k)} RMS={rms}")
             
             # 【診断用】μ-lawデコード後のRMS値確認（常に出力、最初の50回のみ詳細）
             if not hasattr(self, '_rms_debug_count'):
@@ -3771,9 +3784,10 @@ class RealtimeGateway:
             current_time = time.monotonic()
             self._last_tts_end_time[effective_call_id] = current_time
             self._last_user_input_time[effective_call_id] = current_time
-            # アクティブな通話として登録
-            self.logger.warning(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (_queue_initial_audio_sequence) at {time.time():.3f}")
-            self._active_calls.add(effective_call_id)
+            # アクティブな通話として登録（重複登録を防ぐ）
+            if effective_call_id not in self._active_calls:
+                self.logger.warning(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (_queue_initial_audio_sequence) at {time.time():.3f}")
+                self._active_calls.add(effective_call_id)
             self.logger.debug(
                 f"[CALL_START] Initialized silence monitoring timestamps for call_id={effective_call_id}"
             )
