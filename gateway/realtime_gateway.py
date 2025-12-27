@@ -2005,6 +2005,13 @@ class RealtimeGateway:
         # RTPペイロードを抽出（μ-law）
         pcm_data = data[12:]
         
+        # 【診断用】生のRTPペイロード（デコード前）をダンプ（最初の5パケットのみ）
+        if not hasattr(self, '_payload_raw_debug_count'):
+            self._payload_raw_debug_count = 0
+        if self._payload_raw_debug_count < 5 and len(pcm_data) > 0:
+            self.logger.warning(f"[PAYLOAD_RAW] Cnt={self._payload_raw_debug_count} Len={len(pcm_data)} Head={pcm_data[:10].hex()}")
+            self._payload_raw_debug_count += 1
+        
         # 音声デコード確認ログ用カウンター（デコード処理後に出力）
         self._debug_packet_count += 1
         
@@ -2024,11 +2031,12 @@ class RealtimeGateway:
             return  # TEMP_CALLを使わずスキップ
         
         # 通話が既に終了している場合は処理をスキップ（ゾンビ化防止）
+        # 【修正】RTPパケットが届いているという事実は「通話が生きている」証拠なので、強制登録する
         if hasattr(self, '_active_calls') and effective_call_id not in self._active_calls:
             current_time = time.time()
-            self.logger.warning(f"[RTP_SKIP] [LOC_01] Time={current_time:.3f} call_id={effective_call_id} already ended (Active=False). Skipping handle_rtp_packet")
-            self.logger.info(f"[RTP_SKIP] [LOC_01] Time={current_time:.3f} call_id={effective_call_id} already ended (Active=False). Skipping handle_rtp_packet")
-            return
+            self.logger.warning(f"[RTP_RECOVERY] [LOC_01] Time={current_time:.3f} call_id={effective_call_id} not in active_calls but receiving RTP. Auto-registering.")
+            self._active_calls.add(effective_call_id)
+            # return はしない！そのまま処理を続行させる
         
         # ログ出力（RTP受信時のcall_id確認用）
         self.logger.debug(f"[HANDLE_RTP_ENTRY] len={len(data)} addr={addr} call_id={effective_call_id}")
