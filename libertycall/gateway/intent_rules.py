@@ -723,7 +723,7 @@ def select_template_ids(intent: str, text: str) -> list[str]:
         return ["069", "085"]
 
     if intent == "GREETING":
-        return ["004", "005"]
+        return ["004"]
 
     # システムについての問い合わせ（優先度高い）
     if intent == "SYSTEM_INQUIRY":

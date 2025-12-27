@@ -2778,7 +2778,7 @@ class AICore:
         if intent == "GREETING":
             state.phase = "QA"
             state.last_intent = intent
-            return intent, ["004", "005"], False
+            return intent, ["004"], False
         if self._contains_keywords(normalized_text, self.ENTRY_TRIGGER_KEYWORDS):
             state.phase = "ENTRY_CONFIRM"
             state.last_intent = "INQUIRY"
