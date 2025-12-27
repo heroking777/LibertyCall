@@ -3797,30 +3797,33 @@ class RealtimeGateway:
         return audioop.lin2ulaw(frames, sample_width)
 
     def _queue_initial_audio_sequence(self, client_id: Optional[str]) -> None:
-        # 【診断用】強制的に可視化
-        effective_call_id = self._get_effective_call_id()
-        self.logger.warning(f"[DEBUG_PRINT] _queue_initial_audio_sequence called client_id={client_id} call_id={effective_call_id}")
-        
-        # 【追加】二重実行ガード（通話ごとのフラグチェック）
-        if effective_call_id and effective_call_id in self._initial_sequence_played:
-            self.logger.warning(f"[INIT_SEQ] Skipping initial sequence for {effective_call_id} (already played).")
-            return
-        
-        effective_client_id = client_id or self.default_client_id
-        if not effective_client_id:
-            return
+        import traceback
+        try:
+            # 【診断用】強制的に可視化
+            effective_call_id = self._get_effective_call_id()
+            self.logger.warning(f"[DEBUG_PRINT] _queue_initial_audio_sequence called client_id={client_id} call_id={effective_call_id}")
+            
+            # 【追加】二重実行ガード（通話ごとのフラグチェック）
+            if effective_call_id and effective_call_id in self._initial_sequence_played:
+                self.logger.warning(f"[INIT_SEQ] Skipping initial sequence for {effective_call_id} (already played).")
+                return
+            
+            effective_client_id = client_id or self.default_client_id
+            if not effective_client_id:
+                self.logger.warning(f"[INIT_DEBUG] No effective_client_id, returning early")
+                return
 
-        # 無音監視基準時刻を初期化（通話開始時）
-        effective_call_id = self._get_effective_call_id()
-        
-        # 【追加】effective_call_idが確定した時点で再度チェック
-        if effective_call_id and effective_call_id in self._initial_sequence_played:
-            self.logger.warning(f"[INIT_SEQ] Skipping initial sequence for {effective_call_id} (already played, checked after call_id resolution).")
-            return
-        
-        # ★フラグセットは削除（キュー追加成功後に移動）★
-        
-        if effective_call_id:
+            # 無音監視基準時刻を初期化（通話開始時）
+            effective_call_id = self._get_effective_call_id()
+            
+            # 【追加】effective_call_idが確定した時点で再度チェック
+            if effective_call_id and effective_call_id in self._initial_sequence_played:
+                self.logger.warning(f"[INIT_SEQ] Skipping initial sequence for {effective_call_id} (already played, checked after call_id resolution).")
+                return
+            
+            # ★フラグセットは削除（キュー追加成功後に移動）★
+            
+            if effective_call_id:
             current_time = time.monotonic()
             self._last_tts_end_time[effective_call_id] = current_time
             self._last_user_input_time[effective_call_id] = current_time
@@ -3846,13 +3849,15 @@ class RealtimeGateway:
             else:
                 self.logger.warning(f"[DEBUG_PRINT] on_call_start method not found in ai_core")
 
-        try:
-            audio_paths = self.audio_manager.play_incoming_sequence(effective_client_id)
-            # 【追加】デバッグログ：audio_pathsの取得結果を詳細に出力
-            self.logger.warning(f"[INIT_DEBUG] audio_paths={[str(p) for p in audio_paths]} (count={len(audio_paths)})")
-        except Exception as e:
-            self.logger.error(f"[client={effective_client_id}] Failed to load incoming sequence: {e}")
-            return
+            # ★ここでログ出力★
+            self.logger.warning(f"[INIT_DEBUG] Calling play_incoming_sequence for client={effective_client_id}")
+            try:
+                audio_paths = self.audio_manager.play_incoming_sequence(effective_client_id)
+                # 【追加】デバッグログ：audio_pathsの取得結果を詳細に出力
+                self.logger.warning(f"[INIT_DEBUG] audio_paths result: {[str(p) for p in audio_paths]} (count={len(audio_paths)})")
+            except Exception as e:
+                self.logger.error(f"[INIT_ERR] Failed to load incoming sequence for client={effective_client_id}: {e}\n{traceback.format_exc()}")
+                return
         
         if audio_paths:
             self.logger.info(
@@ -3946,9 +3951,12 @@ class RealtimeGateway:
             self.logger.info(
                 "[client=%s] initial greeting enqueued (%d chunks)", effective_client_id, queued_chunks
             )
-        else:
-            # キューに追加できなかった場合
-            self.logger.warning(f"[INIT_SEQ] No chunks queued for {effective_call_id}. Flag NOT set.")
+            else:
+                # キューに追加できなかった場合
+                self.logger.warning(f"[INIT_SEQ] No chunks queued for {effective_call_id}. Flag NOT set.")
+        except Exception as e:
+            # ★エラーをキャッチしてログ出しし、ここで止める（伝播させない）★
+            self.logger.error(f"[INIT_ERR] Critical error in initial sequence: {e}\n{traceback.format_exc()}")
 
     def _generate_silence_ulaw(self, duration_sec: float) -> bytes:
         samples = max(1, int(8000 * duration_sec))

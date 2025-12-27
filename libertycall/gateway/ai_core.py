@@ -362,6 +362,12 @@ class GoogleASR:
                     # 【デバッグ】yield前
                     self.logger.debug(f"[REQUEST_GEN] Yielding request with audio")
                     self.logger.info(f"[REQUEST_GEN_DEBUG] About to yield audio chunk to Google ASR")
+                    # 【追加】生存確認ログ（頻度を落として）
+                    if not hasattr(self, '_req_gen_counter'):
+                        self._req_gen_counter = 0
+                    self._req_gen_counter += 1
+                    if self._req_gen_counter % 50 == 0:
+                        self.logger.warning(f"[ASR_REQ_ALIVE] Yielding audio packet #{self._req_gen_counter} len={len(chunk)} call_id={self._current_call_id}")
                     yield cloud_speech.StreamingRecognizeRequest(audio_content=chunk)  # type: ignore[union-attr]
             
             self.logger.info("[STREAM_WORKER_PRECHECK] Request generator defined, about to create config")
