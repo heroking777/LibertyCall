@@ -37,6 +37,9 @@
       <!-- "play_audio_sequence a" にもマッチさせる -->
       <condition field="destination_number" expression="^play_audio_sequence">
 	<action application="answer"/>
+	<!-- エコーキャンセルを有効化（システム音声とユーザー音声の分離） -->
+	<action application="set" data="echo_cancel_type=speex"/>
+	<action application="set" data="bridge_echo_cancel_type=speex"/>
 	<!-- A-legのセッションタイムアウト設定（催促やASR動作のための余裕を確保） -->
 	<action application="set" data="disable-timer=true"/>
 	<action application="set" data="media_timeout=60"/>
