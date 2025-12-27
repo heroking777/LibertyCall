@@ -10,6 +10,7 @@ from libertycall.gateway.dialogue_flow import (
     is_ambiguous_price_question,
     check_clear_price_question,
     handle_price_type_response,
+    handle_function_type_response,
     is_handoff_request,
     is_end_call,
     is_not_heard,
@@ -150,6 +151,90 @@ class TestEdgeCases:
         """どれにも該当しない → UNKNOWN"""
         template_ids, phase, state = get_response("あいうえお", "QA")
         assert template_ids == ["114"]
+        assert phase == "QA"
+
+
+class TestFunctionQuestions:
+    """機能関連の質問テスト"""
+
+    def test_ambiguous_function_question(self):
+        """曖昧な機能質問 → 聞き返し"""
+        test_cases = [
+            "機能教えて",
+            "何ができますか？",
+            "どんなことができる？",
+        ]
+        for text in test_cases:
+            template_ids, phase, state = get_response(text, "QA")
+            assert template_ids == ["117"], f"Failed template for: {text}"
+            assert phase == "WAITING_FUNCTION_TYPE", f"Failed phase for: {text}"
+            assert state.get("waiting_retry_count") == 0
+
+    def test_function_type_response_interrupt(self):
+        """WAITING_FUNCTION_TYPE で「割り込み」と答える"""
+        template_ids, phase, state = handle_function_type_response("割り込み", {})
+        assert template_ids == ["065"]
+        assert phase == "QA"
+
+    def test_function_type_response_sales_call(self):
+        """WAITING_FUNCTION_TYPE で「営業電話」と答える"""
+        template_ids, phase, state = handle_function_type_response("営業電話", {})
+        assert template_ids == ["118"]
+        assert phase == "QA"
+
+    def test_function_type_response_transfer(self):
+        """WAITING_FUNCTION_TYPE で「転送」と答える"""
+        template_ids, phase, state = handle_function_type_response("転送", {})
+        assert template_ids == ["023"]
+        assert phase == "QA"
+
+    def test_function_type_response_24h(self):
+        """WAITING_FUNCTION_TYPE で「24時間」と答える"""
+        template_ids, phase, state = handle_function_type_response("24時間", {})
+        assert template_ids == ["121"]
+        assert phase == "QA"
+
+    def test_function_type_response_dialect(self):
+        """WAITING_FUNCTION_TYPE で「方言」と答える"""
+        template_ids, phase, state = handle_function_type_response("方言", {})
+        assert template_ids == ["066"]
+        assert phase == "QA"
+
+    def test_function_type_response_security(self):
+        """WAITING_FUNCTION_TYPE で「セキュリティ」と答える"""
+        template_ids, phase, state = handle_function_type_response("セキュリティ", {})
+        assert template_ids == ["063"]
+        assert phase == "QA"
+
+    def test_function_type_response_all(self):
+        """WAITING_FUNCTION_TYPE で「全部」と答える"""
+        template_ids, phase, state = handle_function_type_response("全部", {})
+        assert template_ids == ["119"]
+        assert phase == "QA"
+
+    def test_function_type_response_other(self):
+        """WAITING_FUNCTION_TYPE で「その他」と答える"""
+        template_ids, phase, state = handle_function_type_response("その他", {})
+        assert template_ids == ["119"]
+        assert phase == "QA"
+
+    def test_function_type_response_invalid_retry(self):
+        """WAITING_FUNCTION_TYPE で意味不明な回答 → もう一度聞く"""
+        # 1回目
+        template_ids, phase, state = handle_function_type_response("バナナ", {"waiting_retry_count": 0})
+        assert template_ids == ["117"], "1回目は聞き返し"
+        assert phase == "WAITING_FUNCTION_TYPE"
+        assert state.get("waiting_retry_count") == 1
+        
+        # 2回目
+        template_ids, phase, state = handle_function_type_response("バナナ", {"waiting_retry_count": 1})
+        assert template_ids == ["0604"], "2回目はハンドオフ"
+        assert phase == "HANDOFF_CONFIRM_WAIT"
+
+    def test_clear_function_during_waiting(self):
+        """WAITING_FUNCTION_TYPE 中に明確な質問 → Phase無視して即答"""
+        template_ids, phase, state = get_response("月額いくらですか？", "WAITING_FUNCTION_TYPE")
+        assert template_ids == ["040"]
         assert phase == "QA"
 
 

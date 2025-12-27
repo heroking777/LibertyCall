@@ -228,6 +228,18 @@
         }
       ],
       "templates": []
+    },
+    
+    "WAITING_FUNCTION_TYPE": {
+      "name": "機能の種類を待っている",
+      "description": "機能の種類を待っている",
+      "transitions": [
+        {
+          "condition": "その他",
+          "target": "QA"
+        }
+      ],
+      "templates": []
     }
   },
   

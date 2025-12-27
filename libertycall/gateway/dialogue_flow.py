@@ -147,6 +147,83 @@ def handle_price_type_response(text: str, state: Dict) -> Tuple[List[str], str, 
 
 
 # ========================================
+# 機能関連の判定
+# ========================================
+
+def is_ambiguous_function_question(text: str) -> bool:
+    """曖昧な機能質問の判定（聞き返しが必要）"""
+    # 機能関連のキーワードはあるが、具体的な種類が指定されていない
+    function_keywords = ["機能", "できる", "何ができ", "どんなこと"]
+    specific_keywords = [
+        "割り込", "途中で話", "口挟",
+        "営業電話", "営業",
+        "転送", "引継",
+        "24時間", "夜間",
+        "方言", "関西弁",
+        "セキュリティ", "個人情報"
+    ]
+    
+    has_function_keyword = contains_any(text, function_keywords)
+    has_specific_keyword = contains_any(text, specific_keywords)
+    
+    return has_function_keyword and not has_specific_keyword
+
+
+def handle_function_type_response(text: str, state: Dict) -> Tuple[List[str], str, Dict]:
+    """
+    WAITING_FUNCTION_TYPE でのユーザー回答処理
+    
+    Returns:
+        (template_ids, new_phase, updated_state)
+    """
+    # "わからない" "全部" "その他" → 全体説明
+    if contains_any(text, ["わからない", "全部", "全て", "すべて", "その他"]):
+        logger.info("FUNCTION_TYPE: わからない/全部/その他 → 全体説明")
+        return (["119"], "QA", {})
+    
+    # "割り込み" "途中で話す" → 065
+    if contains_any(text, ["割り込", "途中で話", "口挟"]):
+        logger.info("FUNCTION_TYPE: 割り込み → 065")
+        return (["065"], "QA", {})
+    
+    # "営業電話" → 118
+    if contains_any(text, ["営業", "営業電話"]):
+        logger.info("FUNCTION_TYPE: 営業電話 → 118")
+        return (["118"], "QA", {})
+    
+    # "転送" → 023
+    if contains_any(text, ["転送", "引継"]):
+        logger.info("FUNCTION_TYPE: 転送 → 023")
+        return (["023"], "QA", {})
+    
+    # "24時間" → 121
+    if contains_any(text, ["24時間", "夜間", "休日"]):
+        logger.info("FUNCTION_TYPE: 24時間 → 121")
+        return (["121"], "QA", {})
+    
+    # "方言" → 066
+    if contains_any(text, ["方言", "関西弁", "イントネーション"]):
+        logger.info("FUNCTION_TYPE: 方言 → 066")
+        return (["066"], "QA", {})
+    
+    # "セキュリティ" → 063
+    if contains_any(text, ["セキュリティ", "個人情報", "録音"]):
+        logger.info("FUNCTION_TYPE: セキュリティ → 063")
+        return (["063"], "QA", {})
+    
+    # 意味不明な回答 → もう一度聞く or ハンドオフ
+    retry_count = state.get("waiting_retry_count", 0)
+    if retry_count == 0:
+        # 1回目: もう一度聞く
+        logger.warning(f"FUNCTION_TYPE: 意味不明な回答（1回目）: {text}")
+        return (["117"], "WAITING_FUNCTION_TYPE", {"waiting_retry_count": 1})
+    else:
+        # 2回目: 諦めてハンドオフ
+        logger.warning(f"FUNCTION_TYPE: 意味不明な回答（2回目）→ ハンドオフ: {text}")
+        return (["0604"], "HANDOFF_CONFIRM_WAIT", {})
+
+
+# ========================================
 # その他の明確な質問判定
 # ========================================
 
@@ -253,10 +330,11 @@ def get_response(
         logger.info("WAITING_PRICE_TYPE Phase: ユーザー回答を処理")
         return handle_price_type_response(user_text, state)
     
+    if current_phase == "WAITING_FUNCTION_TYPE":
+        logger.info("WAITING_FUNCTION_TYPE Phase: ユーザー回答を処理")
+        return handle_function_type_response(user_text, state)
+    
     # TODO: 将来追加
-    # if current_phase == "WAITING_FUNCTION_TYPE":
-    #     return handle_function_type_response(user_text, state)
-    # 
     # if current_phase == "WAITING_SETUP_TYPE":
     #     return handle_setup_type_response(user_text, state)
     
@@ -265,10 +343,11 @@ def get_response(
         logger.info("曖昧な料金質問検出 → 聞き返し")
         return (["115"], "WAITING_PRICE_TYPE", {"waiting_retry_count": 0})
     
+    if is_ambiguous_function_question(user_text):
+        logger.info("曖昧な機能質問検出 → 聞き返し")
+        return (["117"], "WAITING_FUNCTION_TYPE", {"waiting_retry_count": 0})
+    
     # TODO: 将来追加
-    # if is_ambiguous_function_question(user_text):
-    #     return (["117"], "WAITING_FUNCTION_TYPE", {"waiting_retry_count": 0})
-    # 
     # if is_ambiguous_setup_question(user_text):
     #     return (["120"], "WAITING_SETUP_TYPE", {"waiting_retry_count": 0})
     
