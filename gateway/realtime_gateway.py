@@ -704,6 +704,8 @@ class RealtimeGateway:
     def __init__(self, config: dict, rtp_port_override: Optional[int] = None):
         self.config = config
         self.logger = logging.getLogger(__name__)
+        # 起動確認用ログ（修正版が起動したことを示す）
+        logging.warning("[DEBUG_VERSION] RealtimeGateway initialized with UPDATED LOGGING logic.")
         self.rtp_host = config["rtp"]["listen_host"]
         # ポート番号の優先順位: コマンドライン引数 > LC_RTP_PORT > LC_GATEWAY_PORT > gateway.yaml > 固定値 7100
         if rtp_port_override is not None:
@@ -1904,9 +1906,9 @@ class RealtimeGateway:
             return False
 
     async def handle_rtp_packet(self, data: bytes, addr: Tuple[str, int]):
-        # 【修正】条件分岐の「外」でログを出す（flush=True必須）
+        # 【修正】条件分岐の「外」でログを出す
         current_time = time.time()
-        print(f"[RTP_ENTRY] Time={current_time:.3f} Len={len(data)} Addr={addr}", flush=True)
+        self.logger.warning(f"[RTP_ENTRY] Time={current_time:.3f} Len={len(data)} Addr={addr}")
         
         # 先頭12バイト(RTPヘッダ)を解析
         try:
@@ -1919,7 +1921,7 @@ class RealtimeGateway:
                 payload_type = m_pt & 0x7F
                 marker = (m_pt >> 7) & 1
                 
-                print(f"[RTP_RAW] Time={current_time:.3f} Len={len(data)} PT={payload_type} SSRC={ssrc:08x} Seq={sequence_number} Mark={marker} Addr={addr}", flush=True)
+                self.logger.warning(f"[RTP_RAW] Time={current_time:.3f} Len={len(data)} PT={payload_type} SSRC={ssrc:08x} Seq={sequence_number} Mark={marker} Addr={addr}")
                 self.logger.info(f"[RTP_RAW] Time={current_time:.3f} Len={len(data)} PT={payload_type} SSRC={ssrc:08x} Seq={sequence_number} Mark={marker} Addr={addr}")
         except Exception as e:
             self.logger.warning(f"[RTP_RAW_ERR] Failed to parse header: {e}")
@@ -2019,7 +2021,7 @@ class RealtimeGateway:
         # 通話が既に終了している場合は処理をスキップ（ゾンビ化防止）
         if hasattr(self, '_active_calls') and effective_call_id not in self._active_calls:
             current_time = time.time()
-            print(f"[RTP_SKIP] [LOC_01] Time={current_time:.3f} call_id={effective_call_id} already ended (Active=False). Skipping handle_rtp_packet", flush=True)
+            self.logger.warning(f"[RTP_SKIP] [LOC_01] Time={current_time:.3f} call_id={effective_call_id} already ended (Active=False). Skipping handle_rtp_packet")
             self.logger.info(f"[RTP_SKIP] [LOC_01] Time={current_time:.3f} call_id={effective_call_id} already ended (Active=False). Skipping handle_rtp_packet")
             return
         
@@ -2111,7 +2113,7 @@ class RealtimeGateway:
         # 最初のRTPパケット受信時に _active_calls に登録（確実なタイミング）
         # effective_call_id は上記の無音判定ブロックで取得済み
         if effective_call_id and effective_call_id not in self._active_calls:
-            print(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls at {time.time():.3f}", flush=True)
+            self.logger.warning(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls at {time.time():.3f}")
             self._active_calls.add(effective_call_id)
             self.logger.debug(f"[RTP_ACTIVE] Registered call_id={effective_call_id} to _active_calls")
             # アドレスとcall_idのマッピングを保存
@@ -2138,7 +2140,7 @@ class RealtimeGateway:
                 )
             
             # 強制登録
-            print(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (fallback) at {time.time():.3f}", flush=True)
+            self.logger.warning(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (fallback) at {time.time():.3f}")
             self._active_calls.add(effective_call_id)
             # アドレスとcall_idのマッピングを保存
             if addr:
