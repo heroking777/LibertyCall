@@ -618,6 +618,14 @@ class GoogleASR:
             self.logger.debug(f"[FEED_AUDIO_SKIP] call_id={call_id} stopped, skipping feed_audio")
             return
         
+        # 【診断用】RMS値（音量レベル）を計算してログ出力
+        try:
+            import audioop
+            rms = audioop.rms(pcm16k_bytes, 2)  # 2バイト（16bit）PCM
+            self.logger.info(f"[STREAMING_FEED] call_id={call_id} len={len(pcm16k_bytes)} bytes rms={rms}")
+        except Exception as e:
+            self.logger.debug(f"[STREAMING_FEED] RMS calculation failed: {e}")
+        
         # 【修正】ストリームが起動しているかチェック
         stream_running = (self._stream_thread is not None and self._stream_thread.is_alive())
         
