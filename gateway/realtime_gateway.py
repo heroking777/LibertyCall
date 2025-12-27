@@ -4603,6 +4603,19 @@ class RealtimeGateway:
                             except Exception as e:
                                 self.logger.exception(f"[EVENT_SOCKET] Error calling on_call_start(): {e}")
                             
+                            # RealtimeGateway側の状態を更新
+                            self._active_calls.add(effective_call_id)
+                            self.call_id = effective_call_id
+                            self.client_id = client_id
+                            self.logger.info(f"[EVENT_SOCKET] Added call_id={effective_call_id} to _active_calls, set call_id and client_id={client_id}")
+                            
+                            # 初回アナウンス再生処理を実行
+                            try:
+                                self._queue_initial_audio_sequence(client_id)
+                                self.logger.info(f"[EVENT_SOCKET] _queue_initial_audio_sequence() called for call_id={effective_call_id} client_id={client_id}")
+                            except Exception as e:
+                                self.logger.exception(f"[EVENT_SOCKET] Error calling _queue_initial_audio_sequence(): {e}")
+                            
                             writer.write(b'{"status": "ok"}\n')
                             await writer.drain()
                             
@@ -4638,6 +4651,12 @@ class RealtimeGateway:
                                     self.logger.error(f"[EVENT_SOCKET] ai_core.on_call_end() not found")
                             except Exception as e:
                                 self.logger.exception(f"[EVENT_SOCKET] Error calling on_call_end(): {e}")
+                            
+                            # RealtimeGateway側の状態をクリーンアップ
+                            self._active_calls.discard(effective_call_id)
+                            if self.call_id == effective_call_id:
+                                self.call_id = None
+                            self.logger.info(f"[EVENT_SOCKET] Removed call_id={effective_call_id} from _active_calls")
                             
                             # UUIDとcall_idのマッピングを削除
                             if effective_call_id in self.call_uuid_map:
