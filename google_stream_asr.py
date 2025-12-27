@@ -86,12 +86,14 @@ class GoogleStreamingASR:
             while self.active:
                 try:
                     chunk = self.requests.get(timeout=1.0)
+                    logger.warning(f"[ASR_QUEUE_GET] Got audio chunk from queue, size={len(chunk) if chunk else 0}")
                     if chunk is None:
                         logger.info("[GOOGLE_ASR_REQUEST] Received None chunk, ending request generator")
                         break
                     request_count += 1
                     if request_count % 50 == 0:  # 50リクエストごとにログ出力
                         logger.info(f"[GOOGLE_ASR_REQUEST] Yielding audio chunk #{request_count}, size={len(chunk)} bytes")
+                    logger.warning(f"[ASR_YIELD_REQUEST] Yielding audio request to Google ASR, chunk_size={len(chunk)}")
                     yield speech.StreamingRecognizeRequest(audio_content=chunk)
                 except queue.Empty:
                     # タイムアウト時は空のリクエストを送信（ストリーム維持）
@@ -119,6 +121,8 @@ class GoogleStreamingASR:
                 response_count = 0
                 for response in responses:
                     logger.warning(f"[ASR_RESPONSE_RECEIVED] Response received from Google ASR")
+                    logger.warning(f"[ASR_RESPONSE_TYPE] resp type={type(response)}")
+                    logger.warning(f"[ASR_RESPONSE_HAS_RESULTS] has results={hasattr(response, 'results')} results_count={len(response.results) if hasattr(response, 'results') else 0}")
                     response_count += 1
                     logger.info(f"[GOOGLE_ASR_RESPONSE] Received response #{response_count}")
                     
@@ -127,19 +131,27 @@ class GoogleStreamingASR:
                         break
                     
                     logger.debug(f"[GOOGLE_ASR_RESPONSE] Response has {len(response.results)} results")
-                    for result in response.results:
-                        if result.is_final_result:
-                            with self._lock:
-                                self.result_text = result.alternatives[0].transcript
-                                logger.info(f"[ASR] Final result: {self.result_text}")
-                        else:
-                            # 中間結果も記録（必要に応じて）
-                            interim_text = result.alternatives[0].transcript
-                            logger.info(f"[ASR] Interim result: {interim_text}")
+                    if hasattr(response, 'results') and response.results:
+                        for i, result in enumerate(response.results):
+                            logger.warning(f"[ASR_RESULT_{i}] is_final={result.is_final_result if hasattr(result, 'is_final_result') else 'N/A'} alternatives_count={len(result.alternatives) if hasattr(result, 'alternatives') else 0}")
+                            if hasattr(result, 'alternatives') and result.alternatives:
+                                for j, alt in enumerate(result.alternatives):
+                                    logger.warning(f"[ASR_ALT_{i}_{j}] transcript='{alt.transcript}' confidence={getattr(alt, 'confidence', 'N/A')}")
+                            if result.is_final_result:
+                                with self._lock:
+                                    self.result_text = result.alternatives[0].transcript
+                                    logger.info(f"[ASR] Final result: {self.result_text}")
+                            else:
+                                # 中間結果も記録（必要に応じて）
+                                interim_text = result.alternatives[0].transcript
+                                logger.info(f"[ASR] Interim result: {interim_text}")
                 
                 if response_count == 0:
                     logger.warning("[GOOGLE_ASR_RESPONSE] No responses received from Google ASR")
             except Exception as e:
+                logger.error(f"[ASR_WORKER_EXCEPTION] Exception type={type(e).__name__}")
+                logger.error(f"[ASR_WORKER_EXCEPTION] Exception message={str(e)}")
+                logger.error(f"[ASR_WORKER_EXCEPTION] Traceback:", exc_info=True)
                 logger.error(f"[GoogleStreamingASR] Recognition error: {e}", exc_info=True)
                 self.active = False
         
