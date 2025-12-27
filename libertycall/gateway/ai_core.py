@@ -3497,6 +3497,11 @@ class AICore:
         :param call_id: 通話ID
         :param pcm16k_bytes: 16kHz PCM音声データ
         """
+        # 【追加】音声データ受信時のログ
+        import time
+        current_time = time.time()
+        self.logger.info(f"[AI_CORE] on_new_audio called. Len={len(pcm16k_bytes)} Time={current_time:.3f} call_id={call_id}")
+        
         if not self.streaming_enabled:
             return
         

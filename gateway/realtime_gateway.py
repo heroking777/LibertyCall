@@ -1904,6 +1904,24 @@ class RealtimeGateway:
             return False
 
     async def handle_rtp_packet(self, data: bytes, addr: Tuple[str, int]):
+        # 【追加】受信直後の生ログ（デバッグ用）
+        current_time = time.time()
+        
+        # 先頭12バイト(RTPヘッダ)を解析
+        try:
+            if len(data) >= 12:
+                v_p_x_cc = data[0]
+                m_pt = data[1]
+                sequence_number = (data[2] << 8) | data[3]
+                timestamp = (data[4] << 24) | (data[5] << 16) | (data[6] << 8) | data[7]
+                ssrc = (data[8] << 24) | (data[9] << 16) | (data[10] << 8) | data[11]
+                payload_type = m_pt & 0x7F
+                marker = (m_pt >> 7) & 1
+                
+                self.logger.info(f"[RTP_RAW] Time={current_time:.3f} Len={len(data)} PT={payload_type} SSRC={ssrc:08x} Seq={sequence_number} Mark={marker} Addr={addr}")
+        except Exception as e:
+            self.logger.warning(f"[RTP_RAW_ERR] Failed to parse header: {e}")
+        
         # RTPパケット受信ログ（必ず出力）
         self.logger.debug(f"[RTP_RECV] packet received from {addr}, len={len(data)}")
         try:
@@ -1998,7 +2016,8 @@ class RealtimeGateway:
         
         # 通話が既に終了している場合は処理をスキップ（ゾンビ化防止）
         if hasattr(self, '_active_calls') and effective_call_id not in self._active_calls:
-            self.logger.info(f"[RTP_SKIP] call_id={effective_call_id} already ended, skipping handle_rtp_packet")
+            current_time = time.time()
+            self.logger.info(f"[RTP_SKIP] Time={current_time:.3f} call_id={effective_call_id} already ended (Active=False). Skipping handle_rtp_packet")
             return
         
         # ログ出力（RTP受信時のcall_id確認用）
@@ -4692,10 +4711,12 @@ class RealtimeGateway:
                                 self.logger.exception(f"[EVENT_SOCKET] Error calling on_call_end(): {e}")
                             
                             # RealtimeGateway側の状態をクリーンアップ
+                            call_end_time = time.time()
+                            self.logger.info(f"[CALL_STATE] Ending call {effective_call_id} at {call_end_time:.3f}")
                             self._active_calls.discard(effective_call_id)
                             if self.call_id == effective_call_id:
                                 self.call_id = None
-                            self.logger.info(f"[EVENT_SOCKET] Removed call_id={effective_call_id} from _active_calls")
+                            self.logger.info(f"[EVENT_SOCKET] Removed call_id={effective_call_id} from _active_calls at {call_end_time:.3f}")
                             
                             # UUIDとcall_idのマッピングを削除
                             if effective_call_id in self.call_uuid_map:
