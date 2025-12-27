@@ -926,6 +926,10 @@ class RealtimeGateway:
             recordings_dir = Path("/opt/libertycall/recordings")
             recordings_dir.mkdir(parents=True, exist_ok=True)
             self.logger.info(f"録音機能が有効です。録音ファイルは {recordings_dir} に保存されます。")
+        
+        # FreeSWITCHイベント受信用Unixソケット
+        self.event_socket_path = Path("/tmp/liberty_gateway_events.sock")
+        self.event_server: Optional[asyncio.Server] = None
 
     async def start(self):
         self.logger.info("[RTP_START] RealtimeGateway.start() called")
@@ -1026,6 +1030,9 @@ class RealtimeGateway:
                         self.logger.info("[FS_RTP_MONITOR] DEBUG: Force-enabling ASR after 8 seconds (temporary test)")
                         self.fs_rtp_monitor._schedule_asr_enable_after_initial_sequence()
                 asyncio.create_task(force_enable_asr_after_delay())
+
+            # FreeSWITCHイベント受信用Unixソケットサーバーを起動
+            asyncio.create_task(self._event_socket_server_loop())
 
             # サービスを維持（停止イベントを待つ）
             await self.shutdown_event.wait()
@@ -2589,6 +2596,24 @@ class RealtimeGateway:
                 self.logger.info(f"[SHUTDOWN] ASR handler removed for call_id={self.call_id}")
             except Exception as e:
                 self.logger.warning(f"[SHUTDOWN] Error removing ASR handler: {e}")
+        
+        # Unixソケットサーバーを停止
+        if self.event_server:
+            try:
+                self.logger.info("[SHUTDOWN] Closing event socket server...")
+                self.event_server.close()
+                await self.event_server.wait_closed()
+                self.logger.info("[SHUTDOWN] Event socket server closed")
+            except Exception as e:
+                self.logger.warning(f"[SHUTDOWN] Error closing event socket server: {e}")
+        
+        # ソケットファイルを削除
+        if self.event_socket_path.exists():
+            try:
+                self.event_socket_path.unlink()
+                self.logger.info(f"[SHUTDOWN] Removed socket file: {self.event_socket_path}")
+            except Exception as e:
+                self.logger.warning(f"[SHUTDOWN] Error removing socket file: {e}")
         
         # シャットダウンイベントを設定
         self.shutdown_event.set()
@@ -4515,6 +4540,175 @@ class RealtimeGateway:
             
             except Exception as e:
                 self.logger.exception(f"Error in log monitor loop: {e}")
+
+    async def _event_socket_server_loop(self) -> None:
+        """
+        FreeSWITCHイベント受信用Unixソケットサーバー
+        
+        gateway_event_listener.pyからイベントを受信して、
+        on_call_start() / on_call_end() を呼び出す
+        """
+        # 既存のソケットファイルを削除（前回の起動時の残骸）
+        if self.event_socket_path.exists():
+            try:
+                self.event_socket_path.unlink()
+                self.logger.info(f"[EVENT_SOCKET] Removed existing socket file: {self.event_socket_path}")
+            except Exception as e:
+                self.logger.warning(f"[EVENT_SOCKET] Failed to remove existing socket: {e}")
+        
+        async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+            """クライアント接続ハンドラー"""
+            try:
+                while self.running:
+                    # データを受信（JSON形式）
+                    data = await reader.read(4096)
+                    if not data:
+                        break
+                    
+                    try:
+                        message = json.loads(data.decode('utf-8'))
+                        event_type = message.get('event')
+                        uuid = message.get('uuid')
+                        call_id = message.get('call_id')
+                        client_id = message.get('client_id', '000')
+                        
+                        self.logger.info(f"[EVENT_SOCKET] Received event: {event_type} uuid={uuid} call_id={call_id}")
+                        
+                        if event_type == 'call_start':
+                            # CHANNEL_ANSWERイベント
+                            if call_id:
+                                # call_idが指定されている場合はそれを使用
+                                effective_call_id = call_id
+                            elif uuid:
+                                # UUIDからcall_idを生成
+                                effective_call_id = self._generate_call_id_from_uuid(uuid, client_id)
+                            else:
+                                self.logger.warning(f"[EVENT_SOCKET] call_start event missing call_id and uuid")
+                                writer.write(b'{"status": "error", "message": "missing call_id or uuid"}\n')
+                                await writer.drain()
+                                continue
+                            
+                            # UUIDとcall_idのマッピングを保存
+                            if uuid and effective_call_id:
+                                self.call_uuid_map[effective_call_id] = uuid
+                                self.logger.info(f"[EVENT_SOCKET] Mapped call_id={effective_call_id} -> uuid={uuid}")
+                            
+                            # on_call_start()を呼び出す
+                            try:
+                                if hasattr(self.ai_core, 'on_call_start'):
+                                    self.ai_core.on_call_start(effective_call_id, client_id=client_id)
+                                    self.logger.info(f"[EVENT_SOCKET] on_call_start() called for call_id={effective_call_id} client_id={client_id}")
+                                else:
+                                    self.logger.error(f"[EVENT_SOCKET] ai_core.on_call_start() not found")
+                            except Exception as e:
+                                self.logger.exception(f"[EVENT_SOCKET] Error calling on_call_start(): {e}")
+                            
+                            writer.write(b'{"status": "ok"}\n')
+                            await writer.drain()
+                            
+                        elif event_type == 'call_end':
+                            # CHANNEL_HANGUPイベント
+                            if call_id:
+                                effective_call_id = call_id
+                            elif uuid:
+                                # UUIDからcall_idを逆引き
+                                effective_call_id = None
+                                for cid, u in self.call_uuid_map.items():
+                                    if u == uuid:
+                                        effective_call_id = cid
+                                        break
+                                
+                                if not effective_call_id:
+                                    self.logger.warning(f"[EVENT_SOCKET] call_end event: uuid={uuid} not found in call_uuid_map")
+                                    writer.write(b'{"status": "error", "message": "uuid not found"}\n')
+                                    await writer.drain()
+                                    continue
+                            else:
+                                self.logger.warning(f"[EVENT_SOCKET] call_end event missing call_id and uuid")
+                                writer.write(b'{"status": "error", "message": "missing call_id or uuid"}\n')
+                                await writer.drain()
+                                continue
+                            
+                            # on_call_end()を呼び出す
+                            try:
+                                if hasattr(self.ai_core, 'on_call_end'):
+                                    self.ai_core.on_call_end(effective_call_id, source="gateway_event_listener")
+                                    self.logger.info(f"[EVENT_SOCKET] on_call_end() called for call_id={effective_call_id}")
+                                else:
+                                    self.logger.error(f"[EVENT_SOCKET] ai_core.on_call_end() not found")
+                            except Exception as e:
+                                self.logger.exception(f"[EVENT_SOCKET] Error calling on_call_end(): {e}")
+                            
+                            # UUIDとcall_idのマッピングを削除
+                            if effective_call_id in self.call_uuid_map:
+                                del self.call_uuid_map[effective_call_id]
+                            
+                            writer.write(b'{"status": "ok"}\n')
+                            await writer.drain()
+                        else:
+                            self.logger.warning(f"[EVENT_SOCKET] Unknown event type: {event_type}")
+                            writer.write(b'{"status": "error", "message": "unknown event type"}\n')
+                            await writer.drain()
+                    
+                    except json.JSONDecodeError as e:
+                        self.logger.error(f"[EVENT_SOCKET] Failed to parse JSON: {e}")
+                        writer.write(b'{"status": "error", "message": "invalid json"}\n')
+                        await writer.drain()
+                    except Exception as e:
+                        self.logger.exception(f"[EVENT_SOCKET] Error handling event: {e}")
+                        writer.write(b'{"status": "error", "message": "internal error"}\n')
+                        await writer.drain()
+            
+            except Exception as e:
+                self.logger.exception(f"[EVENT_SOCKET] Client handler error: {e}")
+            finally:
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+        
+        try:
+            # Unixソケットサーバーを起動
+            self.event_server = await asyncio.start_unix_server(
+                handle_client,
+                str(self.event_socket_path)
+            )
+            self.logger.info(f"[EVENT_SOCKET] Server started on {self.event_socket_path}")
+            
+            # サーバーが停止するまで待機
+            async with self.event_server:
+                await self.event_server.serve_forever()
+        
+        except Exception as e:
+            self.logger.exception(f"[EVENT_SOCKET] Server error: {e}")
+        finally:
+            # クリーンアップ
+            if self.event_socket_path.exists():
+                try:
+                    self.event_socket_path.unlink()
+                    self.logger.info(f"[EVENT_SOCKET] Removed socket file: {self.event_socket_path}")
+                except Exception as e:
+                    self.logger.warning(f"[EVENT_SOCKET] Failed to remove socket file: {e}")
+    
+    def _generate_call_id_from_uuid(self, uuid: str, client_id: str) -> str:
+        """
+        UUIDからcall_idを生成
+        
+        :param uuid: FreeSWITCH UUID
+        :param client_id: クライアントID
+        :return: call_id
+        """
+        # console_bridgeのissue_call_id()を使用（標準的なcall_id生成）
+        if hasattr(self, 'console_bridge') and self.console_bridge:
+            call_id = self.console_bridge.issue_call_id(client_id)
+            self.logger.info(f"[EVENT_SOCKET] Generated call_id={call_id} from uuid={uuid} client_id={client_id}")
+        else:
+            # フォールバック: タイムスタンプベースでcall_idを生成
+            call_id = f"in-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            self.logger.warning(f"[EVENT_SOCKET] console_bridge not available, using fallback call_id={call_id}")
+        
+        return call_id
 
 # ========================================
 # Main Entry Point

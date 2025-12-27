@@ -6,6 +6,7 @@ FreeSWITCH Event Socket Listener (PyESL版)
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 # プロジェクトルートをパスに追加
 project_root = Path(__file__).parent
@@ -143,6 +144,66 @@ def get_esl_connection():
     return _esl_connection
 
 
+def send_event_to_gateway(event_type: str, uuid: str, call_id: Optional[str] = None, client_id: str = "000") -> bool:
+    """
+    realtime_gatewayにイベントを送信（Unixソケット経由）
+    
+    :param event_type: 'call_start' または 'call_end'
+    :param uuid: FreeSWITCH UUID
+    :param call_id: 通話ID（オプション）
+    :param client_id: クライアントID
+    :return: 成功した場合True
+    """
+    import socket
+    import json
+    
+    socket_path = Path("/tmp/liberty_gateway_events.sock")
+    
+    if not socket_path.exists():
+        logger.warning(f"[EVENT_SOCKET] Socket file not found: {socket_path}")
+        return False
+    
+    try:
+        # Unixソケットに接続
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(5.0)  # 5秒タイムアウト
+        sock.connect(str(socket_path))
+        
+        # イベントメッセージを送信
+        message = {
+            "event": event_type,
+            "uuid": uuid,
+            "call_id": call_id,
+            "client_id": client_id
+        }
+        
+        data = json.dumps(message).encode('utf-8')
+        sock.sendall(data)
+        
+        # 応答を受信
+        response = sock.recv(1024).decode('utf-8')
+        result = json.loads(response)
+        
+        sock.close()
+        
+        if result.get("status") == "ok":
+            logger.info(f"[EVENT_SOCKET] Event sent successfully: {event_type} uuid={uuid} call_id={call_id}")
+            return True
+        else:
+            logger.error(f"[EVENT_SOCKET] Event send failed: {result.get('message')}")
+            return False
+    
+    except socket.timeout:
+        logger.error(f"[EVENT_SOCKET] Connection timeout to {socket_path}")
+        return False
+    except FileNotFoundError:
+        logger.warning(f"[EVENT_SOCKET] Socket file not found: {socket_path}")
+        return False
+    except Exception as e:
+        logger.error(f"[EVENT_SOCKET] Failed to send event: {e}", exc_info=True)
+        return False
+
+
 def main():
     """Event Socket Listener のメイン処理"""
     # FreeSWITCH Event Socket 接続パラメータ
@@ -197,7 +258,27 @@ def main():
                     handle_channel_create(uuid, e)
                 elif event_name == "CHANNEL_ANSWER":
                     logger.info(f"通話開始: ANSWER イベント UUID={uuid}")
-                    # Google Streaming ASRハンドラーを起動
+                    
+                    # realtime_gatewayにcall_startイベントを送信
+                    client_id = e.getHeader("Caller-Destination-Number") or "000"
+                    # クライアントIDを正規化（destination_numberから取得）
+                    if client_id and client_id.isdigit():
+                        # destination_numberが数字の場合はそのまま使用
+                        pass
+                    else:
+                        # デフォルトクライアントIDを使用
+                        client_id = "000"
+                    
+                    # call_idを生成（UUIDから）
+                    call_id = None  # realtime_gateway側で生成される
+                    
+                    success = send_event_to_gateway("call_start", uuid, call_id=call_id, client_id=client_id)
+                    if success:
+                        logger.info(f"[EVENT_SOCKET] call_start event sent to gateway: uuid={uuid} client_id={client_id}")
+                    else:
+                        logger.warning(f"[EVENT_SOCKET] Failed to send call_start event: uuid={uuid}")
+                    
+                    # Google Streaming ASRハンドラーを起動（既存の処理を維持）
                     try:
                         from asr_handler import get_or_create_handler
                         handler = get_or_create_handler(uuid)
@@ -207,7 +288,6 @@ def main():
                         logger.warning("[ASRHandler] asr_handler module not available")
                     except Exception as e:
                         logger.error(f"[ASRHandler] Failed to start: {e}", exc_info=True)
-                    # 実際の通話処理はCHANNEL_EXECUTE (playback開始) で実行
                 elif event_name == "CHANNEL_EXECUTE":
                     # CHANNEL_EXECUTE: playback開始時（この時点でチャンネルが生きており、RTP確立済み）
                     application = e.getHeader("Application")
@@ -261,6 +341,15 @@ def main():
                         logger.debug(f"[重複防止] UUID={new_uuid} は既に処理中です")
                 elif event_name == "CHANNEL_HANGUP":
                     logger.info(f"通話終了: HANGUP イベント UUID={uuid}")
+                    
+                    # realtime_gatewayにcall_endイベントを送信
+                    call_id = None  # UUIDから逆引きされる
+                    success = send_event_to_gateway("call_end", uuid, call_id=call_id)
+                    if success:
+                        logger.info(f"[EVENT_SOCKET] call_end event sent to gateway: uuid={uuid}")
+                    else:
+                        logger.warning(f"[EVENT_SOCKET] Failed to send call_end event: uuid={uuid}")
+                    
                     # 処理完了したUUIDを削除
                     active_calls.discard(uuid)
                     # ASRハンドラーを停止
