@@ -9,7 +9,7 @@ function ConsoleHeader() {
           <div className="logo-mark">LC</div>
           <div className="logo-text">
             <span className="logo-main">LibertyCall</span>
-            <span className="logo-sub">AI Telephone System</span>
+            <span className="logo-sub">AI 電話システム</span>
           </div>
         </div>
       </div>

@@ -197,7 +197,17 @@ class GoogleASR:
         
         # 【修正理由】既存スレッドが生きている場合でも call_id を更新する必要がある
         # TEMP_CALL のままになると、on_transcript で正しい call_id が使われない
-        self._current_call_id = call_id  # call_id を常に更新（on_transcript 呼び出し用）
+        # UUIDをcall_id形式に変換してから保存
+        if hasattr(self, 'call_uuid_map'):
+            # call_uuid_mapを逆引きしてcall_id形式を取得
+            found_call_id = None
+            for mapped_call_id, mapped_uuid in self.call_uuid_map.items():
+                if mapped_uuid == call_id:
+                    found_call_id = mapped_call_id
+                    break
+            self._current_call_id = found_call_id if found_call_id else call_id
+        else:
+            self._current_call_id = call_id
         
         # もし self._stream_thread is not None かつ self._stream_thread.is_alive() なら return
         if self._stream_thread is not None and self._stream_thread.is_alive():

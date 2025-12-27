@@ -57,28 +57,28 @@ function AudioTestDashboard() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}${API_BASE_URL}/audio_tests/ws/logs`;
     const ws = new WebSocket(wsUrl);
-    
+
     ws.onopen = () => {
       console.log('WebSocket接続が開きました');
     };
-    
+
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'log') {
         setLogs(prev => [...prev.slice(-99), data.data]);
       }
     };
-    
+
     ws.onerror = (error) => {
       console.error('WebSocketエラー:', error);
     };
-    
+
     ws.onclose = () => {
       console.log('WebSocket接続が閉じました');
     };
-    
+
     wsRef.current = ws;
-    
+
     return () => {
       ws.close();
     };
@@ -88,12 +88,12 @@ function AudioTestDashboard() {
   useEffect(() => {
     fetchLatestResults();
     fetchHistory();
-    
+
     // 5秒ごとに最新結果を更新
     const interval = setInterval(() => {
       fetchLatestResults();
     }, 5000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -107,10 +107,10 @@ function AudioTestDashboard() {
   const intentSuccessData = results?.results?.reduce((acc, item) => {
     // ファイル名からintentを推測（簡易版）
     const intent = item.file.includes('inquiry') ? 'INQUIRY' :
-                   item.file.includes('moshimoshi') ? 'GREETING' :
-                   item.file.includes('end') ? 'END_CALL' :
-                   item.file.includes('handoff') ? 'HANDOFF_REQUEST' : 'OTHER';
-    
+      item.file.includes('moshimoshi') ? 'GREETING' :
+        item.file.includes('end') ? 'END_CALL' :
+          item.file.includes('handoff') ? 'HANDOFF_REQUEST' : 'OTHER';
+
     if (!acc[intent]) {
       acc[intent] = { intent, pass: 0, fail: 0 };
     }
@@ -135,8 +135,8 @@ function AudioTestDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">LibertyCall Audio Test Dashboard</h1>
-        
+        <h1 className="text-3xl font-bold mb-6">LibertyCall 音声テストダッシュボード</h1>
+
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
             {error}
@@ -146,24 +146,23 @@ function AudioTestDashboard() {
         {/* ASR Summary */}
         {results && (
           <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">📊 ASR Summary</h2>
+            <h2 className="text-xl font-semibold mb-4">📊 ASR 概要</h2>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <div className="text-sm text-gray-600">Avg WER</div>
-                <div className={`text-2xl font-bold ${
-                  results.summary.avg_wer < results.summary.threshold
+                <div className="text-sm text-gray-600">平均単語誤り率 (WER)</div>
+                <div className={`text-2xl font-bold ${results.summary.avg_wer < results.summary.threshold
                     ? 'text-green-600' : 'text-red-600'
-                }`}>
+                  }`}>
                   {results.summary.avg_wer.toFixed(3)}
                   {results.summary.avg_wer < results.summary.threshold ? ' ✅' : ' ⚠️'}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-gray-600">Threshold</div>
+                <div className="text-sm text-gray-600">閾値</div>
                 <div className="text-2xl font-bold">{results.summary.threshold.toFixed(3)}</div>
               </div>
               <div>
-                <div className="text-sm text-gray-600">Total Samples</div>
+                <div className="text-sm text-gray-600">総サンプル数</div>
                 <div className="text-2xl font-bold">{results.summary.total_samples}</div>
               </div>
             </div>
@@ -173,25 +172,25 @@ function AudioTestDashboard() {
         {/* Test Results Table */}
         {results && (
           <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">🎧 Test Results</h2>
+            <h2 className="text-xl font-semibold mb-4">🎧 テスト結果</h2>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      File
+                      ファイル
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Expected
+                      期待される結果
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Recognized
+                      認識結果
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       WER
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Result
+                      結果
                     </th>
                   </tr>
                 </thead>
@@ -213,11 +212,11 @@ function AudioTestDashboard() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         {item.status === 'PASS' ? (
                           <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                            ✅ PASS
+                            ✅ 合格
                           </span>
                         ) : (
                           <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                            ⚠️ FAIL
+                            ⚠️ 不合格
                           </span>
                         )}
                       </td>
@@ -234,7 +233,7 @@ function AudioTestDashboard() {
           {/* WER History Chart */}
           {werHistoryData.length > 0 && (
             <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold mb-4">📈 WER History</h2>
+              <h2 className="text-xl font-semibold mb-4">📈 WER 履歴</h2>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={werHistoryData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -242,8 +241,8 @@ function AudioTestDashboard() {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Line type="monotone" dataKey="avgWER" stroke="#8884d8" name="Avg WER" />
-                  <Line type="monotone" dataKey="threshold" stroke="#82ca9d" name="Threshold" />
+                  <Line type="monotone" dataKey="avgWER" stroke="#8884d8" name="平均 WER" />
+                  <Line type="monotone" dataKey="threshold" stroke="#82ca9d" name="閾値" />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -252,7 +251,7 @@ function AudioTestDashboard() {
           {/* Intent Success Rate Chart */}
           {intentChartData.length > 0 && (
             <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold mb-4">📊 Intent Success Rate</h2>
+              <h2 className="text-xl font-semibold mb-4">📊 意図認識成功率</h2>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={intentChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -260,8 +259,8 @@ function AudioTestDashboard() {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="pass" stackId="a" fill="#10b981" name="PASS" />
-                  <Bar dataKey="fail" stackId="a" fill="#ef4444" name="FAIL" />
+                  <Bar dataKey="pass" stackId="a" fill="#10b981" name="合格" />
+                  <Bar dataKey="fail" stackId="a" fill="#ef4444" name="不合格" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -270,7 +269,7 @@ function AudioTestDashboard() {
 
         {/* Real-time Logs */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">📜 Real-time Logs</h2>
+          <h2 className="text-xl font-semibold mb-4">📜 リアルタイムログ</h2>
           <div className="bg-gray-900 text-green-400 p-4 rounded font-mono text-sm h-64 overflow-y-auto">
             {logs.length === 0 ? (
               <div className="text-gray-500">ログを待機中...</div>

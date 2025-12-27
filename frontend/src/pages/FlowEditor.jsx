@@ -26,12 +26,12 @@ function FlowEditor() {
     setLoading(true)
     setError(null)
     setSuccess(null)
-    
+
     try {
       const response = await axios.get(`${API_BASE}/flow/content`, {
         params: { client_id: clientId }
       })
-      
+
       setFlowData(response.data.content)
       setOriginalFlowData(response.data.content)
       setVersion(response.data.version)
@@ -70,7 +70,7 @@ function FlowEditor() {
 
       setSuccess(`クライアント${clientId}のフローを保存しました。`)
       setOriginalFlowData(flowData)
-      
+
       // ステータスを再取得してバージョン・更新日時を更新
       const statusResponse = await axios.get(`${API_BASE}/flow/status`, {
         params: { client_id: clientId }
@@ -99,10 +99,10 @@ function FlowEditor() {
     <div className="flow-editor-container">
       <div className="flow-editor-header">
         <h1 className="text-2xl font-bold mb-4">会話フローエディタ</h1>
-        
+
         <div className="flex items-center gap-4 mb-4">
           <div className="flex items-center gap-2">
-            <label htmlFor="client-select" className="font-medium">Client ID:</label>
+            <label htmlFor="client-select" className="font-medium">クライアントID:</label>
             <select
               id="client-select"
               value={clientId}
@@ -114,16 +114,16 @@ function FlowEditor() {
               ))}
             </select>
           </div>
-          
+
           {version && (
             <div className="text-sm text-gray-600">
-              <span className="font-medium">Version:</span> {version}
+              <span className="font-medium">バージョン:</span> {version}
             </div>
           )}
-          
+
           {updatedAt && (
             <div className="text-sm text-gray-600">
-              <span className="font-medium">Updated:</span> {updatedAt}
+              <span className="font-medium">更新日時:</span> {updatedAt}
             </div>
           )}
         </div>
@@ -135,7 +135,7 @@ function FlowEditor() {
           {error}
         </div>
       )}
-      
+
       {success && (
         <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded">
           {success}
@@ -157,7 +157,7 @@ function FlowEditor() {
               placeholder="flow.json の内容をここに表示・編集します"
               spellCheck={false}
             />
-            
+
             {hasChanges && (
               <div className="mt-2 text-sm text-amber-600">
                 ⚠️ 未保存の変更があります
@@ -176,7 +176,7 @@ function FlowEditor() {
         >
           {saving ? '保存中...' : '保存して再読込'}
         </button>
-        
+
         <button
           onClick={handleReset}
           disabled={loading || saving || !hasChanges}
@@ -184,7 +184,7 @@ function FlowEditor() {
         >
           リセット
         </button>
-        
+
         <button
           onClick={loadFlowData}
           disabled={loading || saving}
