@@ -224,6 +224,65 @@ def handle_function_type_response(text: str, state: Dict) -> Tuple[List[str], st
 
 
 # ========================================
+# 導入関連の判定
+# ========================================
+
+def is_ambiguous_setup_question(text: str) -> bool:
+    """曖昧な導入質問の判定（聞き返しが必要）"""
+    # 導入関連のキーワードはあるが、具体的な種類が指定されていない
+    setup_keywords = ["導入", "始め", "スタート"]
+    specific_keywords = [
+        "いつから", "期間", "すぐ", "即日",
+        "設定", "難しい", "簡単",
+        "サポート", "不具合"
+    ]
+    
+    has_setup_keyword = contains_any(text, setup_keywords)
+    has_specific_keyword = contains_any(text, specific_keywords)
+    
+    return has_setup_keyword and not has_specific_keyword
+
+
+def handle_setup_type_response(text: str, state: Dict) -> Tuple[List[str], str, Dict]:
+    """
+    WAITING_SETUP_TYPE でのユーザー回答処理
+    
+    Returns:
+        (template_ids, new_phase, updated_state)
+    """
+    # "わからない" "全部" → ハンドオフ（導入は詳細な説明が必要なため）
+    if contains_any(text, ["わからない", "全部", "全て", "すべて"]):
+        logger.info("SETUP_TYPE: わからない/全部 → ハンドオフ")
+        return (["0604"], "HANDOFF_CONFIRM_WAIT", {})
+    
+    # "期間" "いつから" → 060
+    if contains_any(text, ["期間", "いつから", "すぐ", "即日"]):
+        logger.info("SETUP_TYPE: 期間 → 060")
+        return (["060"], "QA", {})
+    
+    # "設定" "難しい" → 0603
+    if contains_any(text, ["設定", "難しい", "簡単"]):
+        logger.info("SETUP_TYPE: 設定 → 0603")
+        return (["0603"], "QA", {})
+    
+    # "サポート" → 0284
+    if contains_any(text, ["サポート", "不具合", "トラブル"]):
+        logger.info("SETUP_TYPE: サポート → 0284")
+        return (["0284"], "QA", {})
+    
+    # 意味不明な回答 → もう一度聞く or ハンドオフ
+    retry_count = state.get("waiting_retry_count", 0)
+    if retry_count == 0:
+        # 1回目: もう一度聞く
+        logger.warning(f"SETUP_TYPE: 意味不明な回答（1回目）: {text}")
+        return (["120"], "WAITING_SETUP_TYPE", {"waiting_retry_count": 1})
+    else:
+        # 2回目: 諦めてハンドオフ
+        logger.warning(f"SETUP_TYPE: 意味不明な回答（2回目）→ ハンドオフ: {text}")
+        return (["0604"], "HANDOFF_CONFIRM_WAIT", {})
+
+
+# ========================================
 # その他の明確な質問判定
 # ========================================
 
@@ -334,9 +393,9 @@ def get_response(
         logger.info("WAITING_FUNCTION_TYPE Phase: ユーザー回答を処理")
         return handle_function_type_response(user_text, state)
     
-    # TODO: 将来追加
-    # if current_phase == "WAITING_SETUP_TYPE":
-    #     return handle_setup_type_response(user_text, state)
+    if current_phase == "WAITING_SETUP_TYPE":
+        logger.info("WAITING_SETUP_TYPE Phase: ユーザー回答を処理")
+        return handle_setup_type_response(user_text, state)
     
     # ステップ4: 曖昧な質問の判定（聞き返し）
     if is_ambiguous_price_question(user_text):
@@ -347,9 +406,9 @@ def get_response(
         logger.info("曖昧な機能質問検出 → 聞き返し")
         return (["117"], "WAITING_FUNCTION_TYPE", {"waiting_retry_count": 0})
     
-    # TODO: 将来追加
-    # if is_ambiguous_setup_question(user_text):
-    #     return (["120"], "WAITING_SETUP_TYPE", {"waiting_retry_count": 0})
+    if is_ambiguous_setup_question(user_text):
+        logger.info("曖昧な導入質問検出 → 聞き返し")
+        return (["120"], "WAITING_SETUP_TYPE", {"waiting_retry_count": 0})
     
     # ステップ5: どれにも該当しない場合
     logger.warning(f"どのパターンにも該当せず → UNKNOWN: {user_text}")

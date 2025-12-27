@@ -11,6 +11,7 @@ from libertycall.gateway.dialogue_flow import (
     check_clear_price_question,
     handle_price_type_response,
     handle_function_type_response,
+    handle_setup_type_response,
     is_handoff_request,
     is_end_call,
     is_not_heard,
@@ -236,6 +237,72 @@ class TestFunctionQuestions:
         template_ids, phase, state = get_response("月額いくらですか？", "WAITING_FUNCTION_TYPE")
         assert template_ids == ["040"]
         assert phase == "QA"
+
+
+class TestSetupQuestions:
+    """導入関連の質問テスト"""
+
+    def test_ambiguous_setup_question(self):
+        """曖昧な導入質問 → 聞き返し"""
+        test_cases = [
+            "導入について",
+            "始めるには？",
+            "スタートしたい",
+        ]
+        for text in test_cases:
+            template_ids, phase, state = get_response(text, "QA")
+            assert template_ids == ["120"], f"Failed template for: {text}"
+            assert phase == "WAITING_SETUP_TYPE", f"Failed phase for: {text}"
+            assert state.get("waiting_retry_count") == 0
+
+    def test_setup_type_response_period(self):
+        """WAITING_SETUP_TYPE で「期間」と答える"""
+        template_ids, phase, state = handle_setup_type_response("期間", {})
+        assert template_ids == ["060"]
+        assert phase == "QA"
+
+    def test_setup_type_response_when(self):
+        """WAITING_SETUP_TYPE で「いつから」と答える"""
+        template_ids, phase, state = handle_setup_type_response("いつから", {})
+        assert template_ids == ["060"]
+        assert phase == "QA"
+
+    def test_setup_type_response_setting(self):
+        """WAITING_SETUP_TYPE で「設定」と答える"""
+        template_ids, phase, state = handle_setup_type_response("設定", {})
+        assert template_ids == ["0603"]
+        assert phase == "QA"
+
+    def test_setup_type_response_support(self):
+        """WAITING_SETUP_TYPE で「サポート」と答える"""
+        template_ids, phase, state = handle_setup_type_response("サポート", {})
+        assert template_ids == ["0284"]
+        assert phase == "QA"
+
+    def test_setup_type_response_all(self):
+        """WAITING_SETUP_TYPE で「全部」と答える → ハンドオフ"""
+        template_ids, phase, state = handle_setup_type_response("全部", {})
+        assert template_ids == ["0604"]
+        assert phase == "HANDOFF_CONFIRM_WAIT"
+
+    def test_setup_type_response_unknown(self):
+        """WAITING_SETUP_TYPE で「わからない」と答える → ハンドオフ"""
+        template_ids, phase, state = handle_setup_type_response("わからない", {})
+        assert template_ids == ["0604"]
+        assert phase == "HANDOFF_CONFIRM_WAIT"
+
+    def test_setup_type_response_invalid_retry(self):
+        """WAITING_SETUP_TYPE で意味不明な回答 → もう一度聞く"""
+        # 1回目
+        template_ids, phase, state = handle_setup_type_response("バナナ", {"waiting_retry_count": 0})
+        assert template_ids == ["120"], "1回目は聞き返し"
+        assert phase == "WAITING_SETUP_TYPE"
+        assert state.get("waiting_retry_count") == 1
+        
+        # 2回目
+        template_ids, phase, state = handle_setup_type_response("バナナ", {"waiting_retry_count": 1})
+        assert template_ids == ["0604"], "2回目はハンドオフ"
+        assert phase == "HANDOFF_CONFIRM_WAIT"
 
 
 if __name__ == "__main__":

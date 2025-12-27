@@ -240,6 +240,18 @@
         }
       ],
       "templates": []
+    },
+    
+    "WAITING_SETUP_TYPE": {
+      "name": "導入の種類を待っている",
+      "description": "導入の種類を待っている",
+      "transitions": [
+        {
+          "condition": "その他",
+          "target": "QA"
+        }
+      ],
+      "templates": []
     }
   },
   

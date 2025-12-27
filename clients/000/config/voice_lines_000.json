@@ -550,5 +550,11 @@
     "voice": "ja-JP-Neural2-B",
     "rate": 1.1,
     "description": "機能の全体説明"
+  },
+  "120": {
+    "text": "導入について何が気になりますか？導入期間、設定の難易度、サポート体制のどれでしょうか？",
+    "voice": "ja-JP-Neural2-B",
+    "rate": 1.1,
+    "description": "導入の聞き返し"
   }
 }
