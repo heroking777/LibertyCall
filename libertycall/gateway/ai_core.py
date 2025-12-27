@@ -419,6 +419,7 @@ class GoogleASR:
             self.logger.info(f"[STREAM_WORKER_DEBUG] streaming_recognize returned, type={type(responses)}")
             
             for response in responses:
+                self.logger.warning(f"[ASR_FOR_LOOP] Got response from Google ASR, type={type(response)}")
                 # 【追加】レスポンス受信直後のログ（生のレスポンス情報をダンプ）
                 results_count = len(response.results) if response.results else 0
                 error_code = response.error.code if response.error else None
@@ -530,6 +531,10 @@ class GoogleASR:
         except Exception as e:
             # まずログ
             self.logger.exception("GoogleASR._stream_worker: unexpected error: %s", e)
+            self.logger.error(f"[ASR_EXCEPTION_TYPE] Exception type: {type(e).__name__}")
+            self.logger.error(f"[ASR_EXCEPTION_STR] Exception str: {str(e)}")
+            self.logger.error(f"[ASR_EXCEPTION_REPR] Exception repr: {repr(e)}")
+            self.logger.error(f"[ASR_EXCEPTION_ARGS] Exception args: {e.args}")
             self.logger.info("ASR_GOOGLE_ERROR: %s", e)
             self.logger.warning("GoogleASR: STREAM_WORKER_CRASHED (will restart on next feed_audio)")
             # 可能なら、現在の call_id に対してエラーハンドラを通知する
