@@ -705,7 +705,7 @@ class RealtimeGateway:
         self.config = config
         self.logger = logging.getLogger(__name__)
         # 起動確認用ログ（修正版が起動したことを示す）
-        logging.warning("[DEBUG_VERSION] RealtimeGateway initialized with UPDATED LOGGING logic.")
+        self.logger.warning("[DEBUG_VERSION] RealtimeGateway initialized with UPDATED LOGGING logic.")
         self.rtp_host = config["rtp"]["listen_host"]
         # ポート番号の優先順位: コマンドライン引数 > LC_RTP_PORT > LC_GATEWAY_PORT > gateway.yaml > 固定値 7100
         if rtp_port_override is not None:
@@ -3575,7 +3575,7 @@ class RealtimeGateway:
         if call_id_to_cleanup:
             if hasattr(self, '_active_calls'):
                 cleanup_time = time.time()
-                print(f"[CALL_END_TRACE] [LOC_02] Setting is_active=False for {call_id_to_cleanup} at {cleanup_time:.3f}", flush=True)
+                self.logger.warning(f"[CALL_END_TRACE] [LOC_02] Setting is_active=False for {call_id_to_cleanup} at {cleanup_time:.3f}")
                 self.logger.info(f"[CALL_END_TRACE] [LOC_02] Discarding call_id={call_id_to_cleanup} from _active_calls at {cleanup_time:.3f}")
                 self._active_calls.discard(call_id_to_cleanup)
             self._last_voice_time.pop(call_id_to_cleanup, None)
@@ -3714,7 +3714,7 @@ class RealtimeGateway:
         # アクティブな通話から削除
         if hasattr(self, '_active_calls'):
             complete_time = time.time()
-            print(f"[CALL_END_TRACE] [LOC_03] Setting is_active=False for {call_id_to_complete} at {complete_time:.3f}", flush=True)
+            self.logger.warning(f"[CALL_END_TRACE] [LOC_03] Setting is_active=False for {call_id_to_complete} at {complete_time:.3f}")
             self.logger.info(f"[CALL_END_TRACE] [LOC_03] Discarding call_id={call_id_to_complete} from _active_calls at {complete_time:.3f}")
             self._active_calls.discard(call_id_to_complete)
         # 通話終了時の状態クリーンアップ
@@ -3755,9 +3755,9 @@ class RealtimeGateway:
         return audioop.lin2ulaw(frames, sample_width)
 
     def _queue_initial_audio_sequence(self, client_id: Optional[str]) -> None:
-        # 【診断用】強制的に可視化（logger設定に依存しない）
+        # 【診断用】強制的に可視化
         effective_call_id = self._get_effective_call_id()
-        print(f"[DEBUG_PRINT] _queue_initial_audio_sequence called client_id={client_id} call_id={effective_call_id}", flush=True)
+        self.logger.warning(f"[DEBUG_PRINT] _queue_initial_audio_sequence called client_id={client_id} call_id={effective_call_id}")
         if self.initial_sequence_played:
             return
 
@@ -3772,25 +3772,25 @@ class RealtimeGateway:
             self._last_tts_end_time[effective_call_id] = current_time
             self._last_user_input_time[effective_call_id] = current_time
             # アクティブな通話として登録
-            print(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (_queue_initial_audio_sequence) at {time.time():.3f}", flush=True)
+            self.logger.warning(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (_queue_initial_audio_sequence) at {time.time():.3f}")
             self._active_calls.add(effective_call_id)
             self.logger.debug(
                 f"[CALL_START] Initialized silence monitoring timestamps for call_id={effective_call_id}"
             )
             
             # AICore.on_call_start() を呼び出し（クライアント001専用のテンプレート000-002を再生）
-            print(f"[DEBUG_PRINT] checking on_call_start: hasattr={hasattr(self.ai_core, 'on_call_start')}", flush=True)
+            self.logger.warning(f"[DEBUG_PRINT] checking on_call_start: hasattr={hasattr(self.ai_core, 'on_call_start')}")
             if hasattr(self.ai_core, 'on_call_start'):
                 try:
-                    print(f"[DEBUG_PRINT] calling on_call_start call_id={effective_call_id} client_id={effective_client_id}", flush=True)
+                    self.logger.warning(f"[DEBUG_PRINT] calling on_call_start call_id={effective_call_id} client_id={effective_client_id}")
                     self.ai_core.on_call_start(effective_call_id, client_id=effective_client_id)
-                    print(f"[DEBUG_PRINT] on_call_start returned successfully", flush=True)
+                    self.logger.warning(f"[DEBUG_PRINT] on_call_start returned successfully")
                     self.logger.info(f"[CALL_START] on_call_start() called for call_id={effective_call_id} client_id={effective_client_id}")
                 except Exception as e:
-                    print(f"[DEBUG_PRINT] on_call_start exception: {e}", flush=True)
+                    self.logger.warning(f"[DEBUG_PRINT] on_call_start exception: {e}")
                     self.logger.exception(f"[CALL_START] Error calling on_call_start(): {e}")
             else:
-                print(f"[DEBUG_PRINT] on_call_start method not found in ai_core", flush=True)
+                self.logger.warning(f"[DEBUG_PRINT] on_call_start method not found in ai_core")
 
         try:
             audio_paths = self.audio_manager.play_incoming_sequence(effective_client_id)
@@ -4676,7 +4676,7 @@ class RealtimeGateway:
                                 self.logger.exception(f"[EVENT_SOCKET] Error calling on_call_start(): {e}")
                             
                             # RealtimeGateway側の状態を更新
-                            print(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (event_socket) at {time.time():.3f}", flush=True)
+                            self.logger.warning(f"[CALL_START_TRACE] [LOC_START] Adding {effective_call_id} to _active_calls (event_socket) at {time.time():.3f}")
                             self._active_calls.add(effective_call_id)
                             self.call_id = effective_call_id
                             self.client_id = client_id
@@ -4727,7 +4727,7 @@ class RealtimeGateway:
                             
                             # RealtimeGateway側の状態をクリーンアップ
                             call_end_time = time.time()
-                            print(f"[CALL_END_TRACE] [LOC_04] Setting is_active=False for {effective_call_id} at {call_end_time:.3f}", flush=True)
+                            self.logger.warning(f"[CALL_END_TRACE] [LOC_04] Setting is_active=False for {effective_call_id} at {call_end_time:.3f}")
                             self.logger.info(f"[CALL_STATE] Ending call {effective_call_id} at {call_end_time:.3f}")
                             self.logger.info(f"[CALL_END_TRACE] [LOC_04] Discarding call_id={effective_call_id} from _active_calls at {call_end_time:.3f}")
                             self._active_calls.discard(effective_call_id)
