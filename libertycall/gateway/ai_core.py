@@ -19,11 +19,9 @@ except ModuleNotFoundError:
     GEMINI_AVAILABLE = False
 
 from .intent_rules import (
-    classify_intent,
     get_response_template,
     get_template_config,
     normalize_text,
-    select_template_ids,
 )
 from .flow_engine import FlowEngine
 from .dialogue_flow import get_response as dialogue_get_response
@@ -1106,7 +1104,7 @@ class HandoffStateMachine:
             # phase を更新（自動切断ロジック用）
             state["phase"] = "HANDOFF_DONE"
             state["handoff_completed"] = True
-            template_ids = select_template_ids("HANDOFF_YES", raw_text)
+            template_ids = ["081", "082"]  # HANDOFF_YES用テンプレート
             return template_ids, "HANDOFF_YES", True, state
         
         # NO → do not transfer, end conversation
@@ -1124,7 +1122,7 @@ class HandoffStateMachine:
             # phase を更新（自動切断ロジック用）
             state["phase"] = "END"
             state["handoff_completed"] = True
-            template_ids = select_template_ids("HANDOFF_NO", raw_text)
+            template_ids = ["086", "087"]  # HANDOFF_NO用テンプレート
             return template_ids, "HANDOFF_NO", False, state
         
         # それ以外は「まだ YES/NO がはっきりしない」ものとして処理
@@ -1167,7 +1165,7 @@ class HandoffStateMachine:
         # phase を更新（自動切断ロジック用）
         state["phase"] = "HANDOFF_DONE"
         state["handoff_completed"] = True
-        template_ids = select_template_ids("HANDOFF_YES", raw_text)
+        template_ids = ["081", "082"]  # HANDOFF_YES用テンプレート（安全側で転送）
         return template_ids, "HANDOFF_FALLBACK_YES", True, state
 
 
@@ -1661,18 +1659,12 @@ class AICore:
             template_ids = flow_engine.get_templates(current_phase)
         
         # テンプレートIDリストから実際に使用するテンプレートを選択
-        # 複数のテンプレートIDがある場合は、Intentやテキストに基づいて選択
+        # 複数のテンプレートIDがある場合は、リストの最初の要素を使用
         if template_ids and len(template_ids) > 1:
-            # Intentに基づいてテンプレートを選択（既存のselect_template_ids()を使用）
+            # Intent方式は削除されました。リストの最初の要素を使用
             try:
-                from .intent_rules import select_template_ids
-                selected = select_template_ids(intent or "UNKNOWN", text)
-                if selected:
-                    # select_template_ids()で選択されたテンプレートを優先
-                    template_ids = selected
-                else:
-                    # 選択できない場合は、リストの最初の要素を使用
-                    template_ids = [template_ids[0]]
+                # 選択できない場合は、リストの最初の要素を使用
+                template_ids = [template_ids[0]]
             except Exception as e:
                 self.logger.warning(f"[FLOW_ENGINE] Failed to select template: {e}, using first template")
                 template_ids = [template_ids[0]]
@@ -2378,7 +2370,8 @@ class AICore:
                 text = phrase.get("text", "")
                 if text:
                     normalized = normalize_text(text)
-                    intent = classify_intent(normalized)
+                    # Intent方式は廃止されました。UNKNOWNとして扱います
+                    intent = "UNKNOWN"
                     if intent and intent not in intents:
                         intents.append(intent)
             
@@ -2808,17 +2801,18 @@ class AICore:
         normalized_text: str,
         state: ConversationState,
     ) -> Tuple[str, List[str], bool]:
-        intent = classify_intent(raw_text)
+        # Intent方式は廃止されました。dialogue_flow方式を使用
         # ノイズ・聞き取れないケースの処理（最優先）
-        if intent == "NOT_HEARD":
+        if "ゴニョゴニョ" in raw_text or len(raw_text.strip()) == 0:
             state.phase = "QA"
-            state.last_intent = intent
-            template_ids = select_template_ids(intent, raw_text)
-            return intent, template_ids, False
-        if intent == "GREETING":
+            state.last_intent = "NOT_HEARD"
+            template_ids = ["0602"]  # 聞き取れない場合のテンプレート
+            return "NOT_HEARD", template_ids, False
+        # 挨拶判定
+        if any(kw in raw_text.lower() for kw in ["もしもし", "こんにちは", "おはよう"]):
             state.phase = "QA"
-            state.last_intent = intent
-            return intent, ["004"], False
+            state.last_intent = "GREETING"
+            return "GREETING", ["004"], False
         if self._contains_keywords(normalized_text, self.ENTRY_TRIGGER_KEYWORDS):
             state.phase = "ENTRY_CONFIRM"
             state.last_intent = "INQUIRY"
@@ -2836,7 +2830,8 @@ class AICore:
         通常QAフェーズ + HANDOFF導入フェーズ。
         戻り値: (intent, template_ids, transfer_requested)
         """
-        intent = classify_intent(raw_text) or "UNKNOWN"
+        # Intent方式は廃止されました。dialogue_flow方式を使用
+        intent = "UNKNOWN"
         handoff_state = state.handoff_state
         transfer_requested = state.transfer_requested
         
@@ -2844,7 +2839,8 @@ class AICore:
         # すでに handoff 完了済み → 0604/104 は二度と出さない
         # --------------------------------------------------
         if handoff_state == "done":
-            template_ids = select_template_ids(intent, raw_text)
+            # Intent方式は廃止されました。デフォルト応答
+            template_ids = ["114"]  # デフォルト応答
             # 念のため 0604/104 を強制フィルタ
             template_ids = [tid for tid in template_ids if tid not in ("0604", "104")]
             if intent == "SALES_CALL":
@@ -2868,15 +2864,10 @@ class AICore:
         # --------------------------------------------------
         # 通常QA: intent_rules に任せるが、0604/104 はこのフェーズでは使わない想定
         # --------------------------------------------------
-        # 温度の低いリード（INQUIRY_PASSIVE）の処理
-        if intent == "INQUIRY_PASSIVE":
-            # 089または090をランダムで返す（intent_rules.select_template_idsで既に処理済み）
-            template_ids = select_template_ids(intent, raw_text)
-            state.phase = "QA"  # QA継続
-            state.last_intent = intent
-            return intent, template_ids, transfer_requested
-        
-        template_ids = select_template_ids(intent, raw_text)
+        # Intent方式は廃止されました。dialogue_flow方式を使用
+        # 温度の低いリード（INQUIRY_PASSIVE）の処理は削除
+        # デフォルト応答
+        template_ids = ["114"]  # デフォルト応答
         if intent == "SALES_CALL":
             last_intent = state.last_intent
             if last_intent == "SALES_CALL":
@@ -2897,14 +2888,17 @@ class AICore:
         normalized_text: str,
         state: ConversationState,
     ) -> Tuple[str, List[str], bool]:
-        # SALES_CALL の場合は、前回の intent を確認して応答を決定
-        intent = classify_intent(raw_text)
+        # Intent方式は廃止されました。dialogue_flow方式を使用
+        intent = "UNKNOWN"
         
         # 【修正】HANDOFF_REQUEST は phase に関係なく、常に 0604 を返す
         # handoff_state == "done" の状態でも「担当者お願いします」と言われたら、再度確認文を返す
         # handoff_state が idle または done の場合のみ処理（confirming 中は既存のハンドオフ確認フローに任せる）
         # 念のため、handoff_state が未設定の場合は "idle" をデフォルト値として使用
-        if intent == "HANDOFF_REQUEST" and state.handoff_state in ("idle", "done"):
+        # ハンドオフ要求の簡易判定
+        handoff_keywords = ["担当者", "人間", "代わって", "つないで", "オペレーター"]
+        if any(kw in raw_text for kw in handoff_keywords) and state.handoff_state in ("idle", "done"):
+            intent = "HANDOFF_REQUEST"
             state.handoff_state = "confirming"
             state.handoff_retry_count = 0
             state.handoff_prompt_sent = True
@@ -2914,12 +2908,14 @@ class AICore:
             state.last_intent = intent
             return intent, template_ids, False
         
-        if intent == "SALES_CALL":
+        # 営業電話判定（簡易版）
+        if "営業" in raw_text:
+            intent = "SALES_CALL"
             last_intent = state.last_intent
             if last_intent == "SALES_CALL":
                 # 2回目の営業電話発話（「はい営業です」など）の場合は END に移行
                 state.phase = "END"
-                template_ids = select_template_ids(intent, raw_text)
+                template_ids = ["094", "088"]  # 営業電話用テンプレート
                 # handoff_state == "done" の場合は 0604/104 を出さない
                 if state.handoff_state == "done":
                     template_ids = [tid for tid in template_ids if tid not in ["0604", "104"]]
@@ -3016,11 +3012,8 @@ class AICore:
         """
         from .intent_rules import normalize_text
         
-        # intent が UNKNOWN の場合はここで一度だけ再判定（既存ロジック踏襲）
-        # 注意: handoff_state == "confirming" の場合は context="handoff_confirming" を渡す
-        if intent == "UNKNOWN":
-            from .intent_rules import classify_intent
-            intent = classify_intent(raw_text, context="handoff_confirming") or "UNKNOWN"
+        # Intent方式は削除されました。intent が UNKNOWN の場合はそのまま使用
+        # HandoffStateMachine 内で適切に処理されます
         
         normalized = normalize_text(raw_text)
         
@@ -3088,9 +3081,8 @@ class AICore:
         Wrapper while confirming handoff (HANDOFF_CONFIRM_WAIT phase).
         Actual decision logic is delegated to _handle_handoff_confirm.
         """
-        from .intent_rules import classify_intent
-        
-        intent = classify_intent(raw_text) or "UNKNOWN"
+        # Intent方式は削除されました。UNKNOWNとして処理
+        intent = "UNKNOWN"
         reply_text, template_ids, result_intent, transfer_requested = self._handle_handoff_confirm(
             call_id, raw_text, intent, state
         )
@@ -3178,12 +3170,10 @@ class AICore:
     ) -> Tuple[str, List[str], str, bool]:
         """
         Core conversation flow entry point.
-        - intent classification
+        - dialogue_flow方式で応答を生成
         - HANDOFF state (idle / confirming / done)
         - normal template selection
         """
-        from .intent_rules import classify_intent
-        
         state = self._get_session_state(call_id)
         handoff_state = state.handoff_state
         transfer_requested = state.transfer_requested
@@ -3936,10 +3926,10 @@ class AICore:
         intent = None
         normalized = ""
         if merged_text:
-            # 正規化されたテキストでintent判定
+            # Intent方式は廃止されました。dialogue_flow方式を使用
             normalized = normalize_text(merged_text)
-            intent = classify_intent(normalized)
-            self.logger.info(f"[INTENT] {intent}")
+            intent = "UNKNOWN"  # Intent方式は廃止されました
+            self.logger.info(f"[INTENT] {intent} (deprecated)")
             # runtime.logへの主要イベント出力
             runtime_logger = logging.getLogger("runtime")
             runtime_logger.info(f"INTENT call_id={call_id} intent={intent} text={merged_text[:50]}")

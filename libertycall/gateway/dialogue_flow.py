@@ -411,6 +411,10 @@ def get_response(
         return (["120"], "WAITING_SETUP_TYPE", {"waiting_retry_count": 0})
     
     # ステップ5: どれにも該当しない場合
-    logger.warning(f"どのパターンにも該当せず → UNKNOWN: {user_text}")
-    return (["114"], "QA", {})
+    logger.warning(f"[DIALOGUE_FLOW_UNKNOWN] text='{user_text}', phase={current_phase}")
+    # 挨拶っぽい → 挨拶応答
+    if len(user_text) <= 10 and contains_any(user_text, ["はい", "ええ", "うん"]):
+        return (["004"], "QA", {})
+    # それ以外 → 聞き返し
+    return (["114"], "QA", {})  # "ご要件をもう一度お願いできますでしょうか？"
 
