@@ -3518,9 +3518,11 @@ class AICore:
             return
         
         # 通話が既に終了している場合は処理をスキップ（ゾンビ化防止）
+        # 【修正】未登録ならリカバリ登録を行ってから処理を続行
         if call_id not in self._call_started_calls:
-            self.logger.info(f"[ASR_SKIP] call_id={call_id} already ended, skipping on_new_audio")
-            return
+            self.logger.warning(f"[ASR_RECOVERY] call_id={call_id} not in _call_started_calls but receiving audio. Auto-registering.")
+            self._call_started_calls.add(call_id)
+            # return はしない！そのまま処理を続行させる
         
         # GoogleASR の場合は feed_audio を呼び出す（feed_audio 内で最初のチャンクを first_chunk として start_stream に渡す）
         if self.asr_provider == "google":
