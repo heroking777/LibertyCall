@@ -761,6 +761,9 @@ class RealtimeGateway:
         # call_id -> FreeSWITCH UUID のマッピング
         self.call_uuid_map: Dict[str, str] = {}
         
+        # call_uuid_mapへの参照をAICoreに渡す
+        self.ai_core.call_uuid_map = self.call_uuid_map
+        
         # ストリーミングモード判定
         self.streaming_enabled = os.getenv("LC_ASR_STREAMING_ENABLED", "0") == "1"
         
