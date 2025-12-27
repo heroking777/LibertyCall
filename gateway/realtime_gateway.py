@@ -2398,18 +2398,9 @@ class RealtimeGateway:
             # --- 初回シーケンス再生中は ASR には送らない（録音とRMSだけ） ---
             if self.initial_sequence_playing:
                 # 録音は続けるが、ASRには一切送らない
-                # ログは最初の1回だけ出力（スパム防止）
-                if not hasattr(self, '_asr_skip_logged'):
-                    self.logger.info(
-                        "[INITIAL_SEQUENCE] ASR_SKIP: initial_sequence_playing=True, skipping ASR feed (recording continues)"
-                    )
-                    self._asr_skip_logged = True
                 # デバッグログ追加
                 self.logger.debug(f"[ASR_DEBUG] initial_sequence_playing={self.initial_sequence_playing}, streaming_enabled={self.streaming_enabled}, skipping ASR feed")
                 return
-            # 初回シーケンス終了後はログフラグをリセット
-            if hasattr(self, '_asr_skip_logged'):
-                delattr(self, '_asr_skip_logged')
             
             # --- Pull型ASR: 002.wav再生完了までASRをスキップ ---
             # TODO: テスト完了後、このチェックを有効化して本番構成に戻す
