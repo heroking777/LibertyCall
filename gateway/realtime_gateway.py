@@ -1918,6 +1918,7 @@ class RealtimeGateway:
                 payload_type = m_pt & 0x7F
                 marker = (m_pt >> 7) & 1
                 
+                print(f"[RTP_RAW] Time={current_time:.3f} Len={len(data)} PT={payload_type} SSRC={ssrc:08x} Seq={sequence_number} Mark={marker} Addr={addr}", flush=True)
                 self.logger.info(f"[RTP_RAW] Time={current_time:.3f} Len={len(data)} PT={payload_type} SSRC={ssrc:08x} Seq={sequence_number} Mark={marker} Addr={addr}")
         except Exception as e:
             self.logger.warning(f"[RTP_RAW_ERR] Failed to parse header: {e}")
@@ -2017,7 +2018,8 @@ class RealtimeGateway:
         # 通話が既に終了している場合は処理をスキップ（ゾンビ化防止）
         if hasattr(self, '_active_calls') and effective_call_id not in self._active_calls:
             current_time = time.time()
-            self.logger.info(f"[RTP_SKIP] Time={current_time:.3f} call_id={effective_call_id} already ended (Active=False). Skipping handle_rtp_packet")
+            print(f"[RTP_SKIP] [LOC_01] Time={current_time:.3f} call_id={effective_call_id} already ended (Active=False). Skipping handle_rtp_packet", flush=True)
+            self.logger.info(f"[RTP_SKIP] [LOC_01] Time={current_time:.3f} call_id={effective_call_id} already ended (Active=False). Skipping handle_rtp_packet")
             return
         
         # ログ出力（RTP受信時のcall_id確認用）
@@ -3567,6 +3569,9 @@ class RealtimeGateway:
         call_id_to_cleanup = self.call_id or call_id
         if call_id_to_cleanup:
             if hasattr(self, '_active_calls'):
+                cleanup_time = time.time()
+                print(f"[CALL_END_TRACE] [LOC_02] Setting is_active=False for {call_id_to_cleanup} at {cleanup_time:.3f}", flush=True)
+                self.logger.info(f"[CALL_END_TRACE] [LOC_02] Discarding call_id={call_id_to_cleanup} from _active_calls at {cleanup_time:.3f}")
                 self._active_calls.discard(call_id_to_cleanup)
             self._last_voice_time.pop(call_id_to_cleanup, None)
             self._last_silence_time.pop(call_id_to_cleanup, None)
@@ -3703,6 +3708,9 @@ class RealtimeGateway:
             self.ai_core.on_call_end(call_id_to_complete, source="_complete_console_call")
         # アクティブな通話から削除
         if hasattr(self, '_active_calls'):
+            complete_time = time.time()
+            print(f"[CALL_END_TRACE] [LOC_03] Setting is_active=False for {call_id_to_complete} at {complete_time:.3f}", flush=True)
+            self.logger.info(f"[CALL_END_TRACE] [LOC_03] Discarding call_id={call_id_to_complete} from _active_calls at {complete_time:.3f}")
             self._active_calls.discard(call_id_to_complete)
         # 通話終了時の状態クリーンアップ
         self._last_voice_time.pop(call_id_to_complete, None)
@@ -4712,7 +4720,9 @@ class RealtimeGateway:
                             
                             # RealtimeGateway側の状態をクリーンアップ
                             call_end_time = time.time()
+                            print(f"[CALL_END_TRACE] [LOC_04] Setting is_active=False for {effective_call_id} at {call_end_time:.3f}", flush=True)
                             self.logger.info(f"[CALL_STATE] Ending call {effective_call_id} at {call_end_time:.3f}")
+                            self.logger.info(f"[CALL_END_TRACE] [LOC_04] Discarding call_id={effective_call_id} from _active_calls at {call_end_time:.3f}")
                             self._active_calls.discard(effective_call_id)
                             if self.call_id == effective_call_id:
                                 self.call_id = None
