@@ -12,7 +12,7 @@ import wave
 PROJECT_ROOT = Path("/opt/libertycall")
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from libertycall.gateway.intent_rules import TEMPLATE_CONFIG
+from libertycall.gateway.text_utils import TEMPLATE_CONFIG
 
 # 認証ファイルを設定
 cred_file = PROJECT_ROOT / "key" / "google_tts.json"

@@ -17,10 +17,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # TEMPLATE_CONFIG をインポート
 try:
-    from libertycall.gateway.intent_rules import TEMPLATE_CONFIG
+    from libertycall.gateway.text_utils import TEMPLATE_CONFIG
 except ImportError:
     try:
-        from gateway.intent_rules import TEMPLATE_CONFIG
+        from gateway.text_utils import TEMPLATE_CONFIG
     except ImportError:
         print("ERROR: intent_rules.py から TEMPLATE_CONFIG をインポートできませんでした。")
         sys.exit(1)

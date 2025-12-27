@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, '/opt/libertycall')
-from libertycall.gateway.intent_rules import TEMPLATE_CONFIG
+from libertycall.gateway.text_utils import TEMPLATE_CONFIG
 
 # voice_lines_000.jsonからテンプレートIDを取得
 voice_lines_path = Path("/opt/libertycall/clients/000/config/voice_lines_000.json")

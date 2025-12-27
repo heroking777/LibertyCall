@@ -18,10 +18,11 @@ except ModuleNotFoundError:
     genai = None
     GEMINI_AVAILABLE = False
 
-from .intent_rules import (
+from .text_utils import (
     get_response_template,
     get_template_config,
     normalize_text,
+    interpret_handoff_reply,
 )
 from .flow_engine import FlowEngine
 from .dialogue_flow import get_response as dialogue_get_response
@@ -1074,12 +1075,12 @@ class HandoffStateMachine:
         
         :param call_id: 通話ID
         :param raw_text: 生テキスト
-        :param intent: classify_intent の結果（HANDOFF_YES / HANDOFF_NO / UNKNOWN / NOT_HEARD など）
+        :param intent: 意図（HANDOFF_YES / HANDOFF_NO / UNKNOWN / NOT_HEARD など）
         :param state: session_states[call_id] の dict（直接 mutate して OK）
         :param contains_no_keywords: NO 判定用のヘルパ（互換性のため残すが、使用しない）
         :return: (template_ids, result_intent, transfer_requested, updated_state)
         """
-        from .intent_rules import interpret_handoff_reply
+        from .text_utils import interpret_handoff_reply
         
         # intent_rules.interpret_handoff_reply を使って YES/NO 判定を統一
         hand_intent = interpret_handoff_reply(raw_text)
@@ -1721,7 +1722,7 @@ class AICore:
             else:
                 # フォールバック: intent_rulesから取得
                 try:
-                    from .intent_rules import get_response_template
+                    from .text_utils import get_response_template
                     text = get_response_template(template_id)
                     if text:
                         texts.append(text)
@@ -3010,7 +3011,7 @@ class AICore:
         HANDOFF 確認時のラッパー。
         実際の判定ロジックは HandoffStateMachine に委譲する。
         """
-        from .intent_rules import normalize_text
+        from .text_utils import normalize_text
         
         # Intent方式は削除されました。intent が UNKNOWN の場合はそのまま使用
         # HandoffStateMachine 内で適切に処理されます
@@ -3935,7 +3936,7 @@ class AICore:
             runtime_logger.info(f"INTENT call_id={call_id} intent={intent} text={merged_text[:50]}")
             
             # 【簡易Intent判定】ASR起動直後の簡易応答（はい/いいえ/その他）
-            # これは既存のclassify_intent()の結果を補完する
+            # Intent方式は廃止されました。dialogue_flow方式を使用
             simple_intent = self._classify_simple_intent(merged_text, normalized)
             if simple_intent:
                 self.logger.info(f"[SIMPLE_INTENT] {simple_intent} (text={merged_text!r})")
@@ -4093,7 +4094,7 @@ class AICore:
     def _log_ai_templates(self, template_ids: List[str]) -> None:
         """AI応答のログ記録を分離"""
         try:
-            from .intent_rules import TEMPLATE_CONFIG
+            from .text_utils import TEMPLATE_CONFIG
             for tid in template_ids:
                 cfg = TEMPLATE_CONFIG.get(tid)
                 if cfg and cfg.get("text"):

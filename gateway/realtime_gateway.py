@@ -56,7 +56,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 from libertycall.client_loader import load_client_profile
 from libertycall.gateway.ai_core import AICore
 from libertycall.gateway.audio_utils import ulaw8k_to_pcm16k, pcm24k_to_ulaw8k
-from libertycall.gateway.intent_rules import normalize_text
+from libertycall.gateway.text_utils import normalize_text
 from libertycall.gateway.transcript_normalizer import normalize_transcript
 from libertycall.console_bridge import console_bridge
 
@@ -1195,7 +1195,7 @@ class RealtimeGateway:
         # wait_time_afterの処理: テンプレート006の場合は1.8秒待機
         # 注意: 実際の待機処理は非同期で行うため、ここではフラグを設定
         if template_ids and "006" in template_ids:
-            from libertycall.gateway.intent_rules import get_template_config
+            from libertycall.gateway.text_utils import get_template_config
             template_config = get_template_config("006")
             if template_config and template_config.get("wait_time_after"):
                 wait_time = template_config.get("wait_time_after", 1.8)
@@ -4267,17 +4267,16 @@ class RealtimeGateway:
             state.no_input_streak = 0
             self._no_input_elapsed[effective_call_id] = 0.0
         
-        # 意図判定と返答生成（従来のprocess_dialogueのロジックを再利用）
-        from libertycall.gateway.intent_rules import classify_intent, get_response_template
+        # Intent方式は廃止されました。dialogue_flow方式を使用してください
+        from libertycall.gateway.text_utils import get_response_template
         
-        intent = classify_intent(text)
-        self.logger.debug(f"Intent: {intent}")
+        # Intent方式は削除されました。デフォルト処理
+        intent = "UNKNOWN"
+        self.logger.debug(f"Intent: {intent} (deprecated)")
         
-        if intent == "IGNORE":
-            return
-        
-        resp_text = get_response_template(intent)
-        should_transfer = (intent in ["HUMAN", "UNKNOWN"])
+        # デフォルト応答
+        resp_text = get_response_template("114")  # デフォルト応答
+        should_transfer = False  # デフォルトでは転送しない
         
         # 状態更新
         state_label = (intent or self.current_state).lower()
