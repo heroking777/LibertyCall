@@ -3920,6 +3920,7 @@ class RealtimeGateway:
             try:
                 # 同期関数をスレッドプールで実行（I/Oブロッキングを回避）
                 # ★タイムアウト設定（3秒）★
+                self.logger.warning(f"[INIT_TIMEOUT_START] Starting wait_for with timeout=3.0 for client={effective_client_id}")
                 loop = asyncio.get_running_loop()
                 audio_paths = await asyncio.wait_for(
                     loop.run_in_executor(
@@ -3930,14 +3931,20 @@ class RealtimeGateway:
                     timeout=3.0
                 )
                 # 【追加】デバッグログ：audio_pathsの取得結果を詳細に出力
+                self.logger.warning(f"[INIT_TIMEOUT_SUCCESS] play_incoming_sequence completed within timeout for {effective_client_id}")
                 self.logger.warning(f"[INIT_DEBUG] audio_paths result: {[str(p) for p in audio_paths]} (count={len(audio_paths)})")
             except asyncio.TimeoutError:
                 self.logger.error(f"[INIT_ERR] Initial sequence timed out for client={effective_client_id} (timeout=3.0s)")
+                self.logger.error(f"[INIT_TIMEOUT_ERROR] asyncio.TimeoutError caught for client={effective_client_id}")
                 # タイムアウト時は空リストとして扱う
                 audio_paths = []
             except Exception as e:
-                self.logger.error(f"[INIT_ERR] Failed to load incoming sequence for client={effective_client_id}: {e}\n{traceback.format_exc()}")
+                self.logger.error(f"[INIT_ERR] Failed to load incoming sequence for client={effective_client_id}: {e}")
+                self.logger.error(f"[INIT_EXCEPTION] Exception type: {type(e).__name__} for client={effective_client_id}")
+                self.logger.error(f"[INIT_EXCEPTION] Exception details: {str(e)}", exc_info=True)
                 return
+            finally:
+                self.logger.warning(f"[INIT_FINALLY] Finally block reached for client={effective_client_id}")
             
             if audio_paths:
                 self.logger.info(
