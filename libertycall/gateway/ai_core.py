@@ -635,6 +635,10 @@ class GoogleASR:
             self.logger.debug(f"[FEED_AUDIO_SKIP] call_id={call_id} stopped, skipping feed_audio")
             return
         
+        # 【修正】ストリームが起動しているかチェック
+        stream_running = (self._stream_thread is not None and self._stream_thread.is_alive())
+        self.logger.warning(f"[FEED_AUDIO_ENTRY] call_id={call_id}, chunk_size={len(pcm16k_bytes)}, stream_running={stream_running}")
+        
         # 【診断用】RMS値（音量レベル）を計算してログ出力
         try:
             import audioop
@@ -642,9 +646,6 @@ class GoogleASR:
             self.logger.info(f"[STREAMING_FEED] call_id={call_id} len={len(pcm16k_bytes)} bytes rms={rms}")
         except Exception as e:
             self.logger.debug(f"[STREAMING_FEED] RMS calculation failed: {e}")
-        
-        # 【修正】ストリームが起動しているかチェック
-        stream_running = (self._stream_thread is not None and self._stream_thread.is_alive())
         
         # ストリームが起動していない場合、バッファリング
         if not stream_running:
@@ -677,6 +678,7 @@ class GoogleASR:
         
         # 【修正】queue.put を put_nowait に変更（ノンブロッキング化）
         try:
+            self.logger.warning(f"[FEED_AUDIO_QUEUE_PUT] About to put chunk into queue, qsize_before={self._q.qsize()}")
             self._q.put_nowait(pcm16k_bytes)
             self.logger.info(
                 "GoogleASR: QUEUE_PUT: call_id=%s len=%d bytes",
@@ -3535,8 +3537,10 @@ class AICore:
             
             # feed_audio を呼び出す（feed_audio 内でストリームが開始されていない場合は、このチャンクを first_chunk として start_stream に渡す）
             try:
+                self.logger.warning(f"[ON_NEW_AUDIO_FEED] About to call feed_audio for call_id={call_id}, chunk_size={len(pcm16k_bytes)}")
                 self.logger.debug(f"AICore: GoogleASR.feed_audio を呼び出し (call_id={call_id}, len={len(pcm16k_bytes)})")
                 self.asr_model.feed_audio(call_id, pcm16k_bytes)  # type: ignore[union-attr]
+                self.logger.warning(f"[ON_NEW_AUDIO_FEED_DONE] feed_audio completed for call_id={call_id}")
             except Exception as e:
                 self.logger.error(f"AICore: GoogleASR.feed_audio 失敗 (call_id={call_id}): {e}", exc_info=True)
                 self.logger.info(f"ASR_GOOGLE_ERROR: feed_audio失敗 (call_id={call_id}): {e}")
