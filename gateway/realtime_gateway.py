@@ -708,6 +708,8 @@ class RealtimeGateway:
         self.logger.warning("[DEBUG_VERSION] RealtimeGateway initialized with UPDATED LOGGING logic.")
         # デバッグ用パケットカウンター初期化
         self._debug_packet_count = 0
+        # RTPパケット重複処理ガード用（各通話ごとの最新シーケンス番号を保持）
+        self._last_processed_sequence = {}  # {call_id: sequence_number}
         self.rtp_host = config["rtp"]["listen_host"]
         # ポート番号の優先順位: コマンドライン引数 > LC_RTP_PORT > LC_GATEWAY_PORT > gateway.yaml > 固定値 7100
         if rtp_port_override is not None:
