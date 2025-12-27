@@ -2372,7 +2372,6 @@ class RealtimeGateway:
                 
                 # 【診断用】16kHz変換後、on_new_audio呼び出し直前のRMS値確認
                 try:
-                    import audioop
                     rms_16k = audioop.rms(pcm16k_chunk, 2)
                     if not hasattr(self, '_rms_16k_debug_count'):
                         self._rms_16k_debug_count = 0
