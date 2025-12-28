@@ -2194,6 +2194,21 @@ class RealtimeGateway:
         # RTPペイロードを抽出（μ-law）
         pcm_data = data[12:]
         
+        # 追加診断ログ: RTPペイロードの先頭バイトをヘックスで出力（ASR送信直前の確認用、最初の20パケットのみ）
+        try:
+            if not hasattr(self, '_rtp_raw_payload_count'):
+                self._rtp_raw_payload_count = 0
+            if self._rtp_raw_payload_count < 20 and len(pcm_data) > 0:
+                try:
+                    head_hex = pcm_data[:10].hex() if len(pcm_data) >= 10 else pcm_data.hex()
+                except Exception:
+                    head_hex = "N/A"
+                self.logger.warning(f"[RTP_RAW_PAYLOAD] Size={len(pcm_data)} Head={head_hex}")
+                self._rtp_raw_payload_count += 1
+        except Exception:
+            # ログ出力失敗は処理を中断させない
+            pass
+        
         # 【診断用】生のRTPペイロード（デコード前）をダンプ（最初の5パケットのみ）
         if not hasattr(self, '_payload_raw_debug_count'):
             self._payload_raw_debug_count = 0
