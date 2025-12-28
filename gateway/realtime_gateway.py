@@ -2476,11 +2476,12 @@ class RealtimeGateway:
             pcm16_8k = audioop.ulaw2lin(pcm_data, 2)
 
             # AGC を適用（8kHz段階で増幅し、以降の処理に反映させる）
-            try:
-                pcm16_8k = self._apply_agc(pcm16_8k, target_rms=1000)
-            except Exception:
-                # AGC失敗時は元データを使用
-                pass
+            # TEMP: AGC無効化テスト中（コメントアウト）
+            # try:
+            #     pcm16_8k = self._apply_agc(pcm16_8k, target_rms=1000)
+            # except Exception:
+            #     # AGC失敗時は元データを使用
+            #     pass
 
             # 8kHz の RMS を再計算して以降の閾値判定に使用
             rms = audioop.rms(pcm16_8k, 2)
