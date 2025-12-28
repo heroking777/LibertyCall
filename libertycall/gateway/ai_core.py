@@ -571,16 +571,22 @@ class GoogleASR:
         :param call_id: 通話ID（ログ用のみ）
         :param pcm16k_bytes: 16kHz PCM16音声データ（bytes、変換不要）
         """
+        # 【デバッグ追加】エントリポイントログ
+        print(f"[FEED_AUDIO_ENTRY] call_id={call_id} len={len(pcm16k_bytes) if pcm16k_bytes else 0}", flush=True)
+        
         if not pcm16k_bytes or len(pcm16k_bytes) == 0:
             return
         
         # 通話が終了している場合は処理をスキップ（予防的チェック）
         if self._stop_event.is_set():
+            print(f"[FEED_AUDIO_SKIP_STOP] call_id={call_id} _stop_event is set", flush=True)
             self.logger.debug(f"[FEED_AUDIO_SKIP] call_id={call_id} stopped, skipping feed_audio")
             return
         
         # 【修正】ストリームが起動しているかチェック
         stream_running = (self._stream_thread is not None and self._stream_thread.is_alive())
+        # 【デバッグ追加】ストリーム状態ログ
+        print(f"[FEED_AUDIO_STREAM_CHECK] call_id={call_id} stream_running={stream_running} thread={self._stream_thread is not None} alive={self._stream_thread.is_alive() if self._stream_thread else False}", flush=True)
         self.logger.debug(f"[FEED_AUDIO] call_id={call_id} chunk={len(pcm16k_bytes)}B stream={stream_running}")
         
         # 【診断用】RMS値（音量レベル）を計算してログ出力
@@ -621,19 +627,25 @@ class GoogleASR:
             self._debug_raw.extend(pcm16k_bytes[:remain])
         
         # 【修正】queue.put を put_nowait に変更（ノンブロッキング化）
+        # 【デバッグ追加】キュー投入前ログ
+        print(f"[FEED_AUDIO_QUEUE_BEFORE] call_id={call_id} queue_size={self._q.qsize()}", flush=True)
         try:
             # queue put - non-blocking
             self._q.put_nowait(pcm16k_bytes)
+            # 【デバッグ追加】キュー投入成功ログ
+            print(f"[FEED_AUDIO_QUEUE_SUCCESS] call_id={call_id} len={len(pcm16k_bytes)} queue_size={self._q.qsize()}", flush=True)
             self.logger.info(
                 "GoogleASR: QUEUE_PUT: call_id=%s len=%d bytes",
                 call_id, len(pcm16k_bytes)
             )
         except queue.Full:
             # キューが満杯の場合は警告してスキップ（音声ロスを最小化）
+            print(f"[FEED_AUDIO_QUEUE_FULL] call_id={call_id} len={len(pcm16k_bytes)}", flush=True)
             self.logger.warning(
                 f"GoogleASR: QUEUE_FULL (skipping chunk): call_id={call_id} len={len(pcm16k_bytes)} bytes"
             )
         except Exception as e:
+            print(f"[FEED_AUDIO_QUEUE_ERROR] call_id={call_id} error={e}", flush=True)
             self.logger.warning(
                 f"GoogleASR: QUEUE_PUT error (call_id={call_id}): {e}"
             )
