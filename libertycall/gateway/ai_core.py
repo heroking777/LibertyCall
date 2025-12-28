@@ -257,7 +257,11 @@ class GoogleASR:
                 Asterisk 側は 20ms ごとに RTP を送ってくるが、ここで明示的に sleep する必要はない。
                 ジェネレータなので、yield で制御が呼び元に戻るため sleep 不要。
                 """
-                self.logger.info(f"[REQUEST_GEN] Generator started for call_id={self._current_call_id}")
+                # Detailed ASR generator logs to trace generator lifecycle and yields
+                try:
+                    self.logger.debug(f"[ASR_GEN] Generator START for call_id={getattr(self, '_current_call_id', 'unknown')}")
+                except Exception:
+                    self.logger.info(f"[REQUEST_GEN] Generator started for call_id={self._current_call_id}")
 
                 empty_count = 0
                 while not self._stop_event.is_set():
@@ -269,7 +273,11 @@ class GoogleASR:
                             self.logger.info("[REQUEST_GEN] Received sentinel (None), stopping generator")
                             return
 
-                        self.logger.info(f"[REQUEST_GEN] Got audio chunk: size={len(chunk)} bytes")
+                        # Log chunk retrieval and size
+                        try:
+                            self.logger.debug(f"[ASR_GEN] Got chunk from queue. size={len(chunk)}")
+                        except Exception:
+                            self.logger.info(f"[REQUEST_GEN] Got audio chunk: size={len(chunk)} bytes")
                         empty_count = 0
                     except queue.Empty:
                         if self._stop_event.is_set():
@@ -278,6 +286,7 @@ class GoogleASR:
                         if empty_count >= 10:
                             empty_count = 0
                             # 空のチャンクを送る（Google側のタイムアウトを防ぐ）
+                            self.logger.debug("[ASR_GEN] Emitting keepalive empty audio chunk")
                             yield cloud_speech.StreamingRecognizeRequest(audio_content=b"")  # type: ignore[union-attr]
                         continue
 
@@ -291,9 +300,18 @@ class GoogleASR:
                         continue
 
                     # ここで1リクエスト分を yield して制御が呼び元に戻るので、sleep 不要
+                    try:
+                        self.logger.debug("[ASR_GEN] Yielding audio request")
+                    except Exception:
+                        pass
                     yield cloud_speech.StreamingRecognizeRequest(audio_content=chunk)  # type: ignore[union-attr]
             
             self.logger.info("[STREAM_WORKER_PRECHECK] Request generator defined, about to create config")
+            # Log that we will send the streaming config to Google (config is passed to streaming_recognize)
+            try:
+                self.logger.debug(f"[ASR_GEN] Yielding StreamingConfig for call_id={getattr(self, '_current_call_id', 'unknown')}")
+            except Exception:
+                self.logger.info("[ASR_GEN] Yielding StreamingConfig")
             
             # 2. streaming 用 config を作成
             # RecognitionConfig を作成
