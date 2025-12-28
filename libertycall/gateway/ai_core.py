@@ -264,36 +264,8 @@ class GoogleASR:
         print(f"[EMERGENCY_THREAD_CHECK] Thread started and alive={thread_alive}", flush=True)
         self.logger.info(f"GoogleASR: STREAM_WORKER_START call_id={call_id} thread_alive={thread_alive}")
     
-    def restart_stream(self, call_id: str) -> None:
-        """
-        ASRストリームを強制的に再起動する（例外発生時などに使用）
-        
-        :param call_id: 通話ID
-        """
-        self.logger.warning(f"[ASR_RESTART] Forcing stream restart for call_id={call_id}")
-        # 既存のストリームを停止
-        if self._stream_thread is not None:
-            self.end_stream(call_id)
-            # スレッドの終了を待つ（最大2秒）
-            if self._stream_thread.is_alive():
-                self._stream_thread.join(timeout=2.0)
-        
-        # 新しいストリームを起動
-        self._start_stream_worker(call_id)
-        self.logger.info(f"[ASR_RESTART] Stream restarted for call_id={call_id}")
-        
-        # ChatGPT音声風: 通話開始時に200ms無音フレームを送信してウォームアップ
-        # 16kHz * 2バイト * 0.2秒 = 6400バイト
-        warmup_silence = b"\x00" * 6400
-        try:
-            self._q.put_nowait(warmup_silence)
-            self.logger.debug(f"GoogleASR: WARMUP_SILENCE sent: {len(warmup_silence)} bytes (200ms)")
-        except queue.Full:
-            self.logger.warning("GoogleASR: WARMUP_SILENCE queue full, skipping")
-        
-        # 【修正】ストリーム起動後、バッファがあれば送信
-        if len(self._pre_stream_buffer) > 0:
-            self._flush_pre_stream_buffer()
+    # NOTE: restart_stream removed intentionally to avoid ghost-thread reuse.
+    # Restarting streams is handled by creating fresh ASR instances per call instead.
     
     def _stream_worker(self) -> None:
         """
@@ -432,15 +404,11 @@ class GoogleASR:
                     stream_duration = time.time() - stream_start_time
                     if stream_duration >= 280.0:
                         call_id = getattr(self, '_current_call_id', 'TEMP_CALL')
+                        # ASR stream duration approaching limit detected.
+                        # Preventive auto-restart logic removed to avoid reusing existing threads.
                         self.logger.warning(
-                            f"[ASR_AUTO_RESTART] Stream duration limit approaching ({stream_duration:.1f}s), "
-                            f"initiating preventive restart for call_id={call_id}"
+                            f"[ASR_AUTO_RESTART] Stream duration limit approaching ({stream_duration:.1f}s) for call_id={call_id}; auto-restart suppressed"
                         )
-                        # ストリーム再起動をスケジュール
-                        if not getattr(self, '_restart_stream_scheduled', False):
-                            self._restart_stream_scheduled = True
-                            # 現在の処理を完了してから再起動
-                            break
                 
                 # レスポンス全体をログに出す
                 self.logger.info("GoogleASR: STREAM_RESPONSE: %s", response)
@@ -516,16 +484,11 @@ class GoogleASR:
                         # デバッグログ拡張: ASR_RESULT
                         self.logger.info(f"[ASR_RESULT] \"{transcript}\"")
             
-            # 【修正7】予防的再起動が必要な場合
+            # Preventive restart execution suppressed (removed restart_stream usage).
             if getattr(self, '_restart_stream_scheduled', False):
                 call_id = getattr(self, '_current_call_id', 'TEMP_CALL')
-                self.logger.info(f"[ASR_AUTO_RESTART] Executing preventive restart for call_id={call_id}")
+                self.logger.info(f"[ASR_AUTO_RESTART] Scheduled restart suppressed for call_id={call_id}")
                 self._restart_stream_scheduled = False
-                # 短い待機後に再起動（同期処理）
-                time.sleep(0.1)
-                # 既存のrestart_stream()を呼ぶ
-                self.restart_stream(call_id)
-                # 再起動後は新しいストリームが開始されるため、ここで終了
                 return
         except Exception as e:
             # まずログ
@@ -706,37 +669,35 @@ class GoogleASR:
         return None
     
     def end_stream(self, call_id: str) -> None:
-        """
-        ストリーミング認識を終了する（通話終了時に呼び出される）
+        """ストリーミング認識を終了する（通話終了時に呼び出される）"""
+        self.logger.info(f"[END_STREAM] Stopping ASR stream for call_id={call_id}")
         
-        :param call_id: 通話ID（ログ用のみ）
-        """
-        # self._stop_event.set()
+        # 停止フラグを設定
         self._stop_event.set()
         
-        # 【修正】バッファがあれば先に送信
+        # バッファがあれば先に送信
         if len(self._pre_stream_buffer) > 0:
             self._flush_pre_stream_buffer()
         
-        # self._q.put(None)（request_generator に「終了」を知らせるための sentinel）
+        # 終了シグナルを送信
         try:
             self._q.put_nowait(None)  # type: ignore[arg-type]
+            self.logger.debug(f"[END_STREAM] Sentinel sent to request queue for call_id={call_id}")
         except queue.Full:
-            # キューが満杯の場合は警告
-            self.logger.warning("GoogleASR: QUEUE_FULL when sending sentinel")
-        except Exception:
-            pass
+            self.logger.warning(f"[END_STREAM] Queue full when sending sentinel for call_id={call_id}")
+        except Exception as e:
+            self.logger.warning(f"[END_STREAM] Error sending sentinel for call_id={call_id}: {e}")
         
-        # スレッドの終了を待つ
+        # スレッド参照をクリア（join不要 - daemonスレッドが自動終了）
         if self._stream_thread is not None:
-            self._stream_thread.join(timeout=2.0)
+            self.logger.info(f"[END_STREAM] Clearing stream thread reference for call_id={call_id}")
             self._stream_thread = None
         
-        # デバッグ用 raw をクリア
+        # バッファをクリア
         self._debug_raw = bytearray()
-        
-        # 【修正】バッファもクリア
         self._pre_stream_buffer.clear()
+        
+        self.logger.info(f"[END_STREAM] Stream cleanup completed for call_id={call_id}")
     
     def feed(self, call_id: str, pcm16k_bytes: bytes) -> None:
         """
