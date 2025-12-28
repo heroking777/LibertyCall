@@ -756,8 +756,9 @@ class FreeswitchRTPMonitor:
             # filter: UDPパケットで、指定ポートを使用
             # store=False: パケットをメモリに保存しない（パフォーマンス向上）
             # prn: パケットを受信したときに呼び出すコールバック関数
+            # 【修正】宛先ポート（dst port）のみを指定し、送信パケット（システム音声）を除外する
             sniff(
-                filter=f"udp port {port}",
+                filter=f"udp dst port {port}",
                 prn=self._process_captured_packet,
                 stop_filter=lambda x: not self.capture_running,
                 store=False
