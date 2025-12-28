@@ -757,8 +757,13 @@ class FreeswitchRTPMonitor:
             # store=False: パケットをメモリに保存しない（パフォーマンス向上）
             # prn: パケットを受信したときに呼び出すコールバック関数
             # 【修正】宛先ポート（dst port）のみを指定し、送信パケット（システム音声）を除外する
+            filter_str = f"udp dst port {port}"
+            try:
+                self.logger.info(f"[PCAP_CONFIG] Starting capture with filter: '{filter_str}'")
+            except Exception:
+                pass
             sniff(
-                filter=f"udp dst port {port}",
+                filter=filter_str,
                 prn=self._process_captured_packet,
                 stop_filter=lambda x: not self.capture_running,
                 store=False
@@ -2737,6 +2742,19 @@ class RealtimeGateway:
                         self._rms_16k_debug_count += 1
                 except Exception as e:
                     self.logger.debug(f"[RTP_AUDIO_RMS] Failed to calculate RMS: {e}")
+                
+                # 【追加】ASR送信前のRMSログ（間引き出力）
+                try:
+                    if hasattr(self, '_stream_chunk_counter'):
+                        # 間引き: 50チャンクに1回ログ
+                        if self._stream_chunk_counter % 50 == 0:
+                            try:
+                                asr_rms = audioop.rms(pcm16k_chunk, 2)
+                            except Exception:
+                                asr_rms = -1
+                            self.logger.info(f\"[ASR_INPUT_RMS] call_id={effective_call_id} rms={asr_rms} chunk_idx={self._stream_chunk_counter}\")
+                except Exception:
+                    pass
                 
                 # ASRへ送信（エラーハンドリング付き）
                 try:
