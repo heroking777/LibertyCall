@@ -1,6 +1,9 @@
 import logging
 import numpy as np
 import os
+# 明示的に認証ファイルパスを指定（存在する候補ファイルがあればデフォルトで設定）
+# 実稼働では環境変数で設定するのが望ましいが、ここでは一時的にデフォルトを補完する
+os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", "/opt/libertycall/config/google-credentials.json")
 import wave
 import time
 import threading
@@ -4050,11 +4053,17 @@ class AICore:
         """
         if not self.streaming_enabled:
             return None
-        
+
+        # Guard: asr_model may be None if ASR failed to initialize (e.g. auth error).
+        # Return None instead of raising AttributeError.
+        if self.asr_model is None:
+            # logger.warning(f"ASR model is None for call_id={call_id}")  # ログ過多防止のためコメントアウト推奨
+            return None
+
         result = self.asr_model.poll_result(call_id)  # type: ignore[union-attr]
         if result is None:
             return None
-        
+
         # poll_resultは既に (text, audio_duration, inference_time, end_to_text_delay) を返す
         return result
 

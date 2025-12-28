@@ -5246,6 +5246,11 @@ class RealtimeGateway:
 # ========================================
 
 if __name__ == '__main__':
+    # 環境変数: Google 認証ファイルを明示的に指定（必要に応じて実際のパスに変更してください）
+    import os
+    # 既存の認証ファイル候補
+    os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", "/opt/libertycall/config/google-credentials.json")
+
     # ログ設定
     import logging
     # ログディレクトリを作成
