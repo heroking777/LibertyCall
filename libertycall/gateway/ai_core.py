@@ -3753,11 +3753,15 @@ class AICore:
             asr_instance = None
             newly_created = False
             with self.asr_lock:
+                # === 追加：ロック取得時の状態をログ ===
+                print(f"[ASR_LOCK_ACQUIRED] call_id={call_id}, current_instances={list(self.asr_instances.keys())}", flush=True)
+                
                 if call_id not in self.asr_instances:
                     import traceback
-                    stack_info = ''.join(traceback.format_stack()[-3:-1])  # 呼び出し元の2階層分
+                    caller_stack = traceback.extract_stack()
+                    caller_info = f"{caller_stack[-3].filename}:{caller_stack[-3].lineno} in {caller_stack[-3].name}"
                     print(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}", flush=True)
-                    print(f"[ASR_INSTANCE_CREATE_CALLER] {stack_info}", flush=True)
+                    print(f"[ASR_CREATE_CALLER] call_id={call_id}, caller={caller_info}", flush=True)
                     self.logger.info(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}")
                     try:
                         new_asr = GoogleASR(
@@ -3775,6 +3779,9 @@ class AICore:
                         self.logger.error(f"[ASR_INSTANCE_CREATE_FAILED] call_id={call_id}: {e}", exc_info=True)
                         print(f"[ASR_INSTANCE_CREATE_FAILED] call_id={call_id}: {e}", flush=True)
                         return
+                else:
+                    # === 追加：既存インスタンス再利用時のログ ===
+                    print(f"[ASR_INSTANCE_REUSE] call_id={call_id} already exists", flush=True)
                 # ロック内でインスタンスを取得
                 asr_instance = self.asr_instances.get(call_id)
             
