@@ -1255,6 +1255,10 @@ class AICore:
                         error_callback=self._on_asr_error,  # ASR エラー時のコールバック
                     )
                     self.logger.info("AICore: GoogleASR を初期化しました")
+                    # 【追加】通話ごとの独立したASRインスタンス管理用辞書
+                    self.asr_instances: Dict[str, GoogleASR] = {}
+                    self._phrase_hints = phrase_hints  # 新規インスタンス作成時に使用
+                    print("[AICORE_INIT] asr_instances initialized as empty dict", flush=True)
                 except Exception as e:
                     error_msg = str(e)
                     if "was not found" in error_msg or "credentials" in error_msg.lower():
@@ -2139,6 +2143,36 @@ class AICore:
             self.logger.info(f"[CLEANUP] cleanup_call() executed for call_id={call_id}")
         except Exception as e:
             self.logger.debug(f"[CLEANUP] cleanup_call() failed for call_id={call_id}: {e}")
+
+    def cleanup_asr_instance(self, call_id: str) -> None:
+        """
+        通話終了時に該当call_idのASRインスタンスをクリーンアップ
+        【追加】通話ごとの独立ASRインスタンス管理用
+        
+        :param call_id: 通話ID
+        """
+        if not hasattr(self, 'asr_instances'):
+            return
+        
+        if call_id in self.asr_instances:
+            print(f"[ASR_CLEANUP_START] call_id={call_id}", flush=True)
+            self.logger.info(f"[ASR_CLEANUP_START] call_id={call_id}")
+            try:
+                asr = self.asr_instances[call_id]
+                # ASRストリームを停止
+                if hasattr(asr, 'end_stream'):
+                    asr.end_stream(call_id)
+                elif hasattr(asr, 'stop'):
+                    asr.stop()
+                # インスタンスを削除
+                del self.asr_instances[call_id]
+                print(f"[ASR_CLEANUP_DONE] call_id={call_id}, remaining={len(self.asr_instances)}", flush=True)
+                self.logger.info(f"[ASR_CLEANUP_DONE] call_id={call_id}, remaining={len(self.asr_instances)}")
+            except Exception as e:
+                self.logger.error(f"[ASR_CLEANUP_ERROR] call_id={call_id}: {e}", exc_info=True)
+                print(f"[ASR_CLEANUP_ERROR] call_id={call_id}: {e}", flush=True)
+        else:
+            self.logger.debug(f"[ASR_CLEANUP_SKIP] No ASR instance for call_id={call_id}")
 
     def cleanup_call(self, call_id: str) -> None:
         """
@@ -3685,6 +3719,7 @@ class AICore:
     def on_new_audio(self, call_id: str, pcm16k_bytes: bytes) -> None:
         """
         ストリーミングモード: 新しい音声チャンクをASRにfeedする。
+        【修正】通話ごとに独立したASRインスタンスを使用（混線防止）
         
         :param call_id: 通話ID
         :param pcm16k_bytes: 16kHz PCM音声データ
@@ -3702,15 +3737,40 @@ class AICore:
             self._call_started_calls.add(call_id)
             # return はしない！そのまま処理を続行させる
         
-        # GoogleASR の場合は feed_audio を呼び出す（feed_audio 内で最初のチャンクを first_chunk として start_stream に渡す）
+        # GoogleASR の場合は通話ごとの独立したASRインスタンスを使用
         if self.asr_provider == "google":
             self.logger.debug(f"AICore: on_new_audio (provider=google) call_id={call_id} len={len(pcm16k_bytes)} bytes")
             
-            # feed_audio を呼び出す（feed_audio 内でストリームが開始されていない場合は、このチャンクを first_chunk として start_stream に渡す）
+            # 【修正】call_id用のASRインスタンスが存在しない場合は作成
+            if not hasattr(self, 'asr_instances'):
+                self.asr_instances = {}
+                self._phrase_hints = []
+                print(f"[ASR_INSTANCES_LAZY_INIT] asr_instances created (lazy)", flush=True)
+            
+            if call_id not in self.asr_instances:
+                print(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}", flush=True)
+                self.logger.info(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}")
+                try:
+                    new_asr = GoogleASR(
+                        language_code="ja",
+                        sample_rate=16000,
+                        phrase_hints=getattr(self, '_phrase_hints', []),
+                        ai_core=self,
+                        error_callback=self._on_asr_error,
+                    )
+                    self.asr_instances[call_id] = new_asr
+                    print(f"[ASR_INSTANCE_CREATED] call_id={call_id}, total_instances={len(self.asr_instances)}", flush=True)
+                    self.logger.info(f"[ASR_INSTANCE_CREATED] call_id={call_id}, total_instances={len(self.asr_instances)}")
+                except Exception as e:
+                    self.logger.error(f"[ASR_INSTANCE_CREATE_FAILED] call_id={call_id}: {e}", exc_info=True)
+                    print(f"[ASR_INSTANCE_CREATE_FAILED] call_id={call_id}: {e}", flush=True)
+                    return
+            
+            # 該当call_idのASRインスタンスに音声をフィード
             try:
+                asr_instance = self.asr_instances[call_id]
                 self.logger.warning(f"[ON_NEW_AUDIO_FEED] About to call feed_audio for call_id={call_id}, chunk_size={len(pcm16k_bytes)}")
-                self.logger.debug(f"AICore: GoogleASR.feed_audio を呼び出し (call_id={call_id}, len={len(pcm16k_bytes)})")
-                self.asr_model.feed_audio(call_id, pcm16k_bytes)  # type: ignore[union-attr]
+                asr_instance.feed_audio(call_id, pcm16k_bytes)
                 self.logger.warning(f"[ON_NEW_AUDIO_FEED_DONE] feed_audio completed for call_id={call_id}")
             except Exception as e:
                 self.logger.error(f"AICore: GoogleASR.feed_audio 失敗 (call_id={call_id}): {e}", exc_info=True)

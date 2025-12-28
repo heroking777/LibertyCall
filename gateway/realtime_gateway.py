@@ -5250,6 +5250,10 @@ class RealtimeGateway:
                                         self.logger.info(f"[EVENT_SOCKET] on_call_end() called for call_id={effective_call_id}")
                                     else:
                                         self.logger.error(f"[EVENT_SOCKET] ai_core.on_call_end() not found")
+                                    # 【追加】通話ごとのASRインスタンスをクリーンアップ
+                                    if hasattr(self.ai_core, 'cleanup_asr_instance'):
+                                        self.ai_core.cleanup_asr_instance(effective_call_id)
+                                        self.logger.info(f"[EVENT_SOCKET] cleanup_asr_instance() called for call_id={effective_call_id}")
                                 except Exception as e:
                                     self.logger.exception(f"[EVENT_SOCKET] Error calling on_call_end(): {e}")
                                 
