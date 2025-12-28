@@ -3821,10 +3821,33 @@ class AICore:
         except Exception:
             pass
 
+        # 【追加】自己発話（システム再生のエコー）フィルタ
+        try:
+            if self.current_system_text:
+                import re
+                def normalize(s: str) -> str:
+                    if not s:
+                        return ""
+                    s = str(s)
+                    s = re.sub(r'[。、！？\s]+', '', s)
+                    return s
+
+                sys_norm = normalize(self.current_system_text)
+                user_norm = normalize(text)
+                if sys_norm and user_norm and (user_norm in sys_norm or sys_norm in user_norm):
+                    # 誤検出防止: 短すぎるものは弾く
+                    if len(user_norm) > 2:
+                        self.logger.info(f"[ASR_FILTER] Ignored system echo: {text!r} (matched system text)")
+                        return None
+        except Exception:
+            # フィルタ処理で例外が発生しても通常処理は継続
+            pass
+
         # 空文字チェックは簡素化
         if not text or len(text.strip()) == 0:
             self.logger.debug(f"[ASR_TRANSCRIPT] Empty text, skipping: call_id={call_id}")
             return None
+       
         
         # call_id を self.call_id に保存（_append_call_log で使用）
         self.call_id = call_id
