@@ -211,7 +211,11 @@ class GoogleASR:
         
         # もし self._stream_thread is not None かつ self._stream_thread.is_alive() なら return
         if self._stream_thread is not None and self._stream_thread.is_alive():
-            self.logger.debug(f"GoogleASR: STREAM_WORKER_ALREADY_RUNNING call_id={call_id}")
+            self.logger.warning(
+                f"[GHOST_THREAD_DETECTED] ASR stream thread already running for call_id={call_id}. "
+                f"This may indicate a previous call did not clean up properly. "
+                f"Thread name: {self._stream_thread.name if hasattr(self._stream_thread, 'name') else 'unknown'}"
+            )
             # 【修正】ストリームが既に起動している場合、バッファがあれば送信
             if len(self._pre_stream_buffer) > 0:
                 self._flush_pre_stream_buffer()
@@ -4162,9 +4166,11 @@ class AICore:
             # GoogleASR の場合は end_stream を呼び出す
             if self.asr_provider == "google":
                 try:
+                    self.logger.info(f"[CLEANUP] Calling end_stream for call_id={call_id}")
                     self.asr_model.end_stream(call_id)  # type: ignore[union-attr]
+                    self.logger.info(f"[CLEANUP] end_stream completed for call_id={call_id}")
                 except Exception as e:
-                    self.logger.warning(f"AICore: GoogleASR ストリーム終了エラー (call_id={call_id}): {e}")
+                    self.logger.error(f"[CLEANUP] GoogleASR end_stream failed for call_id={call_id}: {e}", exc_info=True)
             self.asr_model.reset_call(call_id)  # type: ignore[union-attr]
         self._reset_session_state(call_id)
         # 【追加】partial_transcripts もクリア
