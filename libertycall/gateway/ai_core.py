@@ -1257,8 +1257,9 @@ class AICore:
                     self.logger.info("AICore: GoogleASR を初期化しました")
                     # 【追加】通話ごとの独立したASRインスタンス管理用辞書
                     self.asr_instances: Dict[str, GoogleASR] = {}
+                    self.asr_lock = threading.Lock()  # ASRインスタンス作成用ロック（競合状態防止）
                     self._phrase_hints = phrase_hints  # 新規インスタンス作成時に使用
-                    print("[AICORE_INIT] asr_instances initialized as empty dict", flush=True)
+                    print("[AICORE_INIT] asr_instances initialized with lock", flush=True)
                 except Exception as e:
                     error_msg = str(e)
                     if "was not found" in error_msg or "credentials" in error_msg.lower():
@@ -3741,40 +3742,46 @@ class AICore:
         if self.asr_provider == "google":
             self.logger.debug(f"AICore: on_new_audio (provider=google) call_id={call_id} len={len(pcm16k_bytes)} bytes")
             
-            # 【修正】call_id用のASRインスタンスが存在しない場合は作成
+            # 【修正】遅延初期化（古いプロセスとの互換性）
             if not hasattr(self, 'asr_instances'):
                 self.asr_instances = {}
+                self.asr_lock = threading.Lock()
                 self._phrase_hints = []
-                print(f"[ASR_INSTANCES_LAZY_INIT] asr_instances created (lazy)", flush=True)
+                print(f"[ASR_INSTANCES_LAZY_INIT] asr_instances and lock created (lazy)", flush=True)
             
-            if call_id not in self.asr_instances:
-                print(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}", flush=True)
-                self.logger.info(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}")
+            # 【修正】スレッドセーフにASRインスタンスを取得または作成
+            asr_instance = None
+            with self.asr_lock:
+                if call_id not in self.asr_instances:
+                    print(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}", flush=True)
+                    self.logger.info(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}")
+                    try:
+                        new_asr = GoogleASR(
+                            language_code="ja",
+                            sample_rate=16000,
+                            phrase_hints=getattr(self, '_phrase_hints', []),
+                            ai_core=self,
+                            error_callback=self._on_asr_error,
+                        )
+                        self.asr_instances[call_id] = new_asr
+                        print(f"[ASR_INSTANCE_CREATED] call_id={call_id}, total_instances={len(self.asr_instances)}", flush=True)
+                        self.logger.info(f"[ASR_INSTANCE_CREATED] call_id={call_id}, total_instances={len(self.asr_instances)}")
+                    except Exception as e:
+                        self.logger.error(f"[ASR_INSTANCE_CREATE_FAILED] call_id={call_id}: {e}", exc_info=True)
+                        print(f"[ASR_INSTANCE_CREATE_FAILED] call_id={call_id}: {e}", flush=True)
+                        return
+                # ロック内でインスタンスを取得
+                asr_instance = self.asr_instances.get(call_id)
+            
+            # ロック外で音声をフィード（ASR処理をブロックしないため）
+            if asr_instance is not None:
                 try:
-                    new_asr = GoogleASR(
-                        language_code="ja",
-                        sample_rate=16000,
-                        phrase_hints=getattr(self, '_phrase_hints', []),
-                        ai_core=self,
-                        error_callback=self._on_asr_error,
-                    )
-                    self.asr_instances[call_id] = new_asr
-                    print(f"[ASR_INSTANCE_CREATED] call_id={call_id}, total_instances={len(self.asr_instances)}", flush=True)
-                    self.logger.info(f"[ASR_INSTANCE_CREATED] call_id={call_id}, total_instances={len(self.asr_instances)}")
+                    self.logger.warning(f"[ON_NEW_AUDIO_FEED] About to call feed_audio for call_id={call_id}, chunk_size={len(pcm16k_bytes)}")
+                    asr_instance.feed_audio(call_id, pcm16k_bytes)
+                    self.logger.warning(f"[ON_NEW_AUDIO_FEED_DONE] feed_audio completed for call_id={call_id}")
                 except Exception as e:
-                    self.logger.error(f"[ASR_INSTANCE_CREATE_FAILED] call_id={call_id}: {e}", exc_info=True)
-                    print(f"[ASR_INSTANCE_CREATE_FAILED] call_id={call_id}: {e}", flush=True)
-                    return
-            
-            # 該当call_idのASRインスタンスに音声をフィード
-            try:
-                asr_instance = self.asr_instances[call_id]
-                self.logger.warning(f"[ON_NEW_AUDIO_FEED] About to call feed_audio for call_id={call_id}, chunk_size={len(pcm16k_bytes)}")
-                asr_instance.feed_audio(call_id, pcm16k_bytes)
-                self.logger.warning(f"[ON_NEW_AUDIO_FEED_DONE] feed_audio completed for call_id={call_id}")
-            except Exception as e:
-                self.logger.error(f"AICore: GoogleASR.feed_audio 失敗 (call_id={call_id}): {e}", exc_info=True)
-                self.logger.info(f"ASR_GOOGLE_ERROR: feed_audio失敗 (call_id={call_id}): {e}")
+                    self.logger.error(f"AICore: GoogleASR.feed_audio 失敗 (call_id={call_id}): {e}", exc_info=True)
+                    self.logger.info(f"ASR_GOOGLE_ERROR: feed_audio失敗 (call_id={call_id}): {e}")
         else:
             # Whisper の場合
             self.asr_model.feed(call_id, pcm16k_bytes)  # type: ignore[union-attr]
