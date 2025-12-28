@@ -5400,7 +5400,18 @@ if __name__ == '__main__':
         default=None,
         help='Override RTP listen port (default: from config or env LC_RTP_PORT)'
     )
+    parser.add_argument(
+        '--uuid',
+        type=str,
+        required=False,
+        default=None,
+        help='Unique identifier for this gateway instance (passed from event listener)'
+    )
     args = parser.parse_args()
+    
+    # UUID引数のログ出力
+    if args.uuid:
+        print(f"[GATEWAY_INIT] Starting with UUID: {args.uuid}", flush=True)
     
     # Load configuration
     config_path = Path(_PROJECT_ROOT) / "config" / "gateway.yaml"
