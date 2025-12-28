@@ -342,13 +342,12 @@ class GoogleASR:
             self.logger.info(f"[STREAM_WORKER_DEBUG] streaming_recognize returned, type={type(responses)}")
             
             for response in responses:
-                self.logger.warning(f"[ASR_FOR_LOOP] Got response from Google ASR, type={type(response)}")
-                # 【追加】レスポンス受信直後のログ（生のレスポンス情報をダンプ）
                 results_count = len(response.results) if response.results else 0
                 error_code = response.error.code if response.error else None
-                error_message = response.error.message if response.error else None
-                self.logger.warning(f"[ASR_RAW_RES] Response received. results={results_count} error_code={error_code} error_message={error_message}")
-                
+                # 統合ログ（DEBUG）
+                self.logger.debug(
+                    f"[ASR_RES] call_id={getattr(self, '_current_call_id', 'TEMP')} results={results_count} error={error_code}"
+                )
                 self.logger.info(f"[STREAM_WORKER_DEBUG] Got response from Google ASR, type={type(response)}")
                 # 【修正5】280秒（4分40秒）経過時に予防的再起動
                 stream_start_time = getattr(self, '_stream_start_time', None)
@@ -551,7 +550,7 @@ class GoogleASR:
         
         # 【修正】ストリームが起動しているかチェック
         stream_running = (self._stream_thread is not None and self._stream_thread.is_alive())
-        self.logger.warning(f"[FEED_AUDIO_ENTRY] call_id={call_id}, chunk_size={len(pcm16k_bytes)}, stream_running={stream_running}")
+        self.logger.debug(f"[FEED_AUDIO] call_id={call_id} chunk={len(pcm16k_bytes)}B stream={stream_running}")
         
         # 【診断用】RMS値（音量レベル）を計算してログ出力
         try:
@@ -592,7 +591,7 @@ class GoogleASR:
         
         # 【修正】queue.put を put_nowait に変更（ノンブロッキング化）
         try:
-            self.logger.warning(f"[FEED_AUDIO_QUEUE_PUT] About to put chunk into queue, qsize_before={self._q.qsize()}")
+            # queue put - non-blocking
             self._q.put_nowait(pcm16k_bytes)
             self.logger.info(
                 "GoogleASR: QUEUE_PUT: call_id=%s len=%d bytes",
@@ -3416,10 +3415,8 @@ class AICore:
         :param call_id: 通話ID
         :param pcm16k_bytes: 16kHz PCM音声データ
         """
-        # 【追加】音声データ受信時のログ
-        import time
-        current_time = time.time()
-        self.logger.info(f"[AI_CORE] on_new_audio called. Len={len(pcm16k_bytes)} Time={current_time:.3f} call_id={call_id}")
+        # 受信ログ（デバッグレベル）
+        self.logger.debug(f"[AI_CORE] on_new_audio called. Len={len(pcm16k_bytes)} call_id={call_id}")
         
         if not self.streaming_enabled:
             return
@@ -3531,23 +3528,16 @@ class AICore:
         重要: partial（is_final=False）の場合は partial_transcripts に追記するだけ。
         会話ロジック（intent判定、テンプレート選択、ログ書き込みなど）は final（is_final=True）のときだけ実行される。
         """
-        # 【追加】入口ログ（強化版）
-        text_stripped = text.strip() if text else ""
-        text_length = len(text_stripped) if text_stripped else 0
-        
-        self.logger.info(
-            f"[ASR_TRANSCRIPT] on_transcript called: call_id={call_id} is_final={is_final} "
-            f"text={text!r} text_length={text_length} text_stripped={text_stripped!r}"
-        )
-        
-        # 空文字やスペースのみの場合は早期return（ログ出力して終了）
-        if not text_stripped or text_length == 0:
-            self.logger.debug(
-                f"[ASR_TRANSCRIPT] Empty or whitespace-only text, skipping: call_id={call_id} text={text!r}"
-            )
+        # 入口ログを簡素化
+        if is_final:
+            self.logger.info(f"[ASR_TRANSCRIPT] call_id={call_id} is_final=True text={text!r}")
+        else:
+            self.logger.debug(f"[ASR_TRANSCRIPT] call_id={call_id} is_final=False text={text!r}")
+
+        # 空文字チェックは簡素化
+        if not text or len(text.strip()) == 0:
+            self.logger.debug(f"[ASR_TRANSCRIPT] Empty text, skipping: call_id={call_id}")
             return None
-        
-        self.logger.info(f"AI_CORE: on_transcript: call_id={call_id} text={text} is_final={is_final}")
         
         # call_id を self.call_id に保存（_append_call_log で使用）
         self.call_id = call_id
