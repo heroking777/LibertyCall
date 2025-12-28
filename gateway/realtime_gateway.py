@@ -20,6 +20,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Dict
+import glob
 import yaml
 import websockets
 import audioop
@@ -165,53 +166,62 @@ class FreeswitchRTPMonitor:
         try:
             rtp_info_files = list(Path("/tmp").glob("rtp_info_*.txt"))
             if rtp_info_files:
-                # 最新のファイルを取得（複数の通話に対応）
-                latest_file = max(rtp_info_files, key=lambda p: p.stat().st_mtime)
-                self.logger.info(f"[FS_RTP_MONITOR] Found RTP info file: {latest_file}")
-                
-                port = None
-                uuid = None
-                with open(latest_file, 'r') as f:
-                    lines = f.readlines()
-                    for line in lines:
-                        if line.startswith("local="):
-                            local_rtp = line.split("=", 1)[1].strip()
-                            # local_rtp形式: "160.251.170.253:7104"
-                            if ":" in local_rtp:
-                                port_str = local_rtp.split(":")[-1]
-                                try:
-                                    port = int(port_str)
-                                except ValueError:
-                                    self.logger.warning(f"[FS_RTP_MONITOR] Failed to parse port from local_rtp: {local_rtp}")
-                                    continue
-                        elif line.startswith("uuid="):
-                            uuid = line.split("=", 1)[1].strip()
-                            self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH UUID: {uuid} (from RTP info file: {latest_file})")
-                
-                if port:
-                    self.logger.info(f"[FS_RTP_MONITOR] Found FreeSWITCH RTP port: {port} (from RTP info file: {latest_file})")
+                # 全ファイルを走査して、local= と uuid= を抽出し
+                # 最終更新時刻が最新のファイルの情報を優先する
+                candidate_port = None
+                candidate_uuid = None
+                candidate_mtime = 0.0
+                for filepath in rtp_info_files:
+                    try:
+                        mtime = filepath.stat().st_mtime
+                        with open(filepath, 'r') as f:
+                            content = f.read()
+                        port = None
+                        uuid = None
+                        for line in content.splitlines():
+                            if line.startswith("local="):
+                                local_rtp = line.split("=", 1)[1].strip()
+                                if ":" in local_rtp:
+                                    port_str = local_rtp.split(":")[-1]
+                                    try:
+                                        port = int(port_str)
+                                    except ValueError:
+                                        self.logger.debug(f"[FS_RTP_MONITOR] Failed to parse port in {filepath}: {local_rtp}")
+                                        port = None
+                            elif line.startswith("uuid="):
+                                uuid = line.split("=", 1)[1].strip()
+
+                        if port and mtime >= candidate_mtime:
+                            candidate_mtime = mtime
+                            candidate_port = port
+                            candidate_uuid = uuid
+                            self.logger.info(f"[FS_RTP_MONITOR] Candidate RTP info: file={filepath} port={port} uuid={uuid} mtime={mtime}")
+                    except Exception as e:
+                        self.logger.debug(f"[FS_RTP_MONITOR] Error reading RTP info file {filepath}: {e}")
+
+                if candidate_port:
+                    self.logger.info(f"[FS_RTP_MONITOR] Selected RTP port {candidate_port} (from RTP info files, latest matched)")
                     # UUIDも見つかった場合は、gatewayのcall_uuid_mapに保存（最新のcall_idとマッピング）
-                    if uuid and hasattr(self.gateway, 'call_uuid_map'):
+                    if candidate_uuid and hasattr(self.gateway, 'call_uuid_map'):
                         # 最新のcall_idを取得（ai_coreから）
                         if hasattr(self.gateway, 'ai_core') and hasattr(self.gateway.ai_core, 'call_id'):
                             latest_call_id = self.gateway.ai_core.call_id
                             if latest_call_id:
-                                # 追加ログ: 登録前の状況を出力
                                 try:
                                     pre_map = dict(self.gateway.call_uuid_map)
                                 except Exception:
                                     pre_map = {}
                                 self.logger.warning(
-                                    f"[DEBUG_UUID_REGISTER] Registering uuid={uuid} for call_id={latest_call_id} current_map={pre_map}"
+                                    f"[DEBUG_UUID_REGISTER] Registering uuid={candidate_uuid} for call_id={latest_call_id} current_map={pre_map}"
                                 )
-                                self.gateway.call_uuid_map[latest_call_id] = uuid
+                                self.gateway.call_uuid_map[latest_call_id] = candidate_uuid
                                 self.logger.warning(
                                     f"[DEBUG_UUID_REGISTERED] Updated map={self.gateway.call_uuid_map}"
                                 )
-                                self.logger.info(f"[FS_RTP_MONITOR] Mapped call_id={latest_call_id} -> uuid={uuid}")
-                    return port
+                                self.logger.info(f"[FS_RTP_MONITOR] Mapped call_id={latest_call_id} -> uuid={candidate_uuid}")
+                    return candidate_port
         except Exception as e:
-            self.logger.debug(f"[FS_RTP_MONITOR] Error reading RTP info file (non-fatal): {e}")
+            self.logger.debug(f"[FS_RTP_MONITOR] Error reading RTP info files (non-fatal): {e}")
         
         # フォールバック: uuid_dump経由で取得
         try:
@@ -295,16 +305,41 @@ class FreeswitchRTPMonitor:
         
         # 方法1: RTP情報ファイルから取得（優先）
         try:
-            rtp_info_files = list(Path("/tmp").glob("rtp_info_*.txt"))
-            if rtp_info_files:
-                latest_file = max(rtp_info_files, key=lambda p: p.stat().st_mtime)
-                with open(latest_file, 'r') as f:
-                    lines = f.readlines()
-                    for line in lines:
-                        if line.startswith("uuid="):
-                            uuid = line.split("=", 1)[1].strip()
-                            self.logger.info(f"[UUID_UPDATE] Found UUID from RTP info file: uuid={uuid} call_id={call_id}")
-                            break
+            # まず、既知のポートがあればポートベースで探す（より正確）
+            port_candidates = []
+            try:
+                if hasattr(self, 'fs_rtp_monitor') and getattr(self.fs_rtp_monitor, 'freeswitch_rtp_port', None):
+                    port_candidates.append(self.fs_rtp_monitor.freeswitch_rtp_port)
+            except Exception:
+                pass
+            try:
+                if hasattr(self, 'rtp_port') and self.rtp_port:
+                    port_candidates.append(self.rtp_port)
+            except Exception:
+                pass
+
+            for port in port_candidates:
+                try:
+                    found_uuid = self._find_rtp_info_by_port(port)
+                    if found_uuid:
+                        uuid = found_uuid
+                        self.logger.info(f"[UUID_UPDATE] Found UUID from RTP info file by port: uuid={uuid} call_id={call_id} port={port}")
+                        break
+                except Exception as e:
+                    self.logger.debug(f"[UUID_UPDATE] Error during port-based RTP info search for port={port}: {e}")
+
+            # フォールバック: 既存の最終更新ファイルを参照してUUIDを取得
+            if not uuid:
+                rtp_info_files = list(Path("/tmp").glob("rtp_info_*.txt"))
+                if rtp_info_files:
+                    latest_file = max(rtp_info_files, key=lambda p: p.stat().st_mtime)
+                    with open(latest_file, 'r') as f:
+                        lines = f.readlines()
+                        for line in lines:
+                            if line.startswith("uuid="):
+                                uuid = line.split("=", 1)[1].strip()
+                                self.logger.info(f"[UUID_UPDATE] Found UUID from RTP info file: uuid={uuid} call_id={call_id}")
+                                break
         except Exception as e:
             self.logger.debug(f"[UUID_UPDATE] Error reading RTP info file: {e}")
         
@@ -493,28 +528,35 @@ class FreeswitchRTPMonitor:
                 # RTP情報ファイルをチェック
                 rtp_info_files = list(Path("/tmp").glob("rtp_info_*.txt"))
                 if rtp_info_files:
-                    # 最新のファイルを取得
-                    latest_file = max(rtp_info_files, key=lambda p: p.stat().st_mtime)
-                    
-                    # ファイルからポートを取得
-                    port = None
-                    try:
-                        with open(latest_file, 'r') as f:
-                            lines = f.readlines()
-                            for line in lines:
-                                if line.startswith("local="):
-                                    local_rtp = line.split("=", 1)[1].strip()
-                                    if ":" in local_rtp:
-                                        port_str = local_rtp.split(":")[-1]
-                                        port = int(port_str)
-                                        break
-                    except Exception as e:
-                        self.logger.debug(f"[FS_RTP_MONITOR] Error reading RTP info file {latest_file}: {e}")
+                    # 複数ファイルを走査して最も新しい local= 情報を採用する
+                    candidate_port = None
+                    candidate_mtime = 0.0
+                    for filepath in rtp_info_files:
+                        try:
+                            mtime = filepath.stat().st_mtime
+                            with open(filepath, 'r') as f:
+                                for line in f:
+                                    if line.startswith("local="):
+                                        local_rtp = line.split("=", 1)[1].strip()
+                                        if ":" in local_rtp:
+                                            try:
+                                                port_str = local_rtp.split(":")[-1]
+                                                port = int(port_str)
+                                            except ValueError:
+                                                continue
+                                            if mtime >= candidate_mtime:
+                                                candidate_mtime = mtime
+                                                candidate_port = port
+                        except Exception as e:
+                            self.logger.debug(f"[FS_RTP_MONITOR] Error reading RTP info file {filepath}: {e}")
+
+                    port = candidate_port
+                    if not port:
                         await asyncio.sleep(2.0)
                         continue
-                    
+
                     if port and port != self.freeswitch_rtp_port:
-                        self.logger.info(f"[FS_RTP_MONITOR] Found RTP port {port} from RTP info file, starting monitoring...")
+                        self.logger.info(f"[FS_RTP_MONITOR] Found RTP port {port} from RTP info files, starting monitoring...")
                         self.freeswitch_rtp_port = port
                         # RTPポートで監視を開始（pcap方式）
                         try:
@@ -1094,6 +1136,54 @@ class RealtimeGateway:
             if hasattr(self, "rtp_sock") and self.rtp_sock:
                 self.rtp_sock.close()
                 self.logger.info("[RTP_EXIT_FINAL] Socket closed")
+
+    def _find_rtp_info_by_port(self, rtp_port: int) -> Optional[str]:
+        """
+        RTP port からファイルを探して UUID を返す
+        
+        :param rtp_port: RTP port番号
+        :return: UUID または None
+        """
+        try:
+            # 全ての rtp_info ファイルを検索
+            rtp_info_files = glob.glob("/tmp/rtp_info_*.txt")
+            
+            self.logger.debug(
+                f"[RTP_INFO_SEARCH] port={rtp_port} total_files={len(rtp_info_files)}"
+            )
+            
+            for filepath in rtp_info_files:
+                try:
+                    with open(filepath, 'r') as f:
+                        content = f.read()
+                        
+                        # port が含まれるかチェック（local または remote）
+                        if f":{rtp_port}" in content:
+                            # UUID を抽出
+                            for line in content.split('\n'):
+                                if line.startswith('uuid='):
+                                    uuid = line.split('=', 1)[1].strip()
+                                    self.logger.info(
+                                        f"[RTP_INFO_FOUND] port={rtp_port} file={filepath} uuid={uuid}"
+                                    )
+                                    return uuid
+                                    
+                except Exception as e:
+                    self.logger.debug(
+                        f"[RTP_INFO_READ_ERROR] file={filepath} error={e}"
+                    )
+                    continue
+            
+            self.logger.warning(
+                f"[RTP_INFO_NOT_FOUND] No file found for port={rtp_port} searched_files={len(rtp_info_files)}"
+            )
+            return None
+            
+        except Exception as e:
+            self.logger.exception(
+                f"[RTP_INFO_SEARCH_ERROR] port={rtp_port} error={e}"
+            )
+            return None
 
     def _send_tts(self, call_id: str, reply_text: str, template_ids: list[str] | None = None, transfer_requested: bool = False) -> None:
         """
