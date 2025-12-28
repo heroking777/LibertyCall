@@ -117,7 +117,25 @@ class RTPProtocol(asyncio.DatagramProtocol):
         self.remote_ssrc: Optional[int] = None
     def connection_made(self, transport):
         self.transport = transport
+        # 【デバッグ強化】実際にバインドされたアドレスとポートを確認
+        try:
+            sock = transport.get_extra_info('socket')
+            if sock:
+                bound_addr = sock.getsockname()
+                print(f"DEBUG_TRACE: [RTP_SOCKET] Bound successfully to: {bound_addr}", flush=True)
+            else:
+                print(f"DEBUG_TRACE: [RTP_SOCKET] Transport created (no socket info available)", flush=True)
+        except Exception as e:
+            print(f"DEBUG_TRACE: [RTP_SOCKET] connection_made error: {e}", flush=True)
+    
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
+        # 【最優先デバッグ】フィルタリング前の「生」の到達を記録（全パケット）
+        if not hasattr(self, '_raw_packet_count'):
+            self._raw_packet_count = 0
+        self._raw_packet_count += 1
+        if self._raw_packet_count % 50 == 1:
+            print(f"DEBUG_TRACE: [RTP_RECV_RAW] Received {len(data)} bytes from {addr} (count={self._raw_packet_count})", flush=True)
+        
         # --- [DEBUG & FILTER ADDITION START] ---
         # フィルタリング: FreeSWITCH自身のIP（送信パケットのループバック）からのパケットは無視する
         # ログで確認されたFreeSWITCHのIP: 160.251.170.253
@@ -126,6 +144,8 @@ class RTPProtocol(asyncio.DatagramProtocol):
         
         if addr[0] in ignore_ips:
             # FreeSWITCH自身からのパケット（システム音声の逆流）を無視
+            if self._raw_packet_count % 100 == 1:
+                print(f"DEBUG_TRACE: [RTP_FILTER] Ignored packet from local IP: {addr[0]} (count={self._raw_packet_count})", flush=True)
             return
         
         # デバッグ: ユーザーからのパケットのみ処理されることを確認（50回に1回出力）
