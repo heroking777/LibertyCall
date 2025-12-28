@@ -762,6 +762,11 @@ class FreeswitchRTPMonitor:
                 self.logger.info(f"[PCAP_CONFIG] Starting capture with filter: '{filter_str}'")
             except Exception:
                 pass
+            # 【強制出力】標準出力に出して即時確認（loggerに依存しない）
+            try:
+                print(f"DEBUG_PRINT: Starting pcap with filter='{filter_str}'", flush=True)
+            except Exception:
+                pass
             sniff(
                 filter=filter_str,
                 prn=self._process_captured_packet,
@@ -2753,6 +2758,11 @@ class RealtimeGateway:
                             except Exception:
                                 asr_rms = -1
                             self.logger.info(f\"[ASR_INPUT_RMS] call_id={effective_call_id} rms={asr_rms} chunk_idx={self._stream_chunk_counter}\")
+                            # 【強制出力】標準出力に出して即時確認（loggerに依存しない）
+                            try:
+                                print(f\"DEBUG_PRINT: call_id={effective_call_id} ASR_INPUT_RMS={asr_rms} chunk_idx={self._stream_chunk_counter}\", flush=True)
+                            except Exception:
+                                pass
                 except Exception:
                     pass
                 
