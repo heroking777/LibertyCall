@@ -118,6 +118,24 @@ class RTPProtocol(asyncio.DatagramProtocol):
     def connection_made(self, transport):
         self.transport = transport
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
+        # --- [DEBUG & FILTER ADDITION START] ---
+        # フィルタリング: FreeSWITCH自身のIP（送信パケットのループバック）からのパケットは無視する
+        # ログで確認されたFreeSWITCHのIP: 160.251.170.253
+        # および localhost も念のため除外
+        ignore_ips = {'160.251.170.253', '127.0.0.1', '::1'}
+        
+        if addr[0] in ignore_ips:
+            # FreeSWITCH自身からのパケット（システム音声の逆流）を無視
+            return
+        
+        # デバッグ: ユーザーからのパケットのみ処理されることを確認（50回に1回出力）
+        if not hasattr(self, '_packet_count'):
+            self._packet_count = 0
+        self._packet_count += 1
+        if self._packet_count % 50 == 1:
+            print(f"DEBUG_TRACE: RTPProtocol packet from user IP={addr[0]} port={addr[1]} len={len(data)} count={self._packet_count}", flush=True)
+        # --- [DEBUG & FILTER ADDITION END] ---
+        
         # 【追加】SSRCフィルタリング（優先）および送信元IP/Portの検証（混線防止）
         try:
             # ヘッダサイズチェック
@@ -750,6 +768,8 @@ class FreeswitchRTPMonitor:
     
     def _pcap_capture_loop(self, port: int):
         """pcap方式でRTPパケットをキャプチャするループ（別スレッドで実行）"""
+        # 【最優先デバッグ】関数の最初で即座に出力
+        print(f"DEBUG_TRACE: _pcap_capture_loop ENTERED port={port}", flush=True)
         try:
             self.logger.info(f"[FS_RTP_MONITOR] Starting pcap capture for port {port}")
             # scapyのsniff()を使用してパケットをキャプチャ
@@ -780,6 +800,12 @@ class FreeswitchRTPMonitor:
     
     def _process_captured_packet(self, packet):
         """キャプチャしたパケットを処理"""
+        # 【デバッグ】パケット受信時に即座に出力（50回に1回）
+        if not hasattr(self, '_packet_debug_count'):
+            self._packet_debug_count = 0
+        self._packet_debug_count += 1
+        if self._packet_debug_count % 50 == 1:
+            print(f"DEBUG_TRACE: _process_captured_packet called count={self._packet_debug_count}", flush=True)
         try:
             # IP層とUDP層を確認
             if IP in packet and UDP in packet:
@@ -2757,10 +2783,10 @@ class RealtimeGateway:
                                 asr_rms = audioop.rms(pcm16k_chunk, 2)
                             except Exception:
                                 asr_rms = -1
-                            self.logger.info(f\"[ASR_INPUT_RMS] call_id={effective_call_id} rms={asr_rms} chunk_idx={self._stream_chunk_counter}\")
+                            self.logger.info(f"[ASR_INPUT_RMS] call_id={effective_call_id} rms={asr_rms} chunk_idx={self._stream_chunk_counter}")
                             # 【強制出力】標準出力に出して即時確認（loggerに依存しない）
                             try:
-                                print(f\"DEBUG_PRINT: call_id={effective_call_id} ASR_INPUT_RMS={asr_rms} chunk_idx={self._stream_chunk_counter}\", flush=True)
+                                print(f"DEBUG_PRINT: call_id={effective_call_id} ASR_INPUT_RMS={asr_rms} chunk_idx={self._stream_chunk_counter}", flush=True)
                             except Exception:
                                 pass
                 except Exception:
