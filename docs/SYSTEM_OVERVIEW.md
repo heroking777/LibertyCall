@@ -526,7 +526,3 @@ ENTRY → ENTRY_CONFIRM → QA → AFTER_085 → CLOSING → HANDOFF → HANDOFF
 - 2025-12-26: docs 全面更新（email_sender, scripts, tests 反映）  
 
 ---
-
-このファイルは `/opt/libertycall/SYSTEM_OVERVIEW.md` と内容を統合した最新版です。さらに完全な再帰ツリー・関数一覧・PlantUML図等の自動生成を希望する場合は指示してください。
-
-
