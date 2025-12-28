@@ -1196,6 +1196,13 @@ class AICore:
         self.last_start_times: Dict[str, float] = {}
         # 現在システムが再生しているテキスト（エコー除去用）
         self.current_system_text: str = ""
+        # 【追加】テンプレートID->テキスト辞書（エコー判定用の簡易辞書）
+        self.TEMPLATE_TEXTS: Dict[str, str] = {
+            "000": "この電話は応対品質の向上と正確なご案内のため録音させていただいております",
+            "004": "お電話ありがとうございます",
+            "006_SYS": "ただいま電話に出ることができません",
+            "110": "発信音の後にメッセージを入れてください",
+        }
         
         # AI_CORE_VERSION ログ（編集した ai_core.py が読まれているか確認用）
         self.logger.info(
