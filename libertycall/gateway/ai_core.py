@@ -1192,6 +1192,8 @@ class AICore:
         self._call_started_calls: set[str] = set()
         # 二重再生防止: 冒頭テンプレート（000-002）を再生済みの通話IDセット（001専用）
         self._intro_played_calls: set[str] = set()
+        # 通話開始イベントの最終時刻を管理（call_id -> last_start_timestamp）
+        self.last_start_times: Dict[str, float] = {}
         
         # AI_CORE_VERSION ログ（編集した ai_core.py が読まれているか確認用）
         self.logger.info(
@@ -2100,6 +2102,12 @@ class AICore:
             self.logger.info(f"[CLEANUP] reset_call() executed for call_id={call_id}")
         except Exception as e:
             self.logger.error(f"[CLEANUP] Failed to reset_call(): call_id={call_id} error={e}", exc_info=True)
+        # 明示的に強制クリーンアップを呼び出して、残留データを確実に破棄する
+        try:
+            self.cleanup_call(call_id)
+            self.logger.info(f"[CLEANUP] cleanup_call() executed for call_id={call_id}")
+        except Exception as e:
+            self.logger.debug(f"[CLEANUP] cleanup_call() failed for call_id={call_id}: {e}")
 
     def cleanup_call(self, call_id: str) -> None:
         """
@@ -2824,6 +2832,29 @@ class AICore:
         :param client_id: クライアントID（省略時は self.client_id を使用）
         :param kwargs: その他の引数
         """
+        # 【追加】開始イベントの連打防止（2秒以内の再呼び出しは無視）
+        try:
+            import time
+            current_time = time.time()
+            last_time = getattr(self, "last_start_times", {}).get(call_id, 0)
+            if (current_time - last_time) < 2.0:
+                # logger が存在する前提で警告を出す
+                try:
+                    self.logger.warning(f"[CALL_START] Ignored duplicate start event for {call_id}")
+                except Exception:
+                    print(f"[CALL_START] Ignored duplicate start event for {call_id}", flush=True)
+                return
+            # 時刻を更新して処理続行
+            try:
+                if not hasattr(self, "last_start_times"):
+                    self.last_start_times = {}
+                self.last_start_times[call_id] = current_time
+            except Exception:
+                pass
+        except Exception:
+            # 時刻取得等に失敗しても処理を続行する（保守性優先）
+            pass
+
         effective_client_id = client_id or self.client_id or "000"
         
         # 【追加】既存セッションの強制クリーンアップ（ゾンビセッション対策）
