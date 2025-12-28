@@ -130,6 +130,12 @@ class FlowEngine:
         :return: 次のフェーズ名（遷移しない場合は現在のフェーズ名を返す）
         """
         try:
+            # 【追加】入力処理開始ログ（デバッグ用）
+            try:
+                input_text = context.get("text") if isinstance(context, dict) else None
+            except Exception:
+                input_text = None
+            self.logger.info(f"[FLOW_DEBUG] Processing input: {input_text!r} (Current State: {current_phase})")
             phases = self.flow.get("phases", {})
             phase = phases.get(current_phase)
             

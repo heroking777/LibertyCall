@@ -3565,6 +3565,13 @@ class AICore:
         else:
             self.logger.debug(f"[ASR_TRANSCRIPT] call_id={call_id} is_final=False text={text!r}")
 
+        # 【追加】トランスクリプト受信時の詳細ログ（デバッグ目的）
+        try:
+            text_preview = text if isinstance(text, str) else repr(text)
+        except Exception:
+            text_preview = "<unrepresentable>"
+        self.logger.info(f"[TRANSCRIPT_DEBUG] Received text={text_preview!r}, is_final={is_final} for call_id={call_id}")
+
         # 空文字チェックは簡素化
         if not text or len(text.strip()) == 0:
             self.logger.debug(f"[ASR_TRANSCRIPT] Empty text, skipping: call_id={call_id}")
@@ -3885,6 +3892,12 @@ class AICore:
         
         if flow_engine:
             try:
+                # 【追加】フローエンジンへ渡す直前ログ
+                try:
+                    preview_for_flow = merged_text if isinstance(merged_text, str) else repr(merged_text)
+                except Exception:
+                    preview_for_flow = "<unrepresentable>"
+                self.logger.info(f"[TRANSCRIPT_DEBUG] Passing text to FlowEngine for call_id={call_id} text={preview_for_flow!r}")
                 # クライアントIDを取得（テンプレート再生時に使用）
                 client_id = self.call_client_map.get(call_id) or state.meta.get("client_id") or self.client_id or "000"
                 
