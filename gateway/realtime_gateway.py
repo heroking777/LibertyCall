@@ -2974,7 +2974,7 @@ class RealtimeGateway:
             def wait_for_process():
                 try:
                     proc.wait(timeout=30)
-                    self.logger.debug(f"TRANSFER_TO_OPERATOR: handoff_redirect completed pid={proc.pid} call_id={self.call_id}")
+                    self.logger.info(f"TRANSFER_TO_OPERATOR: handoff_redirect completed pid={proc.pid} call_id={self.call_id}")
                 except Exception as e:
                     self.logger.warning(f"TRANSFER_TO_OPERATOR: handoff_redirect wait failed pid={proc.pid} call_id={self.call_id} error={e}")
 
@@ -3696,7 +3696,7 @@ class RealtimeGateway:
                 def wait_for_process():
                     try:
                         proc.wait(timeout=30)
-                        self.logger.debug(f"[FORCE_HANGUP] hangup_call completed pid={proc.pid} call_id={self.call_id}")
+                        self.logger.info(f"[FORCE_HANGUP] hangup_call completed pid={proc.pid} call_id={self.call_id}")
                     except Exception as e:
                         self.logger.warning(f"[FORCE_HANGUP] hangup_call wait failed pid={proc.pid} error={e}")
 
