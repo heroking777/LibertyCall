@@ -2473,18 +2473,36 @@ class RealtimeGateway:
         
         try:
             # μ-law → PCM16 (8kHz) に変換
-            pcm16_8k = audioop.ulaw2lin(pcm_data, 2)
+            # まずはデコード前/後のバイト列を常時ログ出力して原因を特定する
+            try:
+                if pcm_data and len(pcm_data) > 0:
+                    in_hex = pcm_data[:10].hex() if len(pcm_data) >= 10 else pcm_data.hex()
+                    self.logger.warning(
+                        f"[ULAW_INPUT] call_id={effective_call_id} len={len(pcm_data)} hex={in_hex}"
+                    )
+            except Exception:
+                # ログ失敗は致命的でない
+                pass
 
-            # AGC を適用（8kHz段階で増幅し、以降の処理に反映させる）
-            # TEMP: AGC無効化テスト中（コメントアウト）
-            # try:
-            #     pcm16_8k = self._apply_agc(pcm16_8k, target_rms=1000)
-            # except Exception:
-            #     # AGC失敗時は元データを使用
-            #     pass
+            try:
+                pcm16_8k = audioop.ulaw2lin(pcm_data, 2)
+            except Exception as e:
+                self.logger.error(f"[ULAW_ERROR] call_id={effective_call_id} ulaw2lin failed: {e}")
+                pcm16_8k = b''
 
-            # 8kHz の RMS を再計算して以降の閾値判定に使用
-            rms = audioop.rms(pcm16_8k, 2)
+            # デコード後の先頭バイトとRMSを必ずログ出力
+            try:
+                if pcm16_8k and len(pcm16_8k) > 0:
+                    out_hex = pcm16_8k[:10].hex() if len(pcm16_8k) >= 10 else pcm16_8k.hex()
+                    out_rms = audioop.rms(pcm16_8k, 2)
+                    self.logger.warning(
+                        f"[ULAW_OUTPUT] call_id={effective_call_id} len={len(pcm16_8k)} rms={out_rms} hex={out_hex}"
+                    )
+            except Exception:
+                pass
+
+            # AGC はテスト時は無効化済み。8kHz の RMS を再計算して以降の閾値判定に使用
+            rms = audioop.rms(pcm16_8k, 2) if pcm16_8k else 0
 
             # 音声デコード確認ログ（デコード後のデータを更新）
             if self._debug_packet_count <= 50 or self._debug_packet_count % 100 == 0:
