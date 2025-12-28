@@ -3751,6 +3751,7 @@ class AICore:
             
             # 【修正】スレッドセーフにASRインスタンスを取得または作成
             asr_instance = None
+            newly_created = False
             with self.asr_lock:
                 if call_id not in self.asr_instances:
                     print(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}", flush=True)
@@ -3764,6 +3765,7 @@ class AICore:
                             error_callback=self._on_asr_error,
                         )
                         self.asr_instances[call_id] = new_asr
+                        newly_created = True
                         print(f"[ASR_INSTANCE_CREATED] call_id={call_id}, total_instances={len(self.asr_instances)}", flush=True)
                         self.logger.info(f"[ASR_INSTANCE_CREATED] call_id={call_id}, total_instances={len(self.asr_instances)}")
                     except Exception as e:
@@ -3772,6 +3774,28 @@ class AICore:
                         return
                 # ロック内でインスタンスを取得
                 asr_instance = self.asr_instances.get(call_id)
+            
+            # 【追加】新規作成時はストリームスレッド開始を待機（最大500ms）
+            if newly_created and asr_instance is not None:
+                # 明示的にストリームワーカーを起動
+                asr_instance._start_stream_worker(call_id)
+                max_wait = 0.5  # 最大500ms待機
+                wait_interval = 0.02  # 20msごとにチェック
+                elapsed = 0.0
+                print(f"[ASR_STREAM_WAIT] call_id={call_id} Waiting for stream thread to start...", flush=True)
+                while elapsed < max_wait:
+                    if asr_instance._stream_thread is not None and asr_instance._stream_thread.is_alive():
+                        break
+                    time.sleep(wait_interval)
+                    elapsed += wait_interval
+                
+                stream_ready = (asr_instance._stream_thread is not None and asr_instance._stream_thread.is_alive())
+                if stream_ready:
+                    print(f"[ASR_STREAM_READY] call_id={call_id} Stream thread ready after {elapsed:.3f}s", flush=True)
+                    self.logger.info(f"[ASR_STREAM_READY] call_id={call_id} Stream thread ready after {elapsed:.3f}s")
+                else:
+                    print(f"[ASR_STREAM_TIMEOUT] call_id={call_id} Stream thread not ready after {elapsed:.3f}s", flush=True)
+                    self.logger.warning(f"[ASR_STREAM_TIMEOUT] call_id={call_id} Stream thread not ready after {elapsed:.3f}s")
             
             # ロック外で音声をフィード（ASR処理をブロックしないため）
             if asr_instance is not None:
