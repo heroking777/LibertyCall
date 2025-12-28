@@ -271,10 +271,8 @@ class GoogleASR:
                 ジェネレータなので、yield で制御が呼び元に戻るため sleep 不要。
                 """
                 # Detailed ASR generator logs to trace generator lifecycle and yields
-                try:
-                    self.logger.debug(f"[ASR_GEN] Generator START for call_id={getattr(self, '_current_call_id', 'unknown')}")
-                except Exception:
-                    self.logger.info(f"[REQUEST_GEN] Generator started for call_id={self._current_call_id}")
+                self.logger.warning(f"[REQUEST_GEN_ENTRY] Generator START for call_id={getattr(self, '_current_call_id', 'unknown')}")
+                print(f"[REQUEST_GEN_ENTRY] Generator START for call_id={getattr(self, '_current_call_id', 'unknown')}", flush=True)
 
                 empty_count = 0
                 while not self._stop_event.is_set():
@@ -287,10 +285,8 @@ class GoogleASR:
                             return
 
                         # Log chunk retrieval and size
-                        try:
-                            self.logger.debug(f"[ASR_GEN] Got chunk from queue. size={len(chunk)}")
-                        except Exception:
-                            self.logger.info(f"[REQUEST_GEN] Got audio chunk: size={len(chunk)} bytes")
+                        self.logger.warning(f"[REQUEST_GEN_DATA] Got chunk from queue, size={len(chunk)}")
+                        print(f"[REQUEST_GEN_DATA] Got chunk from queue, size={len(chunk)}", flush=True)
                         empty_count = 0
                     except queue.Empty:
                         if self._stop_event.is_set():
@@ -369,17 +365,18 @@ class GoogleASR:
                 config=streaming_config,
                 requests=request_generator_from_queue(),
             )
-            self.logger.info("[STREAM_WORKER_PRECHECK] streaming_recognize() called, entering response loop")
-            self.logger.info(f"[STREAM_WORKER_DEBUG] streaming_recognize returned, type={type(responses)}")
+            self.logger.warning("[STREAM_RECOGNIZE_RETURNED] streaming_recognize() returned successfully")
+            print(f"[STREAM_RECOGNIZE_RETURNED] streaming_recognize() returned, type={type(responses)}", flush=True)
+            
+            self.logger.warning("[RESPONSE_LOOP_ENTRY] Entering response iteration loop")
+            print("[RESPONSE_LOOP_ENTRY] Entering response iteration loop", flush=True)
             
             for response in responses:
                 results_count = len(response.results) if response.results else 0
                 error_code = response.error.code if response.error else None
-                # 統合ログ（DEBUG）
-                self.logger.debug(
-                    f"[ASR_RES] call_id={getattr(self, '_current_call_id', 'TEMP')} results={results_count} error={error_code}"
-                )
-                self.logger.info(f"[STREAM_WORKER_DEBUG] Got response from Google ASR, type={type(response)}")
+                # 応答受信ログ
+                self.logger.warning(f"[ASR_RESPONSE_RECEIVED] results={results_count}, error_code={error_code}")
+                print(f"[ASR_RESPONSE_RECEIVED] results={results_count}, error_code={error_code}", flush=True)
                 # 【修正5】280秒（4分40秒）経過時に予防的再起動
                 stream_start_time = getattr(self, '_stream_start_time', None)
                 if stream_start_time:
