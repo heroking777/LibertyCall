@@ -223,49 +223,20 @@ class GoogleASR:
         
         # それ以外なら新しいスレッドを起動
         self._stop_event.clear()
-        
-        # 【緊急デバッグ】メソッド参照が正しいか確認
-        print(f"[DEBUG_METHOD_CHECK] _stream_worker method exists: {hasattr(self, '_stream_worker')}", flush=True)
-        print(f"[DEBUG_METHOD_CHECK] _stream_worker callable: {callable(self._stream_worker)}", flush=True)
-        
-        # 【最終デバッグ】ラムダでラップしてメソッドバインディング問題を回避
-        def worker_wrapper():
-            print("[WRAPPER_ENTRY] Worker wrapper started", flush=True)
-            try:
-                print("[WRAPPER_BEFORE_CALL] About to call self._stream_worker()", flush=True)
-                result = self._stream_worker()
-                print(f"[WRAPPER_AFTER_CALL] self._stream_worker() returned: {result}", flush=True)
-                # ジェネレータの場合は消費する
-                if hasattr(result, '__iter__') and hasattr(result, '__next__'):
-                    print("[WRAPPER_CONSUMING_GENERATOR] Consuming generator...", flush=True)
-                    for item in result:
-                        pass  # ジェネレータを消費
-                    print("[WRAPPER_GENERATOR_CONSUMED] Generator consumed", flush=True)
-            except Exception as e:
-                import traceback
-                print(f"[WRAPPER_ERROR] Exception caught: {e}", flush=True)
-                traceback.print_exc()
-                raise
-            finally:
-                print("[WRAPPER_EXIT] Worker wrapper exiting", flush=True)
-        
-        # 例外を確実にキャッチするためにtry-exceptでラップ
+
         try:
             self._stream_thread = threading.Thread(
-                target=worker_wrapper,
+                target=self._stream_worker,
                 daemon=False,
-                name=f"GoogleASR-{call_id}"  # スレッド名を設定（デバッグ用）
+                name=f"GoogleASR-{call_id}"
             )
         except Exception as e:
-            print(f"[FATAL] Thread creation failed: {e}", flush=True)
             self.logger.exception(f"Thread creation failed: {e}")
             raise
-        
+
         self._stream_thread.start()
-        # 【緊急デバッグ】スレッドが本当に起動したか確認
-        time.sleep(0.01)  # 10ms待機
+        time.sleep(0.01)
         thread_alive = self._stream_thread.is_alive()
-        print(f"[EMERGENCY_THREAD_CHECK] Thread started and alive={thread_alive}", flush=True)
         self.logger.info(f"GoogleASR: STREAM_WORKER_START call_id={call_id} thread_alive={thread_alive}")
     
     # NOTE: restart_stream removed intentionally to avoid ghost-thread reuse.
@@ -275,18 +246,8 @@ class GoogleASR:
         """
         Google StreamingRecognize をバックグラウンドで回すワーカー。
         """
-        # 【最終手段】すべてをtry-exceptで囲む
-        try:
-            print("[EMERGENCY_DEBUG] _stream_worker() ENTERED", flush=True)
-            import sys, traceback
-            sys.stdout.flush()
-            self.logger.info("[STREAM_WORKER_ENTRY] _stream_worker started")
-        except Exception as e:
-            # 例外を強制出力
-            traceback.print_exc()
-            print(f"[FATAL_IN_STREAM_WORKER] {e}", flush=True)
-            raise
-        
+        self.logger.info("[STREAM_WORKER_ENTRY] _stream_worker started")
+
         try:
             self.logger.info("[STREAM_WORKER_PRECHECK] About to start request generator")
             
@@ -296,59 +257,40 @@ class GoogleASR:
                 Asterisk 側は 20ms ごとに RTP を送ってくるが、ここで明示的に sleep する必要はない。
                 ジェネレータなので、yield で制御が呼び元に戻るため sleep 不要。
                 """
-                # 【デバッグ】ジェネレータ開始
                 self.logger.info(f"[REQUEST_GEN] Generator started for call_id={self._current_call_id}")
-                
-                empty_count = 0  # 【修正】連続して空の回数をカウント
+
+                empty_count = 0
                 while not self._stop_event.is_set():
-                    # 【デバッグ】ループ開始
-                    self.logger.debug(f"[REQUEST_GEN] Loop iteration start")
                     try:
-                        # 【修正】timeout を 0.1 秒に短縮（より頻繁にチェック）
-                        # 音声が来ない場合でも定期的に空のチャンクを送ってタイムアウトを防ぐ
-                        # 【デバッグ】キュー取得前
-                        self.logger.debug(f"[REQUEST_GEN] Attempting queue get, qsize={self._q.qsize()}")
                         chunk = self._q.get(timeout=0.1)
-                        
+
                         # Sentinel (None) チェック - end_stream からの終了シグナル
                         if chunk is None:
                             self.logger.info("[REQUEST_GEN] Received sentinel (None), stopping generator")
                             return
-                        
+
                         self.logger.info(f"[REQUEST_GEN] Got audio chunk: size={len(chunk)} bytes")
-                        empty_count = 0  # 音声が来たらリセット
+                        empty_count = 0
                     except queue.Empty:
                         if self._stop_event.is_set():
                             break
                         empty_count += 1
-                        # 【修正】10回連続で空の場合（約1秒）、空のチャンクを送ってタイムアウトを防ぐ
-                        # Google側は音声が来ないとタイムアウトするため、定期的に空のチャンクを送る
                         if empty_count >= 10:
                             empty_count = 0
                             # 空のチャンクを送る（Google側のタイムアウトを防ぐ）
                             yield cloud_speech.StreamingRecognizeRequest(audio_content=b"")  # type: ignore[union-attr]
                         continue
-                    
+
                     if chunk is None:
                         # sentinel → ストリーム終了
                         self.logger.debug("GoogleASR.request_generator_from_queue: got sentinel, exiting")
                         break
-                    
+
                     # bytes でない場合はスキップ
                     if not isinstance(chunk, bytes) or len(chunk) == 0:
                         continue
-                    
-                    # ここで1リクエスト分を yield して制御が呼び元に戻るので、
-                    # 追加の sleep は不要
-                    # 【デバッグ】yield前
-                    self.logger.debug(f"[REQUEST_GEN] Yielding request with audio")
-                    self.logger.info(f"[REQUEST_GEN_DEBUG] About to yield audio chunk to Google ASR")
-                    # 【追加】生存確認ログ（最初の1パケットは必ずログに出す、以降50回ごと）
-                    if not hasattr(self, '_req_gen_counter'):
-                        self._req_gen_counter = 0
-                    self._req_gen_counter += 1
-                    if self._req_gen_counter == 1 or self._req_gen_counter % 50 == 0:
-                        self.logger.warning(f"[ASR_REQ_ALIVE] Yielding audio packet #{self._req_gen_counter} len={len(chunk)} call_id={self._current_call_id}")
+
+                    # ここで1リクエスト分を yield して制御が呼び元に戻るので、sleep 不要
                     yield cloud_speech.StreamingRecognizeRequest(audio_content=chunk)  # type: ignore[union-attr]
             
             self.logger.info("[STREAM_WORKER_PRECHECK] Request generator defined, about to create config")
