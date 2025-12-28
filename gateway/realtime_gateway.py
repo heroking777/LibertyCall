@@ -196,7 +196,18 @@ class FreeswitchRTPMonitor:
                         if hasattr(self.gateway, 'ai_core') and hasattr(self.gateway.ai_core, 'call_id'):
                             latest_call_id = self.gateway.ai_core.call_id
                             if latest_call_id:
+                                # 追加ログ: 登録前の状況を出力
+                                try:
+                                    pre_map = dict(self.gateway.call_uuid_map)
+                                except Exception:
+                                    pre_map = {}
+                                self.logger.warning(
+                                    f"[DEBUG_UUID_REGISTER] Registering uuid={uuid} for call_id={latest_call_id} current_map={pre_map}"
+                                )
                                 self.gateway.call_uuid_map[latest_call_id] = uuid
+                                self.logger.warning(
+                                    f"[DEBUG_UUID_REGISTERED] Updated map={self.gateway.call_uuid_map}"
+                                )
                                 self.logger.info(f"[FS_RTP_MONITOR] Mapped call_id={latest_call_id} -> uuid={uuid}")
                     return port
         except Exception as e:
@@ -548,34 +559,62 @@ class FreeswitchRTPMonitor:
         if not self.asr_active:
             self.asr_active = True
             self.logger.info("[FS_RTP_MONITOR] ASR enabled after 002.wav playback completion")
-            
+
             # 【修正】AICore.enable_asr()を呼び出してストリームワーカーを起動
             if self.gateway and hasattr(self.gateway, 'ai_core') and self.gateway.ai_core:
                 # call_idを取得
                 call_id = getattr(self.gateway, 'call_id', None)
+                # 追加: 現在のマッピング状況をログ出力
+                try:
+                    current_map = getattr(self.gateway, 'call_uuid_map', {})
+                except Exception:
+                    current_map = {}
+                self.logger.warning(
+                    f"[DEBUG_ENABLE_ASR_ENTRY] call_id={call_id} call_uuid_map={current_map}"
+                )
+
                 if not call_id and hasattr(self.gateway, '_get_effective_call_id'):
                     call_id = self.gateway._get_effective_call_id()
-                
+                    self.logger.warning(f"[DEBUG_ENABLE_ASR_EFFECTIVE] effective_call_id={call_id}")
+
+                if not call_id:
+                    self.logger.error(
+                        "[ENABLE_ASR_FAILED] Cannot enable ASR: call_id is None. "
+                        "This indicates RTP monitoring has not started yet."
+                    )
+                    return
+
                 # UUIDを取得（call_uuid_mapから、またはupdate_uuid_mapping_for_callで取得）
                 uuid = None
                 if call_id and hasattr(self.gateway, 'call_uuid_map'):
                     uuid = self.gateway.call_uuid_map.get(call_id)
-                
+
                 # UUIDが見つからない場合は、update_uuid_mapping_for_callで取得を試みる
                 if call_id and not uuid:
+                    self.logger.warning(
+                        f"[ENABLE_ASR_UUID_MISSING] call_id={call_id} not in map, attempting update_uuid_mapping"
+                    )
                     uuid = self.update_uuid_mapping_for_call(call_id)
-                
+
                 # client_idを取得
                 client_id = getattr(self.gateway, 'client_id', '000') or '000'
-                
-                if uuid:
-                    try:
-                        self.gateway.ai_core.enable_asr(uuid, client_id=client_id)
-                        self.logger.info(f"[FS_RTP_MONITOR] AICore.enable_asr() called successfully for uuid={uuid} call_id={call_id} client_id={client_id}")
-                    except Exception as e:
-                        self.logger.error(f"[FS_RTP_MONITOR] Failed to call AICore.enable_asr(): {e}", exc_info=True)
-                else:
-                    self.logger.warning(f"[FS_RTP_MONITOR] Cannot call AICore.enable_asr(): uuid is None (call_id={call_id})")
+
+                # 追加: uuid取得結果のログ
+                self.logger.warning(f"[DEBUG_ENABLE_ASR_UUID] call_id={call_id} uuid={uuid}")
+
+                if not uuid:
+                    self.logger.error(
+                        f"[ENABLE_ASR_FAILED] Cannot enable ASR: uuid not found for call_id={call_id}. "
+                        f"RTP info file may not exist yet."
+                    )
+                    return
+
+                try:
+                    self.gateway.ai_core.enable_asr(uuid, client_id=client_id)
+                    self.logger.info(f"[ENABLE_ASR_SUCCESS] ASR enabled: uuid={uuid} call_id={call_id} client_id={client_id}")
+                except Exception as e:
+                    self.logger.error(f"[FS_RTP_MONITOR] Failed to call AICore.enable_asr(): {e}", exc_info=True)
+            
             else:
                 self.logger.warning("[FS_RTP_MONITOR] Cannot call AICore.enable_asr(): gateway or ai_core not available")
 
