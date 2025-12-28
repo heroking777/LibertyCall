@@ -2061,6 +2061,40 @@ class RealtimeGateway:
             self.logger.debug(f"[RTP_SILENT] Error in _is_silent_ulaw: {e}")
             return False
 
+    def _apply_agc(self, pcm_data: bytes, target_rms: int = 1000) -> bytes:
+        """
+        Automatic Gain Control: PCM16 データの音量を自動調整して返す
+        :param pcm_data: PCM16 リトルエンディアンのバイト列
+        :param target_rms: 目標 RMS 値（デフォルト 1000）
+        :return: 増幅後の PCM16 バイト列
+        """
+        try:
+            if not pcm_data or len(pcm_data) == 0:
+                return pcm_data
+
+            current_rms = audioop.rms(pcm_data, 2)
+            # ほぼ無音は処理しない
+            if current_rms < 10:
+                return pcm_data
+
+            gain = float(target_rms) / float(current_rms) if current_rms > 0 else 1.0
+            # 過増幅を防ぐ（最大10倍、最小0.5倍）
+            gain = min(max(gain, 0.5), 10.0)
+
+            amplified = audioop.mul(pcm_data, 2, gain)
+
+            # ログ（最初の数回のみ出力）
+            if not hasattr(self, '_agc_log_count'):
+                self._agc_log_count = 0
+            if self._agc_log_count < 5 or abs(gain - 1.0) > 2.0:
+                self.logger.info(f"[AGC] current_rms={current_rms} gain={gain:.2f} target_rms={target_rms}")
+                self._agc_log_count += 1
+
+            return amplified
+        except Exception as e:
+            self.logger.exception(f"[AGC_ERROR] {e}")
+            return pcm_data
+
     async def handle_rtp_packet(self, data: bytes, addr: Tuple[str, int]):
         # 【修正】条件分岐の「外」でログを出す
         current_time = time.time()
@@ -2440,8 +2474,17 @@ class RealtimeGateway:
         try:
             # μ-law → PCM16 (8kHz) に変換
             pcm16_8k = audioop.ulaw2lin(pcm_data, 2)
+
+            # AGC を適用（8kHz段階で増幅し、以降の処理に反映させる）
+            try:
+                pcm16_8k = self._apply_agc(pcm16_8k, target_rms=1000)
+            except Exception:
+                # AGC失敗時は元データを使用
+                pass
+
+            # 8kHz の RMS を再計算して以降の閾値判定に使用
             rms = audioop.rms(pcm16_8k, 2)
-            
+
             # 音声デコード確認ログ（デコード後のデータを更新）
             if self._debug_packet_count <= 50 or self._debug_packet_count % 100 == 0:
                 # デコード後（PCM16）の先頭10バイト（5サンプル分）
@@ -2449,7 +2492,7 @@ class RealtimeGateway:
                 # デコード前（μ-law）の先頭10バイト（既に取得済み）
                 raw_preview = pcm_data[:10].hex() if len(pcm_data) >= 10 else "N/A"
                 self.logger.warning(f"[AUDIO_DEBUG] Cnt={self._debug_packet_count} RawHead={raw_preview} DecodedHead={decoded_preview} RawLen={len(pcm_data)} DecodedLen={len(pcm16_8k)} RMS={rms}")
-            
+
             # 【診断用】μ-lawデコード後のRMS値確認（常に出力、最初の50回のみ詳細）
             if not hasattr(self, '_rms_debug_count'):
                 self._rms_debug_count = 0
@@ -2468,7 +2511,7 @@ class RealtimeGateway:
                 if self._rms_debug_count % 10 == 0:
                     self.logger.info(f"[RTP_AUDIO_RMS] call_id={effective_call_id} stage=ulaw_decode rms={rms}")
                 self._rms_debug_count += 1
-            
+
             # --- 音量レベル送信（管理画面用） ---
             self._maybe_send_audio_level(rms)
 
