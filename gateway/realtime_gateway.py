@@ -111,12 +111,30 @@ class RTPPacketBuilder:
 class RTPProtocol(asyncio.DatagramProtocol):
     def __init__(self, gateway: 'RealtimeGateway'):
         self.gateway = gateway
+        # 受信元アドレスをロックするためのフィールド（最初のパケット送信元を固定）
+        self.remote_addr: Optional[Tuple[str, int]] = None
     def connection_made(self, transport):
         self.transport = transport
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
+        # 【追加】送信元IP/ポートの検証（混線防止）
+        # self.remote_addr は最初に受信したパケットの送信元でロックされる
+        try:
+            if self.remote_addr is None:
+                self.remote_addr = addr
+                self.gateway.logger.info(f"[RTP_FILTER] Locked remote address to {addr}")
+            elif self.remote_addr != addr:
+                # 異なる送信元からのパケットは無視（混線防止）
+                self.gateway.logger.debug(f"[RTP_FILTER] Ignored packet from {addr} (expected {self.remote_addr})")
+                return
+        except Exception:
+            # フィルタ処理は安全に失敗させない（ログ出力のみ）
+            try:
+                self.gateway.logger.exception("[RTP_FILTER] Exception while filtering packet")
+            except Exception:
+                pass
+
         # 受信確認ログ（UDPパケットが実際に届いているか確認用）
         self.gateway.logger.debug(f"[RTP_RECV] Received {len(data)} bytes from {addr}")
-        
         # RTP受信ログ（軽量版：fromとlenのみ）
         self.gateway.logger.info(f"[RTP_RECV_RAW] from={addr}, len={len(data)}")
         
