@@ -2101,6 +2101,111 @@ class AICore:
         except Exception as e:
             self.logger.error(f"[CLEANUP] Failed to reset_call(): call_id={call_id} error={e}", exc_info=True)
 
+    def cleanup_call(self, call_id: str) -> None:
+        """
+        強制クリーンアップ: セッション関連の残留データやキューを明示的に破棄する
+        通話開始時や終了時の冗長処理として呼び出すことを想定
+        """
+        try:
+            # Basic session maps
+            try:
+                self._call_started_calls.discard(call_id)
+            except Exception:
+                pass
+            try:
+                self._intro_played_calls.discard(call_id)
+            except Exception:
+                pass
+
+            # Clear common per-call dicts
+            dict_names = [
+                'last_activity', 'is_playing', 'partial_transcripts',
+                'last_template_play', 'session_info', 'last_ai_templates'
+            ]
+            for name in dict_names:
+                try:
+                    d = getattr(self, name, None)
+                    if isinstance(d, dict) and call_id in d:
+                        del d[call_id]
+                        self.logger.info(f"[CLEANUP] Removed {name} entry for call_id={call_id}")
+                except Exception as e:
+                    self.logger.debug(f"[CLEANUP] Could not remove {name} for {call_id}: {e}")
+
+            # FlowEngine instances per-call
+            try:
+                if hasattr(self, 'flow_engines') and isinstance(self.flow_engines, dict):
+                    if call_id in self.flow_engines:
+                        del self.flow_engines[call_id]
+                        self.logger.info(f"[CLEANUP] Removed flow_engine instance for call_id={call_id}")
+            except Exception:
+                pass
+
+            # TTS / audio queues
+            try:
+                for qname in ('tts_queue', 'audio_output_queue', 'tts_out_queue'):
+                    q = getattr(self, qname, None)
+                    if q is not None:
+                        try:
+                            while not q.empty():
+                                q.get_nowait()
+                            self.logger.info(f"[CLEANUP] Cleared queue {qname} for call_id={call_id}")
+                        except Exception:
+                            self.logger.debug(f"[CLEANUP] Failed clearing queue {qname} for call_id={call_id}")
+            except Exception:
+                pass
+
+            # ASR instance queues
+            try:
+                if hasattr(self, 'asr_instances') and isinstance(self.asr_instances, dict):
+                    asr = self.asr_instances.get(call_id)
+                    if asr:
+                        if hasattr(asr, '_queue'):
+                            try:
+                                while not asr._queue.empty():
+                                    asr._queue.get_nowait()
+                                self.logger.info(f"[CLEANUP] Flushed ASR queue for {call_id}")
+                            except Exception:
+                                self.logger.debug(f"[CLEANUP] Failed flushing ASR queue for {call_id}")
+                        # Attempt to stop ASR instance if stop/close method exists
+                        try:
+                            if hasattr(asr, 'stop'):
+                                asr.stop()
+                            elif hasattr(asr, 'close'):
+                                asr.close()
+                            self.logger.info(f"[CLEANUP] Stopped ASR instance for {call_id}")
+                        except Exception:
+                            self.logger.debug(f"[CLEANUP] Could not stop ASR instance for {call_id}")
+                        # Finally remove reference
+                        try:
+                            del self.asr_instances[call_id]
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # Auto hangup timers
+            try:
+                if hasattr(self, '_auto_hangup_timers') and isinstance(self._auto_hangup_timers, dict):
+                    t = self._auto_hangup_timers.pop(call_id, None)
+                    if t is not None:
+                        try:
+                            t.cancel()
+                        except Exception:
+                            pass
+                        self.logger.info(f"[CLEANUP] Cancelled auto_hangup timer for {call_id}")
+            except Exception:
+                pass
+
+            # Reset call state via reset_call if available
+            try:
+                if hasattr(self, 'reset_call'):
+                    self.reset_call(call_id)
+                    self.logger.info(f"[CLEANUP] reset_call() invoked for call_id={call_id}")
+            except Exception as e:
+                self.logger.debug(f"[CLEANUP] reset_call error for {call_id}: {e}")
+        except Exception as e:
+            self.logger.exception(f"[CLEANUP] Unexpected error during cleanup_call for {call_id}: {e}")
+
     def _load_flow(self, client_id: str) -> dict:
         """
         クライアントごとの会話フローを読み込む
@@ -2671,6 +2776,24 @@ class AICore:
         """
         effective_client_id = client_id or self.client_id or "000"
         
+        # 【追加】既存セッションの強制クリーンアップ（ゾンビセッション対策）
+        try:
+            # Check common active-calls holders
+            active_found = False
+            if hasattr(self, 'active_calls') and call_id in getattr(self, 'active_calls') :
+                active_found = True
+            elif hasattr(self, 'gateway') and hasattr(self.gateway, '_active_calls') and call_id in getattr(self.gateway, '_active_calls'):
+                active_found = True
+            if active_found:
+                self.logger.warning(f"[CLEANUP] Found existing active session for {call_id} at start. Forcing cleanup.")
+                try:
+                    self.cleanup_call(call_id)
+                except Exception as e:
+                    self.logger.exception(f"[CLEANUP] cleanup_call error for {call_id}: {e}")
+        except Exception:
+            # Non-fatal, continue startup
+            pass
+
         # 【診断用】強制的に可視化（logger設定に依存しない）
         print(f"[DEBUG_PRINT] on_call_start called call_id={call_id} client_id={effective_client_id} self.client_id={self.client_id}", flush=True)
         
