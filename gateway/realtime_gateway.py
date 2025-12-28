@@ -113,19 +113,41 @@ class RTPProtocol(asyncio.DatagramProtocol):
         self.gateway = gateway
         # 受信元アドレスをロックするためのフィールド（最初のパケット送信元を固定）
         self.remote_addr: Optional[Tuple[str, int]] = None
+        # 受信元SSRCをロックするためのフィールド（RTPヘッダのbytes 8-11）
+        self.remote_ssrc: Optional[int] = None
     def connection_made(self, transport):
         self.transport = transport
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
-        # 【追加】送信元IP/ポートの検証（混線防止）
-        # self.remote_addr は最初に受信したパケットの送信元でロックされる
+        # 【追加】SSRCフィルタリング（優先）および送信元IP/Portの検証（混線防止）
         try:
-            if self.remote_addr is None:
-                self.remote_addr = addr
-                self.gateway.logger.info(f"[RTP_FILTER] Locked remote address to {addr}")
-            elif self.remote_addr != addr:
-                # 異なる送信元からのパケットは無視（混線防止）
-                self.gateway.logger.debug(f"[RTP_FILTER] Ignored packet from {addr} (expected {self.remote_addr})")
-                return
+            # ヘッダサイズチェック
+            if len(data) >= 12:
+                try:
+                    ssrc = struct.unpack('!I', data[8:12])[0]
+                except Exception:
+                    ssrc = None
+            else:
+                ssrc = None
+
+            # SSRCによるロック（存在すれば優先的にチェック）
+            if ssrc is not None:
+                if self.remote_ssrc is None:
+                    self.remote_ssrc = ssrc
+                    # IPも記録しておく
+                    self.remote_addr = addr
+                    self.gateway.logger.info(f"[RTP_FILTER] Locked SSRC={ssrc} from {addr}")
+                elif self.remote_ssrc != ssrc:
+                    # 異なるSSRCは混入と見なし破棄
+                    self.gateway.logger.debug(f"[RTP_FILTER] Ignored packet with SSRC={ssrc} (expected {self.remote_ssrc}) from {addr}")
+                    return
+            else:
+                # SSRC取得できなかった場合はIP/Portで保護（後方互換）
+                if self.remote_addr is None:
+                    self.remote_addr = addr
+                    self.gateway.logger.info(f"[RTP_FILTER] Locked remote address to {addr}")
+                elif self.remote_addr != addr:
+                    self.gateway.logger.debug(f"[RTP_FILTER] Ignored packet from {addr} (expected {self.remote_addr})")
+                    return
         except Exception:
             # フィルタ処理は安全に失敗させない（ログ出力のみ）
             try:
