@@ -3993,6 +3993,9 @@ class RealtimeGateway:
             # 明示的な通話終了処理（フラグクリア）
             if hasattr(self.ai_core, 'on_call_end'):
                 self.ai_core.on_call_end(call_id_to_cleanup, source="_handle_hangup")
+            # 【追加】通話ごとのASRインスタンスをクリーンアップ
+            if hasattr(self.ai_core, 'cleanup_asr_instance'):
+                self.ai_core.cleanup_asr_instance(call_id_to_cleanup)
             
             # Asterisk に hangup を依頼（非同期で実行）
             try:
@@ -4156,6 +4159,9 @@ class RealtimeGateway:
             # 明示的な通話終了処理（フラグクリア）
             if hasattr(self.ai_core, 'on_call_end'):
                 self.ai_core.on_call_end(call_id_to_complete, source="_complete_console_call")
+            # 【追加】通話ごとのASRインスタンスをクリーンアップ
+            if hasattr(self.ai_core, 'cleanup_asr_instance'):
+                self.ai_core.cleanup_asr_instance(call_id_to_complete)
             self.call_completed = True
             self.call_id = None
             self.recent_dialogue.clear()
