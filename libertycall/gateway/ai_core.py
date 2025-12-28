@@ -2122,6 +2122,56 @@ class AICore:
                 'last_activity', 'is_playing', 'partial_transcripts',
                 'last_template_play', 'session_info', 'last_ai_templates'
             ]
+            # 【追加】FreeSWITCH 側で再生中の音声を強制停止（uuid_break / uuid_kill）
+            try:
+                # 複数の候補フィールドをチェックして uuid を取得する（既存フィールド名に合わせて柔軟に取得）
+                uuid = None
+                try:
+                    if hasattr(self, 'call_uuid_map') and isinstance(self.call_uuid_map, dict):
+                        uuid = self.call_uuid_map.get(call_id) or uuid
+                except Exception:
+                    pass
+                try:
+                    if not uuid and hasattr(self, 'call_client_map') and isinstance(self.call_client_map, dict):
+                        # 一部コードでは UUID を別マップで管理している可能性があるため保険的にチェック
+                        uuid = getattr(self, 'call_uuid_by_call_id', {}).get(call_id) or uuid
+                except Exception:
+                    pass
+                try:
+                    if not uuid and hasattr(self, '_call_uuid_map') and isinstance(self._call_uuid_map, dict):
+                        uuid = self._call_uuid_map.get(call_id) or uuid
+                except Exception:
+                    pass
+
+                if uuid:
+                    self.logger.info(f"[CLEANUP] Sending uuid_break/uuid_kill to FreeSWITCH for uuid={uuid} call_id={call_id}")
+                    import subprocess
+                    # Try a couple of common fs_cli paths
+                    fs_cli_paths = ["/usr/local/freeswitch/bin/fs_cli", "/usr/bin/fs_cli", "/usr/local/bin/fs_cli"]
+                    executed = False
+                    for fs_cli in fs_cli_paths:
+                        try:
+                            # uuid_break で再生を停止（all は全チャネルへ影響）
+                            subprocess.run([fs_cli, "-x", f"uuid_break {uuid} all"], timeout=2, capture_output=True)
+                            # 念のため uuid_kill（必要なら通話自体を切断）
+                            subprocess.run([fs_cli, "-x", f"uuid_kill {uuid}"], timeout=2, capture_output=True)
+                            executed = True
+                            self.logger.info(f"[CLEANUP] fs_cli executed at {fs_cli} for uuid={uuid}")
+                            break
+                        except FileNotFoundError:
+                            continue
+                        except Exception as e:
+                            self.logger.warning(f"[CLEANUP] fs_cli call failed ({fs_cli}) for uuid={uuid}: {e}")
+                    if not executed:
+                        # 最後の手段: try generic shell command (may fail on restricted env)
+                        try:
+                            subprocess.run(["fs_cli", "-x", f"uuid_break {uuid} all"], timeout=2, capture_output=True)
+                            subprocess.run(["fs_cli", "-x", f"uuid_kill {uuid}"], timeout=2, capture_output=True)
+                            self.logger.info(f"[CLEANUP] fs_cli executed via PATH for uuid={uuid}")
+                        except Exception as e:
+                            self.logger.error(f"[CLEANUP] Could not execute fs_cli for uuid={uuid}: {e}")
+            except Exception as e:
+                self.logger.debug(f"[CLEANUP] FreeSWITCH stop attempt failed for call_id={call_id}: {e}")
             for name in dict_names:
                 try:
                     d = getattr(self, name, None)
