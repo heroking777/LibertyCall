@@ -3754,7 +3754,10 @@ class AICore:
             newly_created = False
             with self.asr_lock:
                 if call_id not in self.asr_instances:
+                    import traceback
+                    stack_info = ''.join(traceback.format_stack()[-3:-1])  # 呼び出し元の2階層分
                     print(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}", flush=True)
+                    print(f"[ASR_INSTANCE_CREATE_CALLER] {stack_info}", flush=True)
                     self.logger.info(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}")
                     try:
                         new_asr = GoogleASR(
