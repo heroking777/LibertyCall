@@ -309,6 +309,12 @@ class GoogleASR:
                         # 【デバッグ】キュー取得前
                         self.logger.debug(f"[REQUEST_GEN] Attempting queue get, qsize={self._q.qsize()}")
                         chunk = self._q.get(timeout=0.1)
+                        
+                        # Sentinel (None) チェック - end_stream からの終了シグナル
+                        if chunk is None:
+                            self.logger.info("[REQUEST_GEN] Received sentinel (None), stopping generator")
+                            return
+                        
                         self.logger.info(f"[REQUEST_GEN] Got audio chunk: size={len(chunk)} bytes")
                         empty_count = 0  # 音声が来たらリセット
                     except queue.Empty:
