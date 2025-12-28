@@ -69,21 +69,22 @@ class GoogleStreamingASR:
         
         streaming_config = cloud_speech.StreamingRecognitionConfig(  # type: ignore[union-attr]
             config=config,
-            interim_results=False,
+            interim_results=True,  # 中間結果を有効化（ASR応答速度向上）
             single_utterance=False
         )
         logger.warning(f"[ASR_STREAM_INIT] StreamingRecognitionConfig created: interim={streaming_config.interim_results}, single_utterance={streaming_config.single_utterance}")
         
         # リクエストジェネレータ
+        # 注意: streaming_recognize() に config= パラメータで設定を渡す場合、
+        # リクエストジェネレータからは audio_content のみを yield する必要がある。
+        # streaming_config を2回送信すると "Malordered Data" エラーになる。
         def request_gen():
-            logger.info("[GOOGLE_ASR_REQUEST] Starting request generator, sending initial config")
-            # 最初のリクエストにはstreaming_configを含める（必須）
-            initial_request = cloud_speech.StreamingRecognizeRequest(streaming_config=streaming_config)  # type: ignore[union-attr]
-            logger.info(f"[GOOGLE_ASR_REQUEST] Yielding initial request with streaming_config")
-            yield initial_request
+            logger.info("[GOOGLE_ASR_REQUEST] Starting request generator (audio_content only mode)")
+            # config= パラメータで設定を渡すため、ここでは audio_content のみを yield
+            # (streaming_config の yield を削除)
             
             request_count = 0
-            # その後、音声データを送信
+            # 音声データを送信
             while self.active:
                 try:
                     chunk = self.requests.get(timeout=1.0)
