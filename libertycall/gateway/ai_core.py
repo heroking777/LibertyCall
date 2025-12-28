@@ -1194,6 +1194,8 @@ class AICore:
         self._intro_played_calls: set[str] = set()
         # 通話開始イベントの最終時刻を管理（call_id -> last_start_timestamp）
         self.last_start_times: Dict[str, float] = {}
+        # 現在システムが再生しているテキスト（エコー除去用）
+        self.current_system_text: str = ""
         
         # AI_CORE_VERSION ログ（編集した ai_core.py が読まれているか確認用）
         self.logger.info(
@@ -1706,6 +1708,15 @@ class AICore:
         failed_templates = []  # 失敗したテンプレートを記録
         
         # 応答速度最適化: すべてのテンプレートを即座に再生開始（待機なし）
+        # 【追加】再生前に再生予定のテキストを記録しておく（ASR側でエコー除去に使用）
+        try:
+            try:
+                combined_text = self._render_templates(template_ids) if template_ids else ""
+            except Exception:
+                combined_text = " ".join(template_ids) if template_ids else ""
+            self.current_system_text = combined_text or ""
+        except Exception:
+            pass
         # FreeSWITCHは自動的に順番に再生するため、各再生の完了を待つ必要はない
         for template_id in template_ids:
             # 【修正2改善】重複防止: 同じテンプレートを10秒以内に連続再生しない
@@ -2909,6 +2920,14 @@ class AICore:
                 try:
                     print(f"[DEBUG_PRINT] intro=queued template_id=000-002 call_id={call_id}", flush=True)
                     self.logger.info(f"[AICORE] intro=queued template_id=000-002 call_id={call_id}")
+                    try:
+                        # 再生予定のテンプレテキストを記録（エコーフィルタ用）
+                        try:
+                            self.current_system_text = self._render_templates(["000-002"]) or ""
+                        except Exception:
+                            self.current_system_text = "000-002"
+                    except Exception:
+                        pass
                     self.tts_callback(call_id, None, ["000-002"], False)  # type: ignore[misc, attr-defined]
                     # 再生済みフラグを設定
                     self._intro_played_calls.add(call_id)
@@ -3739,6 +3758,14 @@ class AICore:
             try:
                 # 081/082 に合わせたニュアンスなので template_ids は ["081", "082"] にしておく
                 template_ids = ["081", "082"]
+                try:
+                    # 再生予定テキスト（優先して生テキスト、なければテンプレから取得）
+                    self.current_system_text = fallback_text or self._render_templates(template_ids) or ""
+                except Exception:
+                    try:
+                        self.current_system_text = fallback_text or ""
+                    except Exception:
+                        self.current_system_text = ""
                 self.tts_callback(call_id, fallback_text, template_ids, True)  # type: ignore[misc, attr-defined]
                 self.logger.info(
                     f"ASR_ERROR_HANDLER: TTS fallback sent (call_id={call_id}, text={fallback_text})"
@@ -3775,6 +3802,17 @@ class AICore:
         except Exception:
             text_preview = "<unrepresentable>"
         self.logger.info(f"[TRANSCRIPT_DEBUG] Received text={text_preview!r}, is_final={is_final} for call_id={call_id}")
+
+        # 再生中フラグが立っていなければ保持中の system_text をクリア（古い値の誤検出を防ぐ）
+        try:
+            playing = False
+            if hasattr(self, 'is_playing') and isinstance(self.is_playing, dict):
+                playing = bool(self.is_playing.get(call_id, False))
+            if not playing and self.current_system_text:
+                # clear stale system text
+                self.current_system_text = ""
+        except Exception:
+            pass
 
         # 空文字チェックは簡素化
         if not text or len(text.strip()) == 0:
@@ -3861,6 +3899,10 @@ class AICore:
                     # tts_callback が設定されている場合のみ実行
                     if hasattr(self, 'tts_callback') and self.tts_callback:  # type: ignore[attr-defined]
                         try:
+                            try:
+                                self.current_system_text = "はい"
+                            except Exception:
+                                pass
                             self.tts_callback(call_id, "はい", None, False)  # type: ignore[misc, attr-defined]
                             self.logger.info(f"[BACKCHANNEL_SENT] call_id={call_id} text='はい' (triggered by partial: {text_stripped!r})")
                         except Exception as e:
@@ -4019,6 +4061,10 @@ class AICore:
                     # TTS コールバック
                     if hasattr(self, 'tts_callback') and self.tts_callback:  # type: ignore[attr-defined]
                         try:
+                            try:
+                                self.current_system_text = reply_text or self._render_templates(template_ids) or ""
+                            except Exception:
+                                self.current_system_text = reply_text or ""
                             self.tts_callback(call_id, reply_text, template_ids, False)  # type: ignore[misc, attr-defined]
                             self.logger.info(
                                 f"TTS_SENT: call_id={call_id} templates={template_ids} (NOT_HEARD for ambiguous 1-char)"
@@ -4230,6 +4276,10 @@ class AICore:
         # 注意: transfer_requested=True の場合、_send_tts 内でTTS送信完了後に転送処理が開始される
         if hasattr(self, 'tts_callback') and self.tts_callback:  # type: ignore[attr-defined]
             try:
+                try:
+                    self.current_system_text = reply_text or self._render_templates(template_ids) or ""
+                except Exception:
+                    self.current_system_text = reply_text or ""
                 self.tts_callback(call_id, reply_text, template_ids, transfer_requested)  # type: ignore[misc, attr-defined]
                 self.logger.info(
                     f"TTS_SENT: call_id={call_id} templates={template_ids} transfer_requested={transfer_requested}"
