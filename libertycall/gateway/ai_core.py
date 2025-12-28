@@ -80,6 +80,16 @@ class GoogleASR:
         :param phrase_hints: フレーズヒントのリスト
         """
         self.logger = logging.getLogger("GoogleASR")
+        # 【修正】環境変数がなくてもファイルパスを強制的に設定（システム側のパス迷子を防止）
+        if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+            potential_path = "/opt/libertycall/config/google-credentials.json"
+            try:
+                if os.path.exists(potential_path):
+                    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = potential_path
+                    self.logger.info(f"Force set GOOGLE_APPLICATION_CREDENTIALS to {potential_path}")
+            except Exception:
+                # 保守的に失敗しても進める（ログ出力は上で行う）
+                pass
         
         if not GOOGLE_SPEECH_AVAILABLE:
             raise RuntimeError(
@@ -4054,13 +4064,18 @@ class AICore:
         if not self.streaming_enabled:
             return None
 
-        # Guard: asr_model may be None if ASR failed to initialize (e.g. auth error).
-        # Return None instead of raising AttributeError.
+        # 【修正】asr_model が None の場合は安全にリターン（初期化失敗や認証エラーで None になる）
         if self.asr_model is None:
-            # logger.warning(f"ASR model is None for call_id={call_id}")  # ログ過多防止のためコメントアウト推奨
+            # 頻繁に出る可能性があるため WARNING を吐かない（必要ならデバッグ用に変更可）
             return None
 
-        result = self.asr_model.poll_result(call_id)  # type: ignore[union-attr]
+        # poll_result 呼び出し時に競合で asr_model が None になる可能性もあるため例外を吸収
+        try:
+            result = self.asr_model.poll_result(call_id)  # type: ignore[union-attr]
+        except AttributeError:
+            # 万が一 asr_model が途中で None に変わっていた場合、安全に無視して None を返す
+            return None
+
         if result is None:
             return None
 
