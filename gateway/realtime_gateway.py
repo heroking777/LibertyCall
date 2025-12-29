@@ -1233,7 +1233,8 @@ class RealtimeGateway:
                 asyncio.create_task(force_enable_asr_after_delay())
 
             # FreeSWITCHイベント受信用Unixソケットサーバーを起動
-            asyncio.create_task(self._event_socket_server_loop())
+            self.logger.info("[EVENT_SOCKET_DEBUG] Creating event server task")
+            asyncio.create_task(self._event_socket_server_loop()) 
 
             # サービスを維持（停止イベントを待つ）
             await self.shutdown_event.wait()
@@ -5164,6 +5165,7 @@ class RealtimeGateway:
                 self.logger.info(f"[EVENT_SOCKET] Removed existing socket file: {self.event_socket_path}")
             except Exception as e:
                 self.logger.warning(f"[EVENT_SOCKET] Failed to remove existing socket: {e}")
+        self.logger.info("[EVENT_SOCKET_DEBUG] _event_socket_server_loop started")
         
         async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
             """クライアント接続ハンドラー"""
@@ -5339,19 +5341,18 @@ class RealtimeGateway:
                     pass
         
         try:
+            self.logger.info("[EVENT_SOCKET_DEBUG] About to start unix server")
             # Unixソケットサーバーを起動
             self.event_server = await asyncio.start_unix_server(
                 handle_client,
                 str(self.event_socket_path)
             )
             self.logger.info(f"[EVENT_SOCKET] Server started on {self.event_socket_path}")
-            
             # サーバーが停止するまで待機
             async with self.event_server:
                 await self.event_server.serve_forever()
-        
         except Exception as e:
-            self.logger.exception(f"[EVENT_SOCKET] Server error: {e}")
+            self.logger.error(f"[EVENT_SOCKET] Server error: {e}", exc_info=True)
         finally:
             # クリーンアップ
             if self.event_socket_path.exists():
