@@ -221,66 +221,6 @@ class RTPProtocol(asyncio.DatagramProtocol):
                 "Failed to create task for handle_rtp_packet: %r", e, exc_info=True
             )
 
-class ESLAudioReceiver:
-    """FreeSWITCHのESL経由でデコード済み音声を受信"""
-    
-    def __init__(self, call_id, uuid, gateway, logger):
-        self.call_id = call_id
-        self.uuid = uuid
-        self.gateway = gateway
-        self.logger = logger
-        self.running = False
-        self.thread = None
-        self.conn = None
-        
-    def start(self):
-        """ESL接続と音声受信を開始"""
-        self.running = True
-        self.thread = threading.Thread(target=self._receive_loop, daemon=True)
-        self.thread.start()
-        self.logger.info(f"[ESL_AUDIO] Started for call_id={self.call_id}, uuid={self.uuid}")
-        
-    def _receive_loop(self):
-        """ESLイベントループ（別スレッド）"""
-        try:
-            from libs.esl.ESL import ESLconnection
-            
-            self.conn = ESLconnection('127.0.0.1', '8021', 'ClueCon')
-            
-            if not self.conn.connected():
-                self.logger.error(f"[ESL_AUDIO] Failed to connect to FreeSWITCH ESL")
-                return
-            
-            self.conn.events('plain', 'CHANNEL_AUDIO')
-            self.conn.filter('Unique-ID', self.uuid)
-            
-            self.logger.info(f"[ESL_AUDIO] Connected and subscribed to UUID={self.uuid}")
-            
-            while self.running:
-                event = self.conn.recvEventTimed(100)
-                
-                if not event:
-                    continue
-                
-                event_name = event.getHeader('Event-Name')
-                
-                if event_name == 'CHANNEL_AUDIO':
-                    audio_data = event.getBody()
-                    
-                    if audio_data:
-                        self.gateway.handle_rtp_packet(self.call_id, audio_data)
-                        
-        except Exception as e:
-            self.logger.error(f"[ESL_AUDIO] Exception: {e}")
-            import traceback
-            traceback.print_exc()
-            
-    def stop(self):
-        """ESL受信を停止"""
-        self.running = False
-        if self.conn:
-            self.conn.disconnect()
-        self.logger.info(f"[ESL_AUDIO] Stopped for call_id={self.call_id}")
 class FreeswitchRTPMonitor:
     """FreeSWITCHの送信RTPポートを監視してASR処理に流し込む（Pull型、pcap方式）"""
     
