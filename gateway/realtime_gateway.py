@@ -293,6 +293,7 @@ class FreeswitchRTPMonitor:
         self.asr_active = False  # 002.wav再生完了後にTrueになる
         self.capture_thread: Optional[threading.Thread] = None
         self.capture_running = False
+        self.active_receivers = {}  # ESL receivers
         
     def get_rtp_port_from_freeswitch(self) -> Optional[int]:
         """FreeSWITCHから現在の送信RTPポートを取得（RTP情報ファイル優先、uuid_dumpはフォールバック）"""
@@ -555,71 +556,24 @@ class FreeswitchRTPMonitor:
         return None
     
     async def start_monitoring(self):
-        """FreeSWITCH送信RTPポートの監視を開始（RTPポート未検出でも継続）"""
-        # ポート取得をリトライ（最大10回、1秒間隔）- RTP情報ファイルの作成を待つため延長
-        for retry in range(10):
-            self.freeswitch_rtp_port = self.get_rtp_port_from_freeswitch()
-            if self.freeswitch_rtp_port:
-                break
-            await asyncio.sleep(1.0)
-            self.logger.debug(f"[FS_RTP_MONITOR] Retry {retry + 1}/10: waiting for FreeSWITCH channel or RTP info file...")
-        
-        if not self.freeswitch_rtp_port:
-            self.logger.warning("[FS_RTP_MONITOR] RTPポート未検出（スキップモード）で継続します。ASRフラグファイル監視は継続します。")
-            # RTPポートが取得できなくても、ASRフラグファイル監視は継続する
-            asyncio.create_task(self._check_asr_enable_flag())
-            # RTP情報ファイルを定期的に監視するタスクも開始（後からファイルが作成される場合に備える）
-            asyncio.create_task(self._monitor_rtp_info_files())
+        """ESL方式で音声監視を開始"""
+        uuid = getattr(self.gateway, 'uuid', None)
+        if not uuid:
+            self.logger.error("[ESL_MONITOR] UUID not found in gateway")
             return
-        
-        try:
-            # pcap方式でパケットキャプチャを開始（scapy使用）
-            if SCAPY_AVAILABLE:
-                self.logger.info(
-                    f"[FS_RTP_MONITOR] Starting pcap-based monitoring for port {self.freeswitch_rtp_port}"
-                )
-                self.capture_running = True
-                self.capture_thread = threading.Thread(
-                    target=self._pcap_capture_loop,
-                    args=(self.freeswitch_rtp_port,),
-                    daemon=True
-                )
-                self.capture_thread.start()
-                self.logger.info(
-                    f"[FS_RTP_MONITOR] Started pcap monitoring for FreeSWITCH RTP port {self.freeswitch_rtp_port}"
-                )
-            else:
-                # フォールバック: 従来のUDPソケット方式
-                self.logger.warning("[FS_RTP_MONITOR] scapy not available, falling back to UDP socket mode")
-                loop = asyncio.get_running_loop()
-                self.monitor_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                self.monitor_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-                self.monitor_sock.bind(("0.0.0.0", self.freeswitch_rtp_port))
-                self.monitor_sock.setblocking(False)
-                
-                self.monitor_transport, _ = await loop.create_datagram_endpoint(
-                    lambda: RTPProtocol(self.gateway),
-                    sock=self.monitor_sock
-                )
-                self.logger.info(
-                    f"[FS_RTP_MONITOR] Started UDP socket monitoring for FreeSWITCH RTP port {self.freeswitch_rtp_port}"
-                )
-            
-            # 002.wav完了フラグファイルを監視するタスクを開始
-            asyncio.create_task(self._check_asr_enable_flag())
-            # RTP情報ファイルを定期的に監視するタスクも開始（後からファイルが作成される場合に備える）
-            asyncio.create_task(self._monitor_rtp_info_files())
-        except OSError as e:
-            if e.errno == 98:  # Address already in use
-                self.logger.warning(
-                    f"[FS_RTP_MONITOR] Port {self.freeswitch_rtp_port} already in use, "
-                    "monitoring may be disabled or another instance is running"
-                )
-            else:
-                self.logger.error(f"[FS_RTP_MONITOR] Failed to start monitoring: {e}", exc_info=True)
-        except Exception as e:
-            self.logger.error(f"[FS_RTP_MONITOR] Failed to start monitoring: {e}", exc_info=True)
+
+        call_id = f"in-{datetime.now().strftime('%Y%m%d%H%M%S%f')[:-4]}"
+        self.logger.info(f"[ESL_MONITOR] Starting ESL audio monitoring for call_id={call_id}, uuid={uuid}")
+
+        esl_receiver = ESLAudioReceiver(call_id, uuid, self.gateway, self.logger)
+        esl_receiver.start()
+
+        self.active_receivers[call_id] = esl_receiver
+
+        if hasattr(self.gateway, 'call_uuid_map'):
+            self.gateway.call_uuid_map[call_id] = uuid
+
+        self.logger.info(f"[ESL_MONITOR] ESL monitoring started for call_id={call_id}")
     
     async def _check_asr_enable_flag(self):
         """002.wav完了フラグファイルを監視してASRを有効化"""
@@ -5495,6 +5449,7 @@ if __name__ == '__main__':
     
     # Create gateway instance
     gateway = RealtimeGateway(config, rtp_port_override=args.rtp_port)
+    gateway.uuid = args.uuid  # ESL受信のためのUUID保持
     
     # Setup signal handlers for graceful shutdown
     def signal_handler(sig, frame):
