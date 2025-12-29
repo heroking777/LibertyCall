@@ -531,6 +531,7 @@ def handle_call(uuid, event):
     # 通話ごとに独立したプロセスで起動
     try:
         log_file = f"/tmp/gateway_{uuid}.log"
+        logger.info(f"[handle_call] Preparing to spawn realtime_gateway for uuid={uuid} (log={log_file})")
         # 必要な環境変数のみを選択的に渡す（LC_RTP_PORT等は引数で上書きされるため除外）
         env = {}
         # ASR関連の環境変数を渡す
@@ -543,13 +544,15 @@ def handle_call(uuid, event):
         if "LC_ASR_STREAMING_ENABLED" not in env:
             env["LC_ASR_STREAMING_ENABLED"] = "1"
         with open(log_file, "w") as log_fd:
-            subprocess.Popen(
+            logger.info("[LISTENER_DEBUG] About to spawn realtime_gateway")
+            process = subprocess.Popen(
                 ["python3", gateway_script, "--uuid", uuid, "--rtp_port", rtp_port],
                 stdout=log_fd,
                 stderr=subprocess.STDOUT,
                 cwd="/opt/libertycall",
                 env=env
             )
+            logger.info(f"[LISTENER_DEBUG] Gateway process spawned with PID={process.pid}")
         logger.info(f"[handle_call] realtime_gateway を起動しました (UUID={uuid}, RTP_PORT={rtp_port})")
         logger.info(f"[handle_call] ログファイル: {log_file}")
     except Exception as e:

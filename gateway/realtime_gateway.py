@@ -122,12 +122,12 @@ class RTPProtocol(asyncio.DatagramProtocol):
             sock = transport.get_extra_info('socket')
             if sock:
                 bound_addr = sock.getsockname()
-                print(f"DEBUG_TRACE: [RTP_SOCKET] Bound successfully to: {bound_addr}", flush=True)
+                self.gateway.logger.debug(f"DEBUG_TRACE: [RTP_SOCKET] Bound successfully to: {bound_addr}")
             else:
-                print(f"DEBUG_TRACE: [RTP_SOCKET] Transport created (no socket info available)", flush=True)
+                self.gateway.logger.debug("DEBUG_TRACE: [RTP_SOCKET] Transport created (no socket info available)")
         except Exception as e:
-            print(f"DEBUG_TRACE: [RTP_SOCKET] connection_made error: {e}", flush=True)
-    
+            self.gateway.logger.debug(f"DEBUG_TRACE: [RTP_SOCKET] connection_made error: {e}")
+
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
         # 【最優先デバッグ】フィルタリング前の「生」の到達を記録（全パケット）
         if not hasattr(self, '_raw_packet_count'):
@@ -5406,6 +5406,7 @@ if __name__ == '__main__':
         ]
     )
     
+    print("[MAIN_DEBUG] main function started", flush=True)
     import argparse
     
     parser = argparse.ArgumentParser(description="Liberty Call Realtime Gateway")
@@ -5450,6 +5451,7 @@ if __name__ == '__main__':
     
     # Create gateway instance
     gateway = RealtimeGateway(config, rtp_port_override=args.rtp_port)
+    print(f"[MAIN_DEBUG] RealtimeGateway created, uuid={args.uuid}", flush=True)
     gateway.uuid = args.uuid  # ESL受信のためのUUID保持
     
     # Setup signal handlers for graceful shutdown
