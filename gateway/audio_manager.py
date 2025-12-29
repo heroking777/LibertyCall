@@ -6,6 +6,7 @@
 クライアント別の着信音声シーケンスを管理し、音声ファイルを読み込んで再生する
 """
 
+import glob
 import logging
 from pathlib import Path
 from typing import List, Optional
@@ -72,7 +73,23 @@ class AudioManager:
             path = self.config_loader.get_audio_file_path(client_id, audio_id)
             paths.append(path)
         return paths
-    
+
+    def get_audio_files_for_client(self, client_id: str) -> List[Path]:
+        """
+        指定されたクライアントの音声ファイル一覧を取得
+
+        Args:
+            client_id: クライアントID
+
+        Returns:
+            音声ファイルのPathリスト
+        """
+        audio_dir = Path(self.project_root or "/opt/libertycall") / "clients" / client_id / "audio"
+        audio_files = [Path(p) for p in glob.glob(f"{audio_dir}/*.wav")]
+        audio_files.sort()
+        logger.info(f"[AUDIO_LOADER] Found {len(audio_files)} audio files in {audio_dir}")
+        return audio_files
+
     def play_incoming_sequence(self, client_id: str) -> List[Path]:
         """
         着信時の音声シーケンスを取得（再生用）
@@ -99,6 +116,9 @@ class AudioManager:
         
         # 音声ファイルのパスを取得
         audio_paths = self.get_audio_file_paths(client_id, sequence)
+        if not audio_paths:
+            self.logger.warning(f"[PLAY_SEQ_FALLBACK] No configured audio paths for client={client_id}, falling back to directory scan")
+            audio_paths = self.get_audio_files_for_client(client_id)
         logger.warning(f"[PLAY_SEQ_AUDIO_PATHS] audio_paths={[str(p) for p in audio_paths]} (count={len(audio_paths) if audio_paths else 0})")
         
         # ファイルの存在確認
