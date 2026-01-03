@@ -280,6 +280,19 @@ GPTが自動的に：
 - より詳細なログ機能
 - プロジェクト間の依存関係管理
 
+## 701 inbound prompt flow (verified)
+- silence 10s → prompt_001_8k.wav → silence 10s → prompt_002_8k.wav → silence 10s → prompt_003_8k.wav → silence 10s → hangup
+- Verified on 2026-01-04 (log shows prompt1→2→3 and NORMAL_CLEARING, no FILE NOT FOUND / no sample rate mismatch / no lua nil error)
+
+## Root cause & prevention
+- Root cause: cron deleted /opt/libertycall/clients/*/audio (production prompt files)
+- Fix: cron now deletes only recording/tmp directories (KEEP_DAYS=14). Production prompts are excluded.
+
+## Quick healthcheck
+```bash
+bash /opt/libertycall/tools/prompt_healthcheck_latest.sh
+```
+
 ## ライセンス
 
 ISC
