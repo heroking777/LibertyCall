@@ -107,7 +107,7 @@ if not session:answered() then
 end
 freeswitch.consoleLog("ERR", "[RTP_STREAM] AFTER answer answered=" .. tostring(session:answered()) .. "\n")
 
-local rtp_stream_target = "remote=127.0.0.1:7002"
+local rtp_stream_target = "remote=127.0.0.1:7002,codec=PCMU"
 freeswitch.consoleLog("ERR", "[RTP_STREAM] EXEC rtp_stream target=" .. rtp_stream_target .. "\n")
 session:execute("rtp_stream", rtp_stream_target)
 freeswitch.consoleLog("ERR", "[RTP_STREAM] DONE rtp_stream\n")
