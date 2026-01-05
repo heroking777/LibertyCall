@@ -9,6 +9,7 @@ local call_uuid = nil
 
 -- ログ出力
 freeswitch.consoleLog("INFO", string.format("[LUA] play_audio_sequence start uuid=%s client_id=%s\n", uuid, client_id))
+freeswitch.consoleLog("ERR", "[LUA_VERSION] 20260105_RTPSTREAM_FIX_LOADED\n")
 
 -- ========================================
 -- セッション初期化と通話安定化
@@ -100,15 +101,16 @@ if rtp_info_file then
     freeswitch.consoleLog("INFO", "[RTP_INFO] Saved to /tmp/rtp_info_" .. uuid .. ".txt\n")
 end
 
+freeswitch.consoleLog("ERR", "[RTP_STREAM] BEFORE answer answered=" .. tostring(session:answered()) .. "\n")
 if not session:answered() then
-    freeswitch.consoleLog("INFO", "[RTP_STREAM] Answering channel before attaching media bug\n")
     session:answer()
 end
+freeswitch.consoleLog("ERR", "[RTP_STREAM] AFTER answer answered=" .. tostring(session:answered()) .. "\n")
 
 local rtp_stream_target = "remote=127.0.0.1:7002"
-freeswitch.consoleLog("INFO", "[RTP_STREAM] Attaching duplication: " .. rtp_stream_target .. "\n")
+freeswitch.consoleLog("ERR", "[RTP_STREAM] EXEC rtp_stream target=" .. rtp_stream_target .. "\n")
 session:execute("rtp_stream", rtp_stream_target)
-freeswitch.consoleLog("INFO", "[RTP_STREAM] Duplication attached\n")
+freeswitch.consoleLog("ERR", "[RTP_STREAM] DONE rtp_stream\n")
 
 -- ASR開始通知（rtp_stream開始後に実行）
 local asr_cmd = string.format("curl -s -X POST http://127.0.0.1:8000/asr/start/%s?client_id=%s", uuid, client_id)
