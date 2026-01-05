@@ -100,6 +100,12 @@ if rtp_info_file then
     freeswitch.consoleLog("INFO", "[RTP_INFO] Saved to /tmp/rtp_info_" .. uuid .. ".txt\n")
 end
 
+-- ASR開始後すぐにGatewayへRTP複製を開始（デフォルトでローカルポートは自動割り当て）
+local rtp_stream_target = "remote=127.0.0.1:7002"
+freeswitch.consoleLog("INFO", "[RTP_STREAM] Starting duplication: " .. rtp_stream_target .. "\n")
+session:execute("rtp_stream", rtp_stream_target)
+freeswitch.consoleLog("INFO", "[RTP_STREAM] Duplication started\n")
+
 -- 必ず再生するアナウンス（無音削減: silence_threshold=0.1でテンプレート間の無音を削減）
 session:setVariable("silence_threshold", "0.1")
 session:execute("playback", "/opt/libertycall/clients/000/audio/000.wav")
