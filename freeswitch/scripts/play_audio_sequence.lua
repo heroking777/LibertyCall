@@ -100,11 +100,21 @@ if rtp_info_file then
     freeswitch.consoleLog("INFO", "[RTP_INFO] Saved to /tmp/rtp_info_" .. uuid .. ".txt\n")
 end
 
--- ASR開始後すぐにGatewayへRTP複製を開始（デフォルトでローカルポートは自動割り当て）
+if not session:answered() then
+    freeswitch.consoleLog("INFO", "[RTP_STREAM] Answering channel before attaching media bug\n")
+    session:answer()
+end
+
 local rtp_stream_target = "remote=127.0.0.1:7002"
-freeswitch.consoleLog("INFO", "[RTP_STREAM] Starting duplication: " .. rtp_stream_target .. "\n")
+freeswitch.consoleLog("INFO", "[RTP_STREAM] Attaching duplication: " .. rtp_stream_target .. "\n")
 session:execute("rtp_stream", rtp_stream_target)
-freeswitch.consoleLog("INFO", "[RTP_STREAM] Duplication started\n")
+freeswitch.consoleLog("INFO", "[RTP_STREAM] Duplication attached\n")
+
+-- ASR開始通知（rtp_stream開始後に実行）
+local asr_cmd = string.format("curl -s -X POST http://127.0.0.1:8000/asr/start/%s?client_id=%s", uuid, client_id)
+freeswitch.consoleLog("INFO", "[ASR] START " .. asr_cmd .. "\n")
+session:execute("system", asr_cmd)
+freeswitch.consoleLog("INFO", "[ASR] STARTED\n")
 
 -- 必ず再生するアナウンス（無音削減: silence_threshold=0.1でテンプレート間の無音を削減）
 session:setVariable("silence_threshold", "0.1")
