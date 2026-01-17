@@ -234,11 +234,16 @@ def classify_intent(text: str) -> str:
     # 「システムについて」という明確な問い合わせを検出（ハンドオフ判定より先に実行）
     if any(kw in t for kw in ["システムについて", "システムの", "システムを", "システムが", "システムに", "システムは", "システムで"]):
         return "SYSTEM_INQUIRY"
-    
-    # ここから先は元々のロジック（NOT_HEARD や通常 QA etc.）
-    # 営業電話の判定
+
+    # 営業電話の判定（YES/NOより優先）
     if any(k in t for k in ["営業", "ご提案", "サービスのご提案", "新しいサービス"]):
         return "SALES_CALL"
+
+    # HANDOFF確認のYES/NO
+    if any(k in t for k in YES_KEYWORDS):
+        return "HANDOFF_YES"
+    if any(k in t for k in NO_KEYWORDS):
+        return "HANDOFF_NO"
     
     # AI電話の件の判定
     if any(k in t for k in ["ai電話", "aiの電話", "aiの件", "ai電話の件"]):
