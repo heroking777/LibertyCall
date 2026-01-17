@@ -195,13 +195,13 @@ def interpret_handoff_reply(raw_text: str, retry_count: int = 0) -> str:
     
     t = normalize_text(raw_text)
     
+    # NO判定（拒否語を優先）
+    if any(kw in t for kw in HANDOFF_NO_KEYWORDS):
+        return "HANDOFF_NO"
+    
     # YES判定
     if any(kw in t for kw in YES_KEYWORDS):
         return "HANDOFF_YES"
-    
-    # NO判定
-    if any(kw in t for kw in HANDOFF_NO_KEYWORDS):
-        return "HANDOFF_NO"
     
     return "UNKNOWN"
 

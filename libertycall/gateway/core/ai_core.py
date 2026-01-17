@@ -221,6 +221,9 @@ class AICore:
     ) -> None:
         self.play_template_sequence(call_id, template_ids, client_id=client_id)
 
+    def _schedule_auto_hangup(self, call_id: str, delay_sec: float = 60.0) -> None:
+        self.schedule_auto_hangup(call_id, delay_sec=delay_sec)
+
     def _is_hallucination(self, text: str) -> bool:
         return self.is_hallucination(text)
 
