@@ -447,7 +447,7 @@ def generate_reply(core, call_id: str, raw_text: str) -> Tuple[str, List[str], s
         state.handoff_prompt_sent = True
         state.transfer_requested = False
         template_ids = ["0604"]
-        reply_text = core._render_templates(template_ids)
+        reply_text = render_templates(template_ids)
         core.logger.debug(
             "[NLG_DEBUG] call_id=%s intent=%s base_intent=%s tpl=%s phase=%s handoff_state=%s not_heard_streak=%s",
             call_id or "GLOBAL_CALL",
