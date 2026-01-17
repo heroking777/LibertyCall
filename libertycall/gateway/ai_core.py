@@ -1,4 +1,8 @@
 import logging
+
+logger = logging.getLogger(__name__)
+logger.error("!!! CRITICAL_LOAD: ai_core.py is LOADED from /opt/libertycall !!!")
+
 import numpy as np
 import os
 # 明示的に認証ファイルパスを指定（存在する候補ファイルがあればデフォルトで設定）
