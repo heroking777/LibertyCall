@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import unicodedata
 
+from libertycall.gateway.common.text_utils import (
+    interpret_handoff_reply as _interpret_handoff_reply,
+)
+
 TEMPLATE_CONFIG: dict[str, dict] = {
     "003": {"text": "はい。", "voice": "ja-JP-Neural2-B", "rate": 1.1},
     "004": {"text": "もしもし。", "voice": "ja-JP-Neural2-B", "rate": 1.1},
@@ -158,6 +162,16 @@ def normalize_text(text: str) -> str:
     normalized = normalized.lower()
     normalized = normalized.replace(" ", "").replace("　", "")
     return normalized
+
+
+def interpret_handoff_reply(
+    raw_text: str,
+    base_intent: str = "UNKNOWN",
+    retry_count: int = 0,
+) -> str:
+    """Legacy wrapper for tests; base_intent is ignored in current logic."""
+    _ = base_intent
+    return _interpret_handoff_reply(raw_text, retry_count=retry_count)
 
 
 def classify_intent(text: str) -> str:
