@@ -2561,6 +2561,7 @@ class AICore:
             }
             
             # summary.jsonを保存
+            session_dir.mkdir(parents=True, exist_ok=True)
             summary_file = session_dir / "summary.json"
             with open(summary_file, 'w', encoding='utf-8') as f:
                 json.dump(summary, f, ensure_ascii=False, indent=2)
