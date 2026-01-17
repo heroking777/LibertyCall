@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime
 from typing import Optional
 
 from .prompt_factory import render_templates
-from .text_utils import normalize_text, normalize_text_for_comparison
+from .text_utils import normalize_text
 from .state_store import get_session_state
+from .transcript_db_client import save_transcript_event, append_user_call_log, reset_no_input_streak
+from .transcript_file_manager import TranscriptFileManager
+from .transcript_notifier import notify_event
+from .intent_classifier import classify_simple_intent
+from .audio_orchestrator import play_audio_response
 
 
 def handle_transcript(
@@ -21,6 +25,7 @@ def handle_transcript(
 ) -> Optional[str]:
     """Handle ASR transcript and drive dialogue flow."""
     logger = core.logger if hasattr(core, "logger") else logging.getLogger(__name__)
+    file_manager = TranscriptFileManager(core, logger)
 
     if is_final:
         logger.info("[ASR_TRANSCRIPT] call_id=%s is_final=True text=%r", call_id, text)
@@ -38,82 +43,25 @@ def handle_transcript(
         call_id,
     )
 
-    try:
-        playing = False
-        if hasattr(core, "is_playing") and isinstance(core.is_playing, dict):
-            playing = bool(core.is_playing.get(call_id, False))
-        if not playing and getattr(core, "current_system_text", ""):
-            core.current_system_text = ""
-    except Exception:
-        pass
-
-    try:
-        if getattr(core, "current_system_text", ""):
-            import re
-
-            def _normalize(value: str) -> str:
-                if not value:
-                    return ""
-                value = str(value)
-                value = re.sub(r"[。、！？\s]+", "", value)
-                return value
-
-            sys_norm = _normalize(core.current_system_text)
-            user_norm = _normalize(text)
-            if sys_norm and user_norm and (user_norm in sys_norm or sys_norm in user_norm):
-                if len(user_norm) > 2:
-                    logger.info(
-                        "[ASR_FILTER] Ignored system echo: %r (matched system text)",
-                        text,
-                    )
-                    return None
-    except Exception:
-        pass
+    file_manager.update_system_text_on_playback(call_id)
+    if file_manager.ignore_system_echo(text):
+        return None
 
     if not text or len(text.strip()) == 0:
         logger.debug("[ASR_TRANSCRIPT] Empty text, skipping: call_id=%s", call_id)
         return None
 
-    core.call_id = call_id
-    core._save_transcript_event(call_id, text, is_final, kwargs)
+    save_transcript_event(core, call_id, text, is_final, kwargs, logger)
+    notify_event(logger, "ASR_TRANSCRIPT", f"call_id={call_id} text={text[:50]}", call_id=call_id)
 
-    if call_id not in core.session_info:
-        core.session_info[call_id] = {
-            "start_time": datetime.now(),
-            "intents": [],
-            "phrases": [],
-        }
-
-    core._cleanup_stale_partials(max_age_sec=30.0)
+    file_manager.cleanup_stale_partials(max_age_sec=30.0)
 
     if not is_final:
-        if call_id not in core.partial_transcripts:
-            core.partial_transcripts[call_id] = {"text": "", "updated": time.time()}
-
+        file_manager.ensure_partial_entry(call_id)
         if text:
-            prev_text = core.partial_transcripts[call_id].get("text", "")
-            prev_text_normalized = prev_text.strip() if prev_text else ""
-            text_normalized = text.strip() if text else ""
+            file_manager.update_partial(call_id, text)
 
-            if prev_text and not text.startswith(prev_text) and prev_text not in text:
-                logger.warning(
-                    "[ASR_PARTIAL_NON_CUMULATIVE] call_id=%s prev=%r new=%r",
-                    call_id,
-                    prev_text,
-                    text,
-                )
-
-            prev_text_normalized_clean = normalize_text_for_comparison(prev_text_normalized)
-            text_normalized_clean = normalize_text_for_comparison(text_normalized)
-
-            if prev_text_normalized_clean != text_normalized_clean:
-                core.partial_transcripts[call_id].pop("processed", None)
-
-            core.partial_transcripts[call_id]["text_normalized"] = text_normalized
-            core.partial_transcripts[call_id]["text"] = text
-            core.partial_transcripts[call_id]["updated"] = time.time()
-
-        merged_text = core.partial_transcripts[call_id]["text"]
+        merged_text = file_manager.get_partial_text(call_id)
         logger.debug("[ASR_PARTIAL] call_id=%s partial=%r", call_id, merged_text)
 
         text_stripped = text.strip() if text else ""
@@ -139,14 +87,12 @@ def handle_transcript(
                             "[BACKCHANNEL_ERROR] call_id=%s error=%s", call_id, exc
                         )
 
-        merged_text = core.partial_transcripts[call_id].get("text", "")
+        merged_text = file_manager.get_partial_text(call_id)
         text_stripped = merged_text.strip() if merged_text else ""
-        greeting_keywords = ["もしもし", "もし", "おはよう", "こんにちは", "こんばんは", "失礼します"]
-        is_greeting_detected = any(keyword in text_stripped for keyword in greeting_keywords)
-        min_length_for_processing = 3 if is_greeting_detected else 5
+        is_greeting_detected = file_manager.greeting_detected(text_stripped)
 
-        if merged_text and len(text_stripped) >= min_length_for_processing:
-            if core.partial_transcripts[call_id].get("processed"):
+        if file_manager.should_process_partial(merged_text, is_greeting_detected):
+            if file_manager.is_partial_processed(call_id):
                 logger.debug(
                     "[ASR_SKIP_PARTIAL] Already processed: call_id=%s text=%r",
                     call_id,
@@ -154,7 +100,7 @@ def handle_transcript(
                 )
                 return None
 
-            core.partial_transcripts[call_id]["processed"] = True
+            file_manager.mark_partial_processed(call_id)
             logger.info(
                 "[ASR_DEBUG_PARTIAL] call_id=%s partial_data_after_processed=%s",
                 call_id,
@@ -178,62 +124,12 @@ def handle_transcript(
     partial_text = ""
 
     if is_final:
-        text_normalized = normalize_text_for_comparison(text)
-        if call_id in core.partial_transcripts:
-            logger.info(
-                "[ASR_DEBUG_FINAL] call_id=%s partial_data=%s text_normalized=%s",
-                call_id,
-                core.partial_transcripts[call_id],
-                text_normalized,
-            )
-        else:
-            logger.info(
-                "[ASR_DEBUG_FINAL] call_id=%s partial_transcripts EMPTY, text_normalized=%s",
-                call_id,
-                text_normalized,
-            )
+        if file_manager.should_skip_final(call_id, text):
+            return None
 
-        if call_id in core.partial_transcripts:
-            partial_text_normalized = core.partial_transcripts[call_id].get(
-                "text_normalized", ""
-            )
-            if partial_text_normalized:
-                partial_text_normalized = normalize_text_for_comparison(
-                    partial_text_normalized
-                )
-                if (
-                    partial_text_normalized == text_normalized
-                    and core.partial_transcripts[call_id].get("processed")
-                ):
-                    logger.info(
-                        "[ASR_SKIP_FINAL] Already processed as partial: call_id=%s text=%r",
-                        call_id,
-                        text_normalized,
-                    )
-                    del core.partial_transcripts[call_id]
-                    return None
-            elif core.partial_transcripts[call_id].get("processed"):
-                merged_text = core.partial_transcripts[call_id].get("text", "")
-                merged_text_normalized = normalize_text_for_comparison(merged_text)
-                if merged_text_normalized == text_normalized:
-                    logger.info(
-                        "[ASR_SKIP_FINAL] Already processed as partial: call_id=%s text=%r",
-                        call_id,
-                        text_normalized,
-                    )
-                    del core.partial_transcripts[call_id]
-                    return None
+        partial_text, _ = file_manager.merge_final(call_id, text)
 
-        if call_id in core.partial_transcripts:
-            partial_text = core.partial_transcripts[call_id].get("text", "")
-            logger.debug(
-                "[ASR_FINAL_MERGE] Merging partial=%r with final=%r",
-                partial_text,
-                text,
-            )
-            del core.partial_transcripts[call_id]
-
-    core.last_activity[call_id] = time.time()
+    file_manager.update_last_activity(call_id)
 
     if core.is_playing.get(call_id, False):
         logger.info(
@@ -299,19 +195,8 @@ def handle_transcript(
         return None
 
     if merged_text:
-        try:
-            core._append_call_log("USER", merged_text)
-        except Exception as exc:
-            logger.exception("CALL_LOGGING_ERROR (USER): %s", exc)
-
-        state = get_session_state(core, call_id)
-        if state.no_input_streak > 0:
-            logger.info(
-                "[NO_INPUT] call_id=%s streak reset (user input: %r)",
-                call_id,
-                merged_text[:20],
-            )
-            state.no_input_streak = 0
+        append_user_call_log(core, merged_text, logger)
+        reset_no_input_streak(core, call_id, merged_text, logger)
 
     if not merged_text:
         return None
