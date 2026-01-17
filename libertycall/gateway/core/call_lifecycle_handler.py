@@ -12,10 +12,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from libertycall.client_loader import load_client_profile
-from libertycall.gateway.core.client_mapper import resolve_client_id
+from ..core.client_mapper import resolve_client_id
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.core.call_session_handler import GatewayCallSessionHandler
+    from ..core.call_session_handler import GatewayCallSessionHandler
 
 
 OPERATOR_NUMBER = "08024152649"

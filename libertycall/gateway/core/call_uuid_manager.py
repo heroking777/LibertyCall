@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.core.call_session_handler import GatewayCallSessionHandler
+    from ..core.call_session_handler import GatewayCallSessionHandler
 
 
 class CallUUIDManager:

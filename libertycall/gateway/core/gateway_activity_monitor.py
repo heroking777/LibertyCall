@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.realtime_gateway import RealtimeGateway
+    from ..realtime_gateway import RealtimeGateway
 
 
 class GatewayActivityMonitor:

@@ -9,7 +9,7 @@ import time
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.core.gateway_utils import GatewayUtils
+    from ..core.gateway_utils import GatewayUtils
 
 
 class GatewayResourceController:

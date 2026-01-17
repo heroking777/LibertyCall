@@ -21,6 +21,7 @@ from .flow_transition_rules import (
     is_not_heard,
     is_silence,
 )
+from .dialogue_orchestrator import run_conversation_flow as get_response
 
 __all__ = [
     "check_clear_price_question",
@@ -37,5 +38,6 @@ __all__ = [
     "is_handoff_request",
     "is_not_heard",
     "is_silence",
+    "get_response",
 ]
 

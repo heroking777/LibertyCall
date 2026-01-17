@@ -8,8 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-from libertycall.gateway.core.gateway_lifecycle_manager import GatewayLifecycleManager
-from libertycall.gateway.core.gateway_resource_controller import GatewayResourceController
+from ..core.gateway_lifecycle_manager import GatewayLifecycleManager
+from ..core.gateway_resource_controller import GatewayResourceController
 
 
 IGNORE_RTP_IPS = {"160.251.170.253", "127.0.0.1", "::1"}
