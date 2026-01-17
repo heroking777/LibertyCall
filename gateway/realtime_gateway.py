@@ -6,7 +6,6 @@ import signal
 import sys
 import os
 import threading
-from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 import time
@@ -150,67 +149,35 @@ class RealtimeGateway:
     async def start(self):
         await self.utils.start()
 
-    def _find_rtp_info_by_port(self, rtp_port: int) -> Optional[str]:
-        """
-        RTP port からファイルを探して UUID を返す
-        
-        :param rtp_port: RTP port番号
-        :return: UUID または None
-        """
-        return self.utils._find_rtp_info_by_port(rtp_port)
+    def __getattr__(self, name: str):
+        alias_map = {
+            "_ensure_console_session": self.console_manager.ensure_console_session,
+            "_append_console_log": self.console_manager.append_console_log,
+            "_record_dialogue": self.console_manager.record_dialogue,
+            "_build_handover_summary": self.console_manager.build_handover_summary,
+            "_generate_call_id_from_uuid": self.console_manager.generate_call_id_from_uuid,
+        }
+        if name in alias_map:
+            return alias_map[name]
 
-    def _send_tts(
-        self,
-        call_id: str,
-        reply_text: str,
-        template_ids: list[str] | None = None,
-        transfer_requested: bool = False,
-    ) -> None:
-        self.playback_manager._send_tts(
-            call_id,
-            reply_text,
-            template_ids=template_ids,
-            transfer_requested=transfer_requested,
+        delegates = (
+            self.playback_manager,
+            self.network_manager,
+            self.utils,
+            self.activity_monitor,
+            self.console_manager,
+            self.session_handler,
+            self.audio_processor,
+            self.monitor_manager,
+            self.asr_manager,
         )
-
-    async def _flush_tts_queue(self) -> None:
-        await self.playback_manager._flush_tts_queue()
-    
-    async def _send_tts_async(
-        self,
-        call_id: str,
-        reply_text: str | None = None,
-        template_ids: list[str] | None = None,
-        transfer_requested: bool = False,
-    ) -> None:
-        await self.playback_manager._send_tts_async(
-            call_id,
-            reply_text=reply_text,
-            template_ids=template_ids,
-            transfer_requested=transfer_requested,
-        )
-    
-    def _synthesize_text_sync(self, text: str) -> Optional[bytes]:
-        return self.playback_manager._synthesize_text_sync(text)
-    
-    async def _send_tts_segmented(self, call_id: str, reply_text: str) -> None:
-        await self.playback_manager._send_tts_segmented(call_id, reply_text)
-    
-    def _synthesize_segment_sync(self, segment: str) -> Optional[bytes]:
-        return self.playback_manager._synthesize_segment_sync(segment)
-    
-    async def _wait_for_tts_completion_and_update_time(
-        self, call_id: str, tts_audio_length: int
-    ) -> None:
-        await self.playback_manager._wait_for_tts_completion_and_update_time(
-            call_id, tts_audio_length
-        )
-
-    async def _wait_for_tts_and_transfer(self, call_id: str, timeout: float = 10.0) -> None:
-        await self.playback_manager._wait_for_tts_and_transfer(call_id, timeout=timeout)
-
-    async def _tts_sender_loop(self):
-        await self.playback_manager._tts_sender_loop()
+        for delegate in delegates:
+            attr = getattr(type(delegate), name, None)
+            if attr is not None:
+                return getattr(delegate, name)
+            if name in getattr(delegate, "__dict__", {}):
+                return delegate.__dict__[name]
+        raise AttributeError(f"{type(self).__name__} has no attribute {name}")
 
     async def _streaming_poll_loop(self):
         """ストリーミングモード: 定期的にASR結果をポーリングし、確定した発話を処理する。"""
@@ -233,41 +200,6 @@ class RealtimeGateway:
                 self.logger.error(f"Streaming poll error: {e}", exc_info=True)
             await asyncio.sleep(0.1)  # 100ms間隔でポーリング
 
-    async def _ws_client_loop(self):
-        await self.network_manager._ws_client_loop()
-
-    def _free_port(self, port: int):
-        """安全にポートを解放する（自分自身は殺さない）"""
-        self.utils._free_port(port)
-
-    async def _ws_server_loop(self):
-        await self.network_manager._ws_server_loop()
-
-    async def _handle_init_from_asterisk(self, data: dict):
-        """
-        Asteriskからのinitメッセージを処理（クライアントID自動判定対応）
-        """
-        await self.session_handler._handle_init_from_asterisk(data)
-
-    def _is_silent_ulaw(self, data: bytes, threshold: float = 0.005) -> bool:
-        """
-        μ-lawデータをPCMに変換してエネルギー判定を行い、無音かどうかを判定
-        
-        :param data: μ-lawエンコードされた音声データ
-        :param threshold: RMS閾値（デフォルト: 0.005）
-        :return: 無音の場合True、有音の場合False
-        """
-        return self.audio_processor._is_silent_ulaw(data, threshold=threshold)
-
-    def _apply_agc(self, pcm_data: bytes, target_rms: int = 1000) -> bytes:
-        """
-        Automatic Gain Control: PCM16 データの音量を自動調整して返す
-        :param pcm_data: PCM16 リトルエンディアンのバイト列
-        :param target_rms: 目標 RMS 値（デフォルト 1000）
-        :return: 増幅後の PCM16 バイト列
-        """
-        return self.audio_processor._apply_agc(pcm_data, target_rms=target_rms)
-
     async def handle_rtp_packet(self, data: bytes, addr: Tuple[str, int]):
         await self.asr_manager.process_rtp_audio(data, addr)
 
@@ -275,34 +207,10 @@ class RealtimeGateway:
         """Graceful shutdown for RTP transport and all resources"""
         await self.utils.shutdown(remove_handler)
 
-    # ------------------------------------------------------------------ console bridge helpers
-    def _ensure_console_session(self, call_id_override: Optional[str] = None) -> None:
-        self.console_manager.ensure_console_session(call_id_override)
-
-    def _append_console_log(
-        self,
-        role: str,
-        text: Optional[str],
-        state: str,
-        template_id: Optional[str] = None,
-    ) -> None:
-        self.console_manager.append_console_log(
-            role,
-            text,
-            state,
-            template_id=template_id,
-        )
-
-    def _record_dialogue(self, role_label: str, text: Optional[str]) -> None:
-        self.console_manager.record_dialogue(role_label, text)
-
     def _request_transfer(self, call_id: str) -> None:
         state_label = f"AI_HANDOFF:{call_id or 'UNKNOWN'}"
         self.logger.debug("RealtimeGateway: transfer callback invoked (%s)", state_label)
         self._handle_transfer(call_id)
-
-    def _handle_transfer(self, call_id: str) -> None:
-        self.session_handler._handle_transfer(call_id)
 
     def _init_esl_connection(self) -> None:
         """
@@ -333,134 +241,6 @@ class RealtimeGateway:
             self.logger.exception(f"[ESL] Failed to initialize ESL connection: {e}")
             self.esl_connection = None
     
-    def _recover_esl_connection(self, max_retries: int = 3) -> bool:
-        """
-        FreeSWITCH ESL接続を自動リカバリ（接続が切れた場合に再接続を試みる、最大3回リトライ）
-        
-        :param max_retries: 最大リトライ回数（デフォルト: 3）
-        :return: 再接続に成功したかどうか
-        """
-        return self.utils._recover_esl_connection(max_retries=max_retries)
-    
-    def _start_esl_event_listener(self) -> None:
-        """
-        FreeSWITCH ESLイベントリスナーを開始（CHANNEL_EXECUTE_COMPLETE監視）
-        
-        :return: None
-        """
-        self.utils._start_esl_event_listener()
-    
-    def _update_uuid_mapping_directly(self, call_id: str) -> Optional[str]:
-        return self.utils._update_uuid_mapping_directly(call_id)
-    
-    def _handle_playback(self, call_id: str, audio_file: str) -> None:
-        self.playback_manager._handle_playback(call_id, audio_file)
-
-    async def _handle_playback_start(self, call_id: str, audio_file: str) -> None:
-        await self.playback_manager._handle_playback_start(call_id, audio_file)
-
-    async def _handle_playback_stop(self, call_id: str) -> None:
-        await self.playback_manager._handle_playback_stop(call_id)
-    
-    def _handle_hangup(self, call_id: str) -> None:
-        self.session_handler._handle_hangup(call_id)
-
-    def _build_handover_summary(self, state_label: str) -> str:
-        return self.console_manager.build_handover_summary(state_label)
-
-    def _get_effective_call_id(self, addr: Optional[Tuple[str, int]] = None) -> Optional[str]:
-        """
-        RTP受信時に有効なcall_idを決定する。
-        
-        :param addr: RTP送信元のアドレス (host, port)。Noneの場合は既存のロジックを使用
-        :return: 有効なcall_id、見つからない場合はNone
-        """
-        return self.utils._get_effective_call_id(addr)
-    
-    def _maybe_send_audio_level(self, rms: int) -> None:
-        """RMS値を正規化して、一定間隔で音量レベルを管理画面に送信。"""
-        self.utils._maybe_send_audio_level(rms)
-
-    def _complete_console_call(self) -> None:
-        self.utils.complete_console_call()
-
-    def _load_wav_as_ulaw8k(self, wav_path: Path) -> bytes:
-        return self.playback_manager._load_wav_as_ulaw8k(wav_path)
-
-    async def _queue_initial_audio_sequence(self, client_id: Optional[str]) -> None:
-        await self.playback_manager._queue_initial_audio_sequence(client_id)
-
-    def _generate_silence_ulaw(self, duration_sec: float) -> bytes:
-        return self.playback_manager._generate_silence_ulaw(duration_sec)
-
-    def _start_recording(self) -> None:
-        self.activity_monitor._start_recording()
-
-    def _stop_recording(self) -> None:
-        self.activity_monitor._stop_recording()
-
-    def _reset_call_state(self) -> None:
-        self.utils.reset_call_state()
-
-    async def _process_streaming_transcript(
-        self, text: str, audio_duration: float, inference_time: float, end_to_text_delay: float
-    ):
-        await self.asr_manager.handle_asr_result(
-            text, audio_duration, inference_time, end_to_text_delay
-        )
-
-    async def _start_no_input_timer(self, call_id: str) -> None:
-        await self.activity_monitor._start_no_input_timer(call_id)
-
-    async def _no_input_monitor_loop(self):
-        """無音状態を監視し、自動ハングアップを行う"""
-        await self.monitor_manager._no_input_monitor_loop()
-    
-    async def _play_tts(self, call_id: str, text: str):
-        """TTS音声を再生する"""
-        self.logger.info(
-            "[PLAY_TTS] dispatching text='%s' to TTS queue for %s",
-            text,
-            call_id,
-        )
-        try:
-            self._send_tts(call_id, text, None, False)
-        except Exception as e:
-            self.logger.error(
-                "TTS playback failed for call_id=%s: %s", call_id, e, exc_info=True
-            )
-
-    async def _play_silence_warning(self, call_id: str, warning_interval: float):
-        await self.playback_manager._play_silence_warning(call_id, warning_interval)
-
-    async def _wait_for_no_input_reset(self, call_id: str):
-        await self.activity_monitor._wait_for_no_input_reset(call_id)
-    
-    async def _handle_no_input_timeout(self, call_id: str):
-        """
-        無音タイムアウトを処理: NOT_HEARD intentをai_coreに渡す
-        
-        :param call_id: 通話ID
-        """
-        await self.session_handler._handle_no_input_timeout(call_id)
-
-    async def _log_monitor_loop(self):
-        """
-        ログファイルを監視し、HANDOFF_FAIL_TTS_REQUESTメッセージを検出してTTSアナウンスを送信
-        """
-        await self.network_manager._log_monitor_loop()
-
-    async def _event_socket_server_loop(self) -> None:
-        """
-        FreeSWITCHイベント受信用Unixソケットサーバー
-        
-        gateway_event_listener.pyからイベントを受信して、
-        on_call_start() / on_call_end() を呼び出す
-        """
-        await self.network_manager._event_socket_server_loop()
-    
-    def _generate_call_id_from_uuid(self, uuid: str, client_id: str) -> str:
-        return self.console_manager.generate_call_id_from_uuid(uuid, client_id)
 
 # ========================================
 # Main Entry Point
