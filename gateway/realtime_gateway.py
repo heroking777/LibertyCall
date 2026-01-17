@@ -56,7 +56,6 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 # --- モジュール読み込み ---
 from libertycall.gateway.ai_core import AICore
-from libertycall.gateway.audio_utils import ulaw8k_to_pcm16k, pcm24k_to_ulaw8k
 from libertycall.gateway.text_utils import normalize_text
 from libertycall.gateway.transcript_normalizer import normalize_transcript
 from libertycall.gateway.asr_manager import GatewayASRManager
@@ -64,6 +63,7 @@ from libertycall.gateway.playback_manager import GatewayPlaybackManager
 from libertycall.gateway.call_session_handler import GatewayCallSessionHandler
 from libertycall.gateway.network_manager import GatewayNetworkManager
 from libertycall.gateway.monitor_manager import GatewayMonitorManager
+from libertycall.gateway.audio_processor import GatewayAudioProcessor
 from libertycall.console_bridge import console_bridge
 from gateway.asr_controller import app as asr_app, set_gateway_instance
 
@@ -336,6 +336,7 @@ class RealtimeGateway:
         self.ai_core = AICore(client_id=initial_client_id)
         self.session_handler = GatewayCallSessionHandler(self)
         self.network_manager = GatewayNetworkManager(self)
+        self.audio_processor = GatewayAudioProcessor(self)
         self.monitor_manager = GatewayMonitorManager(
             self,
             RTPProtocol,
@@ -367,46 +368,12 @@ class RealtimeGateway:
         # call_uuid_mapへの参照をAICoreに渡す
         self.ai_core.call_uuid_map = self.call_uuid_map
         
-        # ストリーミングモード判定
-        self.streaming_enabled = os.getenv("LC_ASR_STREAMING_ENABLED", "0") == "1"
-        
-        # ChatGPT音声風: ASRチャンクを短縮（デフォルト250ms）
-        os.environ.setdefault("LC_ASR_CHUNK_MS", "250")
-        
-        # ChatGPT音声風: TTS送信ループの即時flush用イベント
-        self._tts_sender_wakeup = asyncio.Event()
-        
-        # Google Streaming ASRハンドラー（オプション）
-        self.asr_handler_enabled = ASR_HANDLER_AVAILABLE
-        if ASR_HANDLER_AVAILABLE:
-            self.logger.info("[INIT] Google Streaming ASR handler available")
-        else:
-            self.logger.warning("[INIT] Google Streaming ASR handler not available (asr_handler module not found)")
-        
-        # ASR プロバイダに応じたログ出力
-        asr_provider = getattr(self.ai_core, 'asr_provider', 'google')
-        if asr_provider == "whisper" and self.streaming_enabled:
-            model_name = os.getenv("LC_ASR_WHISPER_MODEL", "base")
-            # ChatGPT音声風: ASRチャンクを短縮（デフォルト250ms）
-            chunk_ms = os.getenv("LC_ASR_CHUNK_MS", "250")
-            silence_ms = os.getenv("LC_ASR_SILENCE_MS", "700")
-            self.logger.info(
-                f"Streaming ASR モードで起動 (model={model_name}, chunk={chunk_ms}ms, silence={silence_ms}ms)"
-            )
-        elif asr_provider == "google" and self.streaming_enabled:
-            self.logger.info("Streaming ASR モードで起動 (provider=google)")
-        else:
-            self.logger.info("Batch ASR モードで起動")
-        
-        # 起動時ログ（ASR_BOOT）は AICore の初期化時に出力されるため、ここでは削除
-        
-        # WebRTC Noise Suppressor初期化（利用可能な場合）
-        if WEBRTC_NS_AVAILABLE:
-            self.ns = AudioProcessing(ns_level=NsLevel.HIGH)
-            self.logger.debug("WebRTC Noise Suppressor enabled")
-        else:
-            self.ns = None
-            self.logger.warning("WebRTC Noise Suppressor not available, skipping NS processing")
+        self.audio_processor.initialize_asr_settings(
+            asr_handler_available=ASR_HANDLER_AVAILABLE,
+            webrtc_available=WEBRTC_NS_AVAILABLE,
+            audio_processing_cls=AudioProcessing,
+            ns_level_cls=NsLevel,
+        )
 
         # ASRマネージャ初期化
         self.asr_manager = GatewayASRManager(self)
@@ -1020,17 +987,7 @@ class RealtimeGateway:
         :param threshold: RMS閾値（デフォルト: 0.005）
         :return: 無音の場合True、有音の場合False
         """
-        try:
-            import numpy as np
-            # μ-law → PCM16変換
-            pcm = np.frombuffer(audioop.ulaw2lin(data, 2), dtype=np.int16)
-            # RMS計算（正規化: -32768～32767 → -1.0～1.0）
-            rms = np.sqrt(np.mean((pcm.astype(np.float32) / 32768.0) ** 2))
-            return rms < threshold
-        except Exception as e:
-            # エラー時は有音と判定（安全側に倒す）
-            self.logger.debug(f"[RTP_SILENT] Error in _is_silent_ulaw: {e}")
-            return False
+        return self.audio_processor._is_silent_ulaw(data, threshold=threshold)
 
     def _apply_agc(self, pcm_data: bytes, target_rms: int = 1000) -> bytes:
         """
@@ -1039,32 +996,7 @@ class RealtimeGateway:
         :param target_rms: 目標 RMS 値（デフォルト 1000）
         :return: 増幅後の PCM16 バイト列
         """
-        try:
-            if not pcm_data or len(pcm_data) == 0:
-                return pcm_data
-
-            current_rms = audioop.rms(pcm_data, 2)
-            # ほぼ無音は処理しない
-            if current_rms < 10:
-                return pcm_data
-
-            gain = float(target_rms) / float(current_rms) if current_rms > 0 else 1.0
-            # 過増幅を防ぐ（最大10倍、最小0.5倍）
-            gain = min(max(gain, 0.5), 10.0)
-
-            amplified = audioop.mul(pcm_data, 2, gain)
-
-            # ログ（最初の数回のみ出力）
-            if not hasattr(self, '_agc_log_count'):
-                self._agc_log_count = 0
-            if self._agc_log_count < 5 or abs(gain - 1.0) > 2.0:
-                self.logger.info(f"[AGC] current_rms={current_rms} gain={gain:.2f} target_rms={target_rms}")
-                self._agc_log_count += 1
-
-            return amplified
-        except Exception as e:
-            self.logger.exception(f"[AGC_ERROR] {e}")
-            return pcm_data
+        return self.audio_processor._apply_agc(pcm_data, target_rms=target_rms)
 
     async def handle_rtp_packet(self, data: bytes, addr: Tuple[str, int]):
         await self.asr_manager.process_rtp_audio(data, addr)
