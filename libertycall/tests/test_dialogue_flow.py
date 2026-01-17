@@ -5,7 +5,7 @@
 """
 
 import pytest
-from libertycall.gateway.dialogue_flow import (
+from libertycall.gateway.dialogue.dialogue_flow import (
     get_response,
     is_ambiguous_price_question,
     check_clear_price_question,

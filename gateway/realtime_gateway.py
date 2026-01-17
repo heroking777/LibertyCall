@@ -30,20 +30,20 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 # --- モジュール読み込み ---
-from libertycall.gateway.ai_core import AICore
-from libertycall.gateway.asr_manager import GatewayASRManager
-from libertycall.gateway.playback_manager import GatewayPlaybackManager
-from libertycall.gateway.call_session_handler import GatewayCallSessionHandler
-from libertycall.gateway.network_manager import GatewayNetworkManager
-from libertycall.gateway.monitor_manager import GatewayMonitorManager, ESLAudioReceiver
-from libertycall.gateway.audio_processor import GatewayAudioProcessor
-from libertycall.gateway.gateway_utils import GatewayUtils
-from libertycall.gateway.gateway_event_router import GatewayEventRouter
-from libertycall.gateway.gateway_config_manager import GatewayConfigManager
-from libertycall.gateway.gateway_activity_monitor import GatewayActivityMonitor
-from libertycall.gateway.gateway_console_manager import GatewayConsoleManager
-from libertycall.gateway.gateway_esl_manager import GatewayESLManager
-from libertycall.gateway.gateway_rtp_protocol import RTPPacketBuilder, RTPProtocol
+from libertycall.gateway.core.ai_core import AICore
+from libertycall.gateway.asr.asr_manager import GatewayASRManager
+from libertycall.gateway.audio.playback_manager import GatewayPlaybackManager
+from libertycall.gateway.core.call_session_handler import GatewayCallSessionHandler
+from libertycall.gateway.common.network_manager import GatewayNetworkManager
+from libertycall.gateway.core.monitor_manager import GatewayMonitorManager, ESLAudioReceiver
+from libertycall.gateway.audio.audio_processor import GatewayAudioProcessor
+from libertycall.gateway.core.gateway_utils import GatewayUtils
+from libertycall.gateway.core.gateway_event_router import GatewayEventRouter
+from libertycall.gateway.core.gateway_config_manager import GatewayConfigManager
+from libertycall.gateway.core.gateway_activity_monitor import GatewayActivityMonitor
+from libertycall.gateway.core.gateway_console_manager import GatewayConsoleManager
+from libertycall.gateway.core.gateway_esl_manager import GatewayESLManager
+from libertycall.gateway.asr.gateway_rtp_protocol import RTPPacketBuilder, RTPProtocol
 from libertycall.console_bridge import console_bridge
 
 # Google Streaming ASR統合
@@ -57,7 +57,7 @@ except ImportError:
     get_handler = None
 
 # デバッグ用: AICore のインポート元を確認
-logger_debug = logging.getLogger("libertycall.gateway.ai_core")
+logger_debug = logging.getLogger("libertycall.gateway.core.ai_core")
 logger_debug.warning("DEBUG_IMPORT_CHECK: AICore class from %r", AICore.__module__)
 logger_debug.warning("DEBUG_IMPORT_CHECK_FILE: ai_core file = %r", AICore.__init__.__code__.co_filename)
 try:

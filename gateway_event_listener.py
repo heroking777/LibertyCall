@@ -16,7 +16,7 @@ from libs.esl.ESL import ESLconnection
 
 # クライアントIDマッピング機能をインポート
 try:
-    from libertycall.gateway.client_mapper import resolve_client_id
+    from libertycall.gateway.core.client_mapper import resolve_client_id
 except ImportError:
     # フォールバック: client_mapperが利用できない場合はNone
     resolve_client_id = None

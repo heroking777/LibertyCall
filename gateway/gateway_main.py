@@ -11,7 +11,7 @@ from pathlib import Path
 import uvicorn
 
 from gateway.asr_controller import app as asr_app, set_gateway_instance
-from libertycall.gateway.gateway_config_manager import GatewayConfigManager
+from libertycall.gateway.core.gateway_config_manager import GatewayConfigManager
 from libertycall.gateway.realtime_gateway import RealtimeGateway
 
 

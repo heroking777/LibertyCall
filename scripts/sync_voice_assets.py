@@ -23,7 +23,7 @@ import logging
 PROJECT_ROOT = Path("/opt/libertycall")
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from libertycall.gateway.text_utils import TEMPLATE_CONFIG
+from libertycall.gateway.common.text_utils import TEMPLATE_CONFIG
 
 # ログ設定（結果が見えない環境向けにDEBUGで出力）
 logging.basicConfig(

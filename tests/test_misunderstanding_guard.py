@@ -6,7 +6,7 @@ unclear_streak / not_heard_streak の更新と自動ハンドオフ発火を確�
 
 import logging
 import pytest
-from libertycall.gateway.ai_core import AICore, MisunderstandingGuard, ConversationState
+from libertycall.gateway.core.ai_core import AICore, MisunderstandingGuard, ConversationState
 
 # ログ設定
 logging.basicConfig(

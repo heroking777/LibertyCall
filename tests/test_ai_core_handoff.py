@@ -8,7 +8,7 @@ AICore HANDOFF 周りのシナリオテスト
 import logging
 import pytest
 from unittest.mock import Mock
-from libertycall.gateway.ai_core import AICore
+from libertycall.gateway.core.ai_core import AICore
 
 # ログ設定（テスト時は必要に応じて調整）
 logging.basicConfig(
@@ -270,7 +270,7 @@ def test_reset_call():
 
 def test_interpret_handoff_reply_yes_from_inquiry():
     """intent=INQUIRY だが 'はい、お願いします' を含む → HANDOFF_YES扱い"""
-    from libertycall.gateway.intent_rules import interpret_handoff_reply
+    from gateway.intent_rules import interpret_handoff_reply
     
     # 「はい、料金の話なんですけど」のようなケース
     # 現状は誤判定される（HANDOFF_YES として扱われる）
@@ -281,7 +281,7 @@ def test_interpret_handoff_reply_yes_from_inquiry():
 
 def test_interpret_handoff_reply_no_from_unknown():
     """intent=UNKNOWN だが 'いや、やっぱりいいです' → HANDOFF_NO扱い"""
-    from libertycall.gateway.intent_rules import interpret_handoff_reply
+    from gateway.intent_rules import interpret_handoff_reply
     
     text = "いや、やっぱりいいです"
     result = interpret_handoff_reply(text, base_intent="UNKNOWN")
@@ -290,7 +290,7 @@ def test_interpret_handoff_reply_no_from_unknown():
 
 def test_interpret_handoff_reply_yes_from_unknown():
     """intent=UNKNOWN だが 'はい' を含む → HANDOFF_YES扱い"""
-    from libertycall.gateway.intent_rules import interpret_handoff_reply
+    from gateway.intent_rules import interpret_handoff_reply
     
     text = "はい"
     result = interpret_handoff_reply(text, base_intent="UNKNOWN")
@@ -299,7 +299,7 @@ def test_interpret_handoff_reply_yes_from_unknown():
 
 def test_interpret_handoff_reply_no_from_end_call():
     """intent=END_CALL で NO キーワードを含む → HANDOFF_NO扱い"""
-    from libertycall.gateway.intent_rules import interpret_handoff_reply
+    from gateway.intent_rules import interpret_handoff_reply
     
     text = "結構です"
     result = interpret_handoff_reply(text, base_intent="END_CALL")
@@ -308,7 +308,7 @@ def test_interpret_handoff_reply_no_from_end_call():
 
 def test_interpret_handoff_reply_unknown():
     """明確なYES/NOがない場合 → UNKNOWN扱い"""
-    from libertycall.gateway.intent_rules import interpret_handoff_reply
+    from gateway.intent_rules import interpret_handoff_reply
     
     text = "えーっと..."
     result = interpret_handoff_reply(text, base_intent="UNKNOWN")

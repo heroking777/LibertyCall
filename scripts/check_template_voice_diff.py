@@ -17,7 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # TEMPLATE_CONFIG をインポート
 try:
-    from libertycall.gateway.text_utils import TEMPLATE_CONFIG
+    from libertycall.gateway.common.text_utils import TEMPLATE_CONFIG
 except ImportError:
     try:
         from gateway.text_utils import TEMPLATE_CONFIG

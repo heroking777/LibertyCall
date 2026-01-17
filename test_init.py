@@ -23,7 +23,7 @@ LibertyCall AICore 初期化テスト（ASR/TTSまとめて・テストループ
 が全部１ショットで通っているので、「起動時クラッシュ」はもう潰せています。
 """
 
-from libertycall.gateway.ai_core import AICore
+from libertycall.gateway.core.ai_core import AICore
 
 print(">>> creating AICore(init_clients=True)")
 core = AICore(init_clients=True)

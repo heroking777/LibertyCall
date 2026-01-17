@@ -6,7 +6,7 @@ INTENT_TEST_CASES.md の質問リストを基に、
 """
 
 import pytest
-from libertycall.gateway.intent_rules import classify_intent, select_template_ids
+from gateway.intent_rules import classify_intent, select_template_ids
 
 
 class TestIntentClassification:
