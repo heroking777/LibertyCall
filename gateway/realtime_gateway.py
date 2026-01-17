@@ -45,6 +45,7 @@ from libertycall.gateway.gateway_utils import GatewayUtils
 from libertycall.gateway.gateway_event_router import GatewayEventRouter
 from libertycall.gateway.gateway_config_manager import GatewayConfigManager
 from libertycall.gateway.gateway_activity_monitor import GatewayActivityMonitor
+from libertycall.gateway.gateway_console_manager import GatewayConsoleManager
 from libertycall.gateway.gateway_rtp_protocol import RTPPacketBuilder, RTPProtocol
 from libertycall.console_bridge import console_bridge
 from gateway.asr_controller import app as asr_app, set_gateway_instance
@@ -99,6 +100,7 @@ class RealtimeGateway:
         self.audio_processor = GatewayAudioProcessor(self)
         self.utils = GatewayUtils(self, RTPPacketBuilder, RTPProtocol)
         self.router = GatewayEventRouter(self)
+        self.console_manager = GatewayConsoleManager(self)
         self.activity_monitor = GatewayActivityMonitor(self)
         self.monitor_manager = GatewayMonitorManager(
             self,
@@ -275,58 +277,7 @@ class RealtimeGateway:
 
     # ------------------------------------------------------------------ console bridge helpers
     def _ensure_console_session(self, call_id_override: Optional[str] = None) -> None:
-        """コンソールセッションを確保（call_idが未設定の場合は正式なcall_idを生成）"""
-        if not self.console_bridge.enabled:
-            return
-        if not self.client_id:
-            return
-        
-        # call_id_overrideが指定されている場合はそれを使用
-        if call_id_override:
-            # 既存のcall_idと異なる場合は、元のcall_idを保持（ハンドオフ時の統合用）
-            if self.call_id and self.call_id != call_id_override:
-                self.logger.info(
-                    f"Call ID override: keeping original call_id={self.call_id}, new={call_id_override}"
-                )
-                # 元のcall_idを保持（ハンドオフ時も同じcall_idを使用）
-                # call_id_overrideは無視して、元のcall_idを継続使用
-                return
-            self.call_id = call_id_override
-        elif not self.call_id:
-            # call_idが未設定の場合は正式なcall_idを生成（TEMP_CALLは使わない）
-            self.call_id = self.console_bridge.issue_call_id(self.client_id)
-            self.logger.info(f"Generated new call_id: {self.call_id}")
-        
-        self.logger.debug("Console session started: %s", self.call_id)
-        
-        # AICoreにcall_idを設定（WAV保存用）
-        if self.call_id:
-            self.ai_core.set_call_id(self.call_id)
-        if self.client_id:
-            self.ai_core.client_id = self.client_id
-        
-        # 通話開始時刻を記録（補正用）
-        if self.call_id and self.call_start_time is None:
-            self.call_start_time = time.time()
-            self.user_turn_index = 0  # リセット
-        
-        self.recent_dialogue.clear()
-        self.transfer_notified = False
-        self.call_completed = False
-        self.current_state = "init"
-        # caller_numberを取得（ai_coreから）
-        caller_number = getattr(self.ai_core, "caller_number", None)
-        
-        # caller_numberをログで確認（DB保存前）
-        self.logger.info(f"[_ensure_console_session] caller_number: {caller_number} (call_id={self.call_id})")
-        
-        self.console_bridge.start_call(
-            self.call_id,
-            self.client_id,
-            state=self.current_state,
-            started_at=datetime.utcnow(),
-            caller_number=caller_number,
-        )
+        self.console_manager.ensure_console_session(call_id_override)
 
     def _append_console_log(
         self,
@@ -335,38 +286,15 @@ class RealtimeGateway:
         state: str,
         template_id: Optional[str] = None,
     ) -> None:
-        if not self.console_bridge.enabled or not text:
-            return
-        
-        # call_idが未設定の場合は正式なcall_idを生成（TEMP_CALLは使わない）
-        if not self.call_id:
-            if self.client_id:
-                self.call_id = self.console_bridge.issue_call_id(self.client_id)
-                self.logger.debug(f"Generated call_id for log: {self.call_id}")
-                # AICoreにcall_idを設定
-                if self.call_id:
-                    self.ai_core.set_call_id(self.call_id)
-            else:
-                self.logger.warning("Cannot append log: call_id and client_id are not set")
-                return
-        
-        # caller_numberを取得（ai_coreから）
-        caller_number = getattr(self.ai_core, "caller_number", None)
-        
-        self.console_bridge.append_log(
-            self.call_id,
-            role=role,
-            text=text,
-            state=state,
-            client_id=self.client_id,
-            caller_number=caller_number,
+        self.console_manager.append_console_log(
+            role,
+            text,
+            state,
             template_id=template_id,
         )
 
     def _record_dialogue(self, role_label: str, text: Optional[str]) -> None:
-        if not text:
-            return
-        self.recent_dialogue.append((role_label, text.strip()))
+        self.console_manager.record_dialogue(role_label, text)
 
     def _request_transfer(self, call_id: str) -> None:
         state_label = f"AI_HANDOFF:{call_id or 'UNKNOWN'}"
@@ -438,13 +366,7 @@ class RealtimeGateway:
         self.session_handler._handle_hangup(call_id)
 
     def _build_handover_summary(self, state_label: str) -> str:
-        lines = ["■ 要件", f"- 推定意図: {state_label or '不明'}", "", "■ 直近の会話"]
-        if not self.recent_dialogue:
-            lines.append("- (直近ログなし)")
-        else:
-            for role, text in self.recent_dialogue:
-                lines.append(f"- {role}: {text}")
-        return "\n".join(lines)
+        return self.console_manager.build_handover_summary(state_label)
 
     def _get_effective_call_id(self, addr: Optional[Tuple[str, int]] = None) -> Optional[str]:
         """
@@ -538,23 +460,7 @@ class RealtimeGateway:
         await self.network_manager._event_socket_server_loop()
     
     def _generate_call_id_from_uuid(self, uuid: str, client_id: str) -> str:
-        """
-        UUIDからcall_idを生成
-        
-        :param uuid: FreeSWITCH UUID
-        :param client_id: クライアントID
-        :return: call_id
-        """
-        # console_bridgeのissue_call_id()を使用（標準的なcall_id生成）
-        if hasattr(self, 'console_bridge') and self.console_bridge:
-            call_id = self.console_bridge.issue_call_id(client_id)
-            self.logger.info(f"[EVENT_SOCKET] Generated call_id={call_id} from uuid={uuid} client_id={client_id}")
-        else:
-            # フォールバック: タイムスタンプベースでcall_idを生成
-            call_id = f"in-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-            self.logger.warning(f"[EVENT_SOCKET] console_bridge not available, using fallback call_id={call_id}")
-        
-        return call_id
+        return self.console_manager.generate_call_id_from_uuid(uuid, client_id)
 
 # ========================================
 # Main Entry Point
