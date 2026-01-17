@@ -49,6 +49,7 @@ from .audio_orchestrator import (
     play_template_sequence,
     send_playback_request_http,
 )
+from .core_initializer import init_core_state
 from .tts_utils import (
     synthesize_text_with_gemini,
     synthesize_template_audio,
@@ -84,90 +85,7 @@ class AICore:
         self._mis_guard = MisunderstandingGuard(self.logger)
         self.init_clients = init_clients
         self.client_id = client_id
-        
-        # クライアントごとの会話フロー・テンプレート・キーワードを読み込む
-        self.flow = self._load_flow(client_id)
-        self.templates = self._load_json(
-            f"/opt/libertycall/config/clients/{client_id}/templates.json",
-            default="/opt/libertycall/config/system/default_templates.json"
-        )
-        self.keywords = self._load_json(
-            f"/opt/libertycall/config/clients/{client_id}/keywords.json",
-            default="/opt/libertycall/config/system/default_keywords.json"
-        )
-        
-        # FlowEngineを初期化（JSON定義ベースのフェーズ遷移エンジン）
-        # デフォルトクライアント用のFlowEngineを初期化（後でUUIDごとに追加される）
-        self.flow_engine = FlowEngine(client_id=client_id)
-        
-        # UUIDごとのFlowEngineを管理する辞書（クライアント別フロー対応）
-        self.flow_engines: Dict[str, FlowEngine] = {}
-        
-        # UUIDごとのclient_idを管理する辞書（call_id -> client_id）
-        self.call_client_map: Dict[str, str] = {}
-        
-        # UUIDごとの再生状態を管理する辞書（call_id -> is_playing）
-        self.is_playing: Dict[str, bool] = {}
-        
-        # UUIDごとの最終活動時刻を管理する辞書（call_id -> last_activity_timestamp）
-        self.last_activity: Dict[str, float] = {}
-        
-        # テンプレート再生履歴を管理する辞書（call_id -> {template_id: last_play_time}）
-        # 同じテンプレートを短時間で連続再生しないようにする
-        self.last_template_play: Dict[str, Dict[str, float]] = {}
-        
-        # セッション情報を管理する辞書（call_id -> session_info）
-        self.session_info: Dict[str, Dict[str, Any]] = {}
-        
-        # FreeSWITCH ESL接続への参照（uuid_break用）
-        self.esl_connection = None
-        
-        # 無音タイムアウト監視スレッド
-        self._activity_monitor_thread = None
-        self._activity_monitor_running = False
-        self._start_activity_monitor()
-        
-        self.logger.info(f"FlowEngine initialized for default client: {client_id}")
-        
-        # キーワードをインスタンス変数として設定（後方互換性のため）
-        self._load_keywords_from_config()
-        self.call_id = None
-        self.caller_number = None
-        self.log_session_id = None  # 通話ログ用のセッションID（call_idがない場合に使用）
-        self.session_states: Dict[str, Dict[str, Any]] = {}
-        # 【追加】partial transcripts を保持（call_id ごとに管理）
-        self.partial_transcripts: Dict[str, Dict[str, Any]] = {}
-        self.debug_save_wav = False
-        self.call_id = None
-        self._wav_saved = False
-        self._wav_chunk_counter = 0
-        self.asr_model = None
-        self.transfer_callback: Optional[Callable[[str], None]] = None
-        self.hangup_callback: Optional[Callable[[str], None]] = None
-        self.playback_callback: Optional[Callable[[str, str], None]] = None
-        self._auto_hangup_timers: Dict[str, threading.Timer] = {}
-        # 二重再生防止: on_call_start() を呼び出し済みの通話IDセット（全クライアント共通）
-        self._call_started_calls: set[str] = set()
-        # 二重再生防止: 冒頭テンプレート（000-002）を再生済みの通話IDセット（001専用）
-        self._intro_played_calls: set[str] = set()
-        # 通話開始イベントの最終時刻を管理（call_id -> last_start_timestamp）
-        self.last_start_times: Dict[str, float] = {}
-        # 現在システムが再生しているテキスト（エコー除去用）
-        self.current_system_text: str = ""
-        # 【追加】テンプレートID->テキスト辞書（エコー判定用の簡易辞書）
-        self.TEMPLATE_TEXTS: Dict[str, str] = {
-            "000": "この電話は応対品質の向上と正確なご案内のため録音させていただいております",
-            "004": "お電話ありがとうございます",
-            "006_SYS": "ただいま電話に出ることができません",
-            "081": "もしもし、聞こえていますでしょうか",
-            "110": "発信音の後にメッセージを入れてください",
-        }
-        
-        # AI_CORE_VERSION ログ（編集した ai_core.py が読まれているか確認用）
-        self.logger.info(
-            "AI_CORE_VERSION: version=2025-12-01-auto-hangup hangup_callback=%s",
-            "set" if self.hangup_callback else "none"
-        )
+        init_core_state(self, client_id)
         
         # ASR プロバイダの選択（デフォルト: google）
         asr_provider = os.getenv("LC_ASR_PROVIDER", "google").lower()

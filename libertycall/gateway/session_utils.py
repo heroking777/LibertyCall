@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import stat
+import wave
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -244,6 +245,37 @@ def save_session_summary_from_core(core, call_id: str) -> None:
         core.session_info.pop(call_id, None)
     except Exception as e:
         core.logger.exception(f"[SESSION_SUMMARY] Failed to save session summary: {e}")
+
+
+def save_debug_wav(core, pcm16k_bytes: bytes) -> None:
+    """Whisperに渡す直前のPCM音声をWAVファイルとして保存"""
+    if not core.debug_save_wav:
+        return
+
+    sample_rate = 16000
+    duration_sec = len(pcm16k_bytes) / 2 / sample_rate
+
+    if duration_sec < 1.0:
+        return
+
+    debug_dir = Path("/opt/libertycall/debug_audio")
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    call_id_str = core.call_id or "unknown"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    core._wav_chunk_counter += 1
+    filename = f"call_{call_id_str}_chunk_{core._wav_chunk_counter:03d}_{timestamp}.wav"
+    filepath = debug_dir / filename
+
+    try:
+        with wave.open(str(filepath), "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(pcm16k_bytes)
+        logger.info("Saved debug WAV: %s (duration=%.2fs)", filepath, duration_sec)
+    except Exception as e:
+        logger.exception("Failed to save debug WAV: %s", e)
 
 
 def cleanup_stale_sessions(max_age_days: int = 30) -> None:
