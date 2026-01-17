@@ -7,7 +7,8 @@ from typing import List, Tuple
 
 from .dialogue_flow import get_response as dialogue_get_response
 from .flow_engine import FlowEngine
-from .text_utils import normalize_text
+from .text_utils import normalize_text, contains_keywords
+from .prompt_factory import render_templates
 
 
 def handle_entry_phase(core, call_id: str, raw_text: str, normalized_text: str, state) -> Tuple[str, List[str], bool]:
