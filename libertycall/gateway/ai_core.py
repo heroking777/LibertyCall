@@ -2561,6 +2561,7 @@ class AICore:
             }
             
             # summary.jsonを保存
+            self.logger.warning(f"[SESSION_SUMMARY] Ensuring directory: {session_dir}")
             session_dir.mkdir(parents=True, exist_ok=True)
             summary_file = session_dir / "summary.json"
             with open(summary_file, 'w', encoding='utf-8') as f:
