@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import audioop
 import os
 import socket
 import subprocess
@@ -19,10 +18,10 @@ from libertycall.client_loader import load_client_profile
 from libertycall.console_bridge import console_bridge
 from libertycall.gateway.audio_utils import pcm24k_to_ulaw8k
 from libertycall.gateway.text_utils import normalize_text
-from libertycall.gateway.transcript_normalizer import normalize_transcript
-
 from .google_asr import GoogleASR
 from .asr_audio_processor import ASRAudioProcessor
+from .asr_stream_handler import ASRStreamHandler
+from .asr_rtp_buffer import ASRRTPBuffer
 
 try:  # pragma: no cover - optional dependency
     from scapy.all import IP, UDP, sniff
@@ -34,17 +33,6 @@ except ImportError:  # pragma: no cover - optional dependency
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
     from libertycall.gateway.realtime_gateway import RealtimeGateway
 
-
-# Google Streaming ASR統合
-try:
-    from asr_handler import get_or_create_handler, remove_handler, get_handler
-
-    ASR_HANDLER_AVAILABLE = True
-except ImportError:
-    ASR_HANDLER_AVAILABLE = False
-    get_or_create_handler = None
-    remove_handler = None
-    get_handler = None
 
 # ★ 転送先電話番号 (デフォルト)
 OPERATOR_NUMBER = "08024152649"
@@ -160,147 +148,7 @@ def init_asr(core) -> None:
 
 
 def on_new_audio(core, call_id: str, pcm16k_bytes: bytes) -> None:
-    core.logger.debug(
-        "[AI_CORE] on_new_audio called. Len=%s call_id=%s",
-        len(pcm16k_bytes),
-        call_id,
-    )
-
-    if not core.streaming_enabled:
-        return
-
-    if call_id not in core._call_started_calls:
-        core.logger.warning(
-            "[ASR_RECOVERY] call_id=%s not in _call_started_calls but receiving audio. Auto-registering.",
-            call_id,
-        )
-        core._call_started_calls.add(call_id)
-
-    if core.asr_provider == "google":
-        core.logger.debug(
-            "AICore: on_new_audio (provider=google) call_id=%s len=%s bytes",
-            call_id,
-            len(pcm16k_bytes),
-        )
-
-        if not hasattr(core, "asr_instances"):
-            core.asr_instances = {}
-            core.asr_lock = threading.Lock()
-            core._phrase_hints = []
-            print("[ASR_INSTANCES_LAZY_INIT] asr_instances and lock created (lazy)", flush=True)
-
-        asr_instance = None
-        newly_created = False
-        with core.asr_lock:
-            print(
-                f"[ASR_LOCK_ACQUIRED] call_id={call_id}, current_instances={list(core.asr_instances.keys())}",
-                flush=True,
-            )
-
-            if call_id not in core.asr_instances:
-                caller_stack = traceback.extract_stack()
-                caller_info = f"{caller_stack[-3].filename}:{caller_stack[-3].lineno} in {caller_stack[-3].name}"
-                print(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}", flush=True)
-                print(f"[ASR_CREATE_CALLER] call_id={call_id}, caller={caller_info}", flush=True)
-                core.logger.info("[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id=%s", call_id)
-                try:
-                    new_asr = GoogleASR(
-                        language_code="ja",
-                        sample_rate=16000,
-                        phrase_hints=getattr(core, "_phrase_hints", []),
-                        ai_core=core,
-                        error_callback=core._on_asr_error,
-                    )
-                    core.asr_instances[call_id] = new_asr
-                    newly_created = True
-                    print(
-                        f"[ASR_INSTANCE_CREATED] call_id={call_id}, total_instances={len(core.asr_instances)}",
-                        flush=True,
-                    )
-                    core.logger.info(
-                        "[ASR_INSTANCE_CREATED] call_id=%s, total_instances=%s",
-                        call_id,
-                        len(core.asr_instances),
-                    )
-                except Exception as exc:
-                    core.logger.error(
-                        "[ASR_INSTANCE_CREATE_FAILED] call_id=%s: %s",
-                        call_id,
-                        exc,
-                        exc_info=True,
-                    )
-                    print(f"[ASR_INSTANCE_CREATE_FAILED] call_id={call_id}: {exc}", flush=True)
-                    return
-            else:
-                print(f"[ASR_INSTANCE_REUSE] call_id={call_id} already exists", flush=True)
-
-            asr_instance = core.asr_instances.get(call_id)
-
-        if newly_created and asr_instance is not None:
-            asr_instance._start_stream_worker(call_id)
-            max_wait = 0.5
-            wait_interval = 0.02
-            elapsed = 0.0
-            print(
-                f"[ASR_STREAM_WAIT] call_id={call_id} Waiting for stream thread to start...",
-                flush=True,
-            )
-            while elapsed < max_wait:
-                if asr_instance._stream_thread is not None and asr_instance._stream_thread.is_alive():
-                    break
-                time.sleep(wait_interval)
-                elapsed += wait_interval
-
-            stream_ready = (
-                asr_instance._stream_thread is not None and asr_instance._stream_thread.is_alive()
-            )
-            if stream_ready:
-                print(
-                    f"[ASR_STREAM_READY] call_id={call_id} Stream thread ready after {elapsed:.3f}s",
-                    flush=True,
-                )
-                core.logger.info(
-                    "[ASR_STREAM_READY] call_id=%s Stream thread ready after %.3fs",
-                    call_id,
-                    elapsed,
-                )
-            else:
-                print(
-                    f"[ASR_STREAM_TIMEOUT] call_id={call_id} Stream thread not ready after {elapsed:.3f}s",
-                    flush=True,
-                )
-                core.logger.warning(
-                    "[ASR_STREAM_TIMEOUT] call_id=%s Stream thread not ready after %.3fs",
-                    call_id,
-                    elapsed,
-                )
-
-        if asr_instance is not None:
-            try:
-                core.logger.warning(
-                    "[ON_NEW_AUDIO_FEED] About to call feed_audio for call_id=%s, chunk_size=%s",
-                    call_id,
-                    len(pcm16k_bytes),
-                )
-                asr_instance.feed_audio(call_id, pcm16k_bytes)
-                core.logger.warning(
-                    "[ON_NEW_AUDIO_FEED_DONE] feed_audio completed for call_id=%s",
-                    call_id,
-                )
-            except Exception as exc:
-                core.logger.error(
-                    "AICore: GoogleASR.feed_audio 失敗 (call_id=%s): %s",
-                    call_id,
-                    exc,
-                    exc_info=True,
-                )
-                core.logger.info(
-                    "ASR_GOOGLE_ERROR: feed_audio失敗 (call_id=%s): %s",
-                    call_id,
-                    exc,
-                )
-    else:
-        core.asr_model.feed(call_id, pcm16k_bytes)  # type: ignore[union-attr]
+    ASRStreamHandler.handle_new_audio(core, call_id, pcm16k_bytes)
 
 
 class GatewayASRManager:
@@ -310,6 +158,9 @@ class GatewayASRManager:
         super().__setattr__("gateway", gateway)
         super().__setattr__("logger", gateway.logger)
         super().__setattr__("audio_processor", ASRAudioProcessor(self))
+        super().__setattr__("stream_handler", ASRStreamHandler(self))
+        super().__setattr__("rtp_buffer", ASRRTPBuffer(self))
+        super().__setattr__("operator_number", OPERATOR_NUMBER)
 
     def __getattr__(self, name: str):
         return getattr(self.gateway, name)
@@ -470,23 +321,8 @@ class GatewayASRManager:
             # return はしない！そのまま処理を続行させる
 
         # RTPパケットの重複処理ガード（シーケンス番号チェック）
-        if sequence_number is not None:
-            # effective_call_idが確定している場合はそれを使用、そうでない場合はaddrを使用
-            check_key = effective_call_id if effective_call_id else str(addr)
-            last_seq = self._last_processed_sequence.get(check_key)
-            if last_seq is not None and last_seq == sequence_number:
-                # 既に処理済みなので、ログを出さずに静かにスキップ
-                self.logger.debug(
-                    f"[RTP_DUP] Skipping duplicate packet Seq={sequence_number} Key={check_key}"
-                )
-                return
-            # 未処理なら更新して続行
-            self._last_processed_sequence[check_key] = sequence_number
-            # シーケンス番号をログ出力（100パケットごと）
-            if sequence_number % 100 == 0:
-                self.logger.warning(
-                    f"[RTP_SEQ] Processing Seq={sequence_number} for {check_key}"
-                )
+        if not self.rtp_buffer.should_process(sequence_number, effective_call_id, addr):
+            return
 
         # ログ出力（RTP受信時のcall_id確認用）
         self.logger.debug(
@@ -698,152 +534,8 @@ class GatewayASRManager:
             # --- ストリーミングモード: チャンクごとにfeed ---
             # Google使用時は全チャンクを無条件で送信（VAD/バッファリングなし）
             if self.streaming_enabled:
-                # call_idがNoneでも一時的なIDで処理（WebSocket initが来る前でも動作するように）
-                effective_call_id = self._get_effective_call_id()
-
-                # 再生中はASRに送らない（システム再生音の混入を防ぐ）
-                if (
-                    hasattr(self.ai_core, "is_playing")
-                    and self.ai_core.is_playing.get(effective_call_id, False)
-                ):
+                if self.stream_handler.handle_streaming_chunk(pcm16k_chunk, rms):
                     return
-
-                # 通常のストリーミング処理
-                self._stream_chunk_counter += 1
-
-                # 前回からの経過時間を計算
-                current_time = time.time()
-                dt_ms = (current_time - self._last_feed_time) * 1000
-                self._last_feed_time = current_time
-
-                # RMS記録（統計用）
-                if self.is_user_speaking:
-                    self.turn_rms_values.append(rms)
-
-                # ログ出力（頻度を下げる：10チャンクに1回、最初のチャンク、またはRMS閾値超過時）
-                should_log_info = (
-                    self._stream_chunk_counter % 10 == 0
-                    or self._stream_chunk_counter == 1
-                    or rms > self.BARGE_IN_THRESHOLD
-                )
-                if should_log_info:
-                    self.logger.info(
-                        f"STREAMING_FEED: idx={self._stream_chunk_counter} dt={dt_ms:.1f}ms call_id={effective_call_id} len={len(pcm16k_chunk)} rms={rms}"
-                    )
-                else:
-                    self.logger.debug(
-                        f"STREAMING_FEED: idx={self._stream_chunk_counter} dt={dt_ms:.1f}ms"
-                    )
-
-                # 【診断用】16kHz変換後、on_new_audio呼び出し直前のRMS値確認
-                try:
-                    rms_16k = audioop.rms(pcm16k_chunk, 2)
-                    if not hasattr(self, "_rms_16k_debug_count"):
-                        self._rms_16k_debug_count = 0
-                    if self._rms_16k_debug_count < 50:
-                        import struct
-
-                        samples_16k = struct.unpack(
-                            f"{len(pcm16k_chunk)//2}h", pcm16k_chunk
-                        )
-                        max_sample_16k = (
-                            max(abs(s) for s in samples_16k) if samples_16k else 0
-                        )
-                        self.logger.info(
-                            f"[RTP_AUDIO_RMS] call_id={effective_call_id} stage=16khz_resample len={len(pcm16k_chunk)} rms={rms_16k} max_amplitude={max_sample_16k}"
-                        )
-                        # 最初の5サンプルをログ出力
-                        if len(samples_16k) >= 5:
-                            self.logger.info(
-                                f"[RTP_AUDIO_SAMPLES] call_id={effective_call_id} stage=16khz first_5_samples={samples_16k[:5]}"
-                            )
-                        self._rms_16k_debug_count += 1
-                    else:
-                        # 50回以降はRMS値のみ（頻度を下げる：10回に1回）
-                        if self._rms_16k_debug_count % 10 == 0:
-                            self.logger.info(
-                                f"[RTP_AUDIO_RMS] call_id={effective_call_id} stage=16khz_resample rms={rms_16k}"
-                            )
-                        self._rms_16k_debug_count += 1
-                except Exception as e:
-                    self.logger.debug(
-                        f"[RTP_AUDIO_RMS] Failed to calculate RMS: {e}"
-                    )
-
-                # 【追加】ASR送信前のRMSログ（間引き出力）
-                try:
-                    if hasattr(self, "_stream_chunk_counter"):
-                        # 間引き: 50チャンクに1回ログ
-                        if self._stream_chunk_counter % 50 == 0:
-                            try:
-                                asr_rms = audioop.rms(pcm16k_chunk, 2)
-                            except Exception:
-                                asr_rms = -1
-                            self.logger.info(
-                                f"[ASR_INPUT_RMS] call_id={effective_call_id} rms={asr_rms} chunk_idx={self._stream_chunk_counter}"
-                            )
-                            # 【強制出力】標準出力に出して即時確認（loggerに依存しない）
-                            try:
-                                print(
-                                    f"DEBUG_PRINT: call_id={effective_call_id} ASR_INPUT_RMS={asr_rms} chunk_idx={self._stream_chunk_counter}",
-                                    flush=True,
-                                )
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-
-                # ASRへ送信（エラーハンドリング付き）
-                try:
-                    self.logger.info(
-                        f"[ASR_DEBUG] Calling on_new_audio with {len(pcm16k_chunk)} bytes (streaming_enabled=True, call_id={effective_call_id})"
-                    )
-                    self.ai_core.on_new_audio(effective_call_id, pcm16k_chunk)
-                except Exception as e:
-                    self.logger.error(f"ASR feed error: {e}", exc_info=True)
-
-                # Google Streaming ASRへ音声を送信
-                # デバッグ: ASRハンドラーの状態を確認
-                self.logger.debug(
-                    f"[ASR_DEBUG] asr_handler_enabled={self.asr_handler_enabled}, get_or_create_handler={get_or_create_handler is not None}"
-                )
-
-                if self.asr_handler_enabled and get_or_create_handler:
-                    try:
-                        # get_or_create_handlerで取得（プロセス間で共有されないため、自プロセス内で作成）
-                        handler = get_or_create_handler(effective_call_id)
-                        self.logger.debug(
-                            f"[ASR_DEBUG] handler={handler}, handler.asr={handler.asr if handler else None}"
-                        )
-
-                        # 初回のみon_incoming_call()を呼ぶ（asrがNoneの場合）
-                        if handler and handler.asr is None:
-                            self.logger.info(
-                                f"[ASR_HOOK] Calling on_incoming_call() for call_id={effective_call_id}"
-                            )
-                            handler.on_incoming_call()
-                            self.logger.info(
-                                f"[ASR_HOOK] ASR handler on_incoming_call() executed for call_id={effective_call_id}"
-                            )
-
-                        # 音声データを送信
-                        if handler and hasattr(handler, "on_audio_chunk"):
-                            handler.on_audio_chunk(pcm16k_chunk)
-                            self.logger.debug(
-                                f"[ASR_DEBUG] Audio chunk sent to ASR handler (len={len(pcm16k_chunk)})"
-                            )
-                    except Exception as e:
-                        self.logger.error(
-                            f"ASR handler feed error: {e}", exc_info=True
-                        )
-                else:
-                    self.logger.debug(
-                        f"[ASR_DEBUG] ASR handler disabled or not available (enabled={self.asr_handler_enabled}, available={get_or_create_handler is not None})"
-                    )
-
-                # ストリーミングモードではここで処理終了
-                # （従来のバッファリングロジックはスキップ）
-                return
 
             # --- バッファリング（非ストリーミングモード） ---
             # 初回シーケンス再生中は ASR をブロック（000→001→002 が必ず流れるように）
@@ -1047,154 +739,12 @@ class GatewayASRManager:
     async def handle_asr_result(
         self, text: str, audio_duration: float, inference_time: float, end_to_text_delay: float
     ):
-        # 初回シーケンス再生中は ASR/TTS をブロック（000→001→002 が必ず流れるように）
-        if self.initial_sequence_playing:
-            return
-
-        if not text:
-            return
-
-        # 幻聴フィルター（AICoreのロジックを再利用）
-        if self.ai_core._is_hallucination(text):
-            self.logger.debug(">> Ignored hallucination (noise)")
-            return
-
-        # ユーザー発話のturn_indexをインクリメント
-        self.user_turn_index += 1
-
-        # 通話開始からの経過時間を計算
-        elapsed_from_call_start_ms = 0
-        if self.call_start_time is not None:
-            elapsed_from_call_start_ms = int((time.time() - self.call_start_time) * 1000)
-
-        # テキスト正規化（「もしもし」補正など）
-        effective_call_id = self._get_effective_call_id()
-        raw_text = text
-        normalized_text, rule_applied = normalize_transcript(
-            effective_call_id,
-            raw_text,
-            self.user_turn_index,
-            elapsed_from_call_start_ms,
+        await self.stream_handler.handle_asr_result(
+            text,
+            audio_duration,
+            inference_time,
+            end_to_text_delay,
         )
-
-        # ログ出力（常にINFOで出力）
-        self.logger.info(f"ASR_RAW: '{raw_text}'")
-        if rule_applied:
-            self.logger.info(f"ASR_NORMALIZED: '{normalized_text}' (rule={rule_applied})")
-        else:
-            self.logger.info(f"ASR_NORMALIZED: '{normalized_text}' (rule=NONE)")
-
-        # 以降は正規化されたテキストを使用
-        text = normalized_text
-
-        # ASR反応を検出したらフラグファイルを作成（Luaスクリプト用）
-        if effective_call_id and text.strip():
-            try:
-                flag_file = Path(f"/tmp/asr_response_{effective_call_id}.flag")
-                flag_file.touch()
-                self.logger.info(
-                    f"[ASR_RESPONSE] Created ASR response flag: {flag_file} (text: {text[:50]})"
-                )
-            except Exception as e:
-                self.logger.warning(
-                    f"[ASR_RESPONSE] Failed to create ASR response flag: {e}"
-                )
-
-        # 🔹 リアルタイム更新: ユーザー発話をConsoleに送信
-        if effective_call_id and text.strip():
-            try:
-                event = {
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "role": "USER",
-                    "text": text,
-                }
-                # 非同期タスクとして実行（ブロックしない）
-                asyncio.create_task(self._push_console_update(effective_call_id, event=event))
-            except Exception as e:
-                self.logger.warning(f"[REALTIME_PUSH] Failed to send user speech event: {e}")
-
-        # ユーザー発話時刻を記録（無音検出用、time.monotonic()で統一）
-        now = time.monotonic()
-        self._last_user_input_time[effective_call_id] = now
-        # no_input_streakをリセット（ユーザーが発話したので）
-        state = self.ai_core._get_session_state(effective_call_id)
-        caller_number = getattr(self.ai_core, "caller_number", None) or "未設定"
-
-        # 【デバッグ】音声アクティビティ検知
-        detected_speech = bool(text and text.strip())
-        self.logger.debug(
-            f"[on_audio_activity] call_id={effective_call_id}, detected_speech={detected_speech}, text={text[:30] if text else 'None'}, resetting_timer"
-        )
-
-        # 音声が受信された際に無音検知タイマーをリセットして再スケジュール
-        if detected_speech:
-            self.logger.debug(
-                f"[on_audio_activity] Resetting no_input_timer for call_id={effective_call_id}"
-            )
-            await self._start_no_input_timer(effective_call_id)
-
-        if text.strip() in self.NO_INPUT_SILENT_PHRASES:
-            self.logger.info(
-                f"[NO_INPUT] call_id={effective_call_id} caller={caller_number} reset by filler '{text.strip()}'"
-            )
-            state.no_input_streak = 0
-            self._no_input_elapsed[effective_call_id] = 0.0
-        elif state.no_input_streak > 0:
-            self.logger.info(
-                f"[NO_INPUT] call_id={effective_call_id} caller={caller_number} streak reset (user input detected: {text[:30]})"
-            )
-            state.no_input_streak = 0
-            self._no_input_elapsed[effective_call_id] = 0.0
-
-        # Intent方式は廃止されました。dialogue_flow方式を使用してください
-        from libertycall.gateway.text_utils import get_response_template
-
-        # Intent方式は削除されました。デフォルト処理
-        intent = "UNKNOWN"
-        self.logger.debug(f"Intent: {intent} (deprecated)")
-
-        # デフォルト応答
-        resp_text = get_response_template("114")  # デフォルト応答
-        should_transfer = False  # デフォルトでは転送しない
-
-        # 状態更新
-        state_label = (intent or self.current_state).lower()
-        self.current_state = state_label
-        self._record_dialogue("ユーザー", text)
-        self._append_console_log("user", text, state_label)
-
-        if resp_text:
-            self._record_dialogue("AI", resp_text)
-            self._append_console_log("ai", resp_text, self.current_state)
-
-        # TTS生成
-        tts_audio_24k = None
-        if hasattr(self.ai_core, "use_gemini_tts") and self.ai_core.use_gemini_tts:
-            tts_audio_24k = self._synthesize_text_sync(resp_text)
-
-        # TTSキューに追加
-        if tts_audio_24k:
-            ulaw_response = pcm24k_to_ulaw8k(tts_audio_24k)
-            chunk_size = 160
-            for i in range(0, len(ulaw_response), chunk_size):
-                self.tts_queue.append(ulaw_response[i : i + chunk_size])
-            self.logger.debug(">> TTS Queued")
-            self.is_speaking_tts = True
-
-        # 転送処理
-        if should_transfer:
-            self.logger.info(f">> TRANSFER REQUESTED to {OPERATOR_NUMBER}")
-            # 転送処理を実行
-            effective_call_id = self._get_effective_call_id()
-            self._handle_transfer(effective_call_id)
-
-        # ログ出力（発話長、推論時間、遅延時間）
-        # ★ turn_id管理: ストリーミングモードでのユーザー発話カウンター（非ストリーミングモードと統一）
-        text_norm = normalize_text(text) if text else ""
-        self.logger.info(
-            f"STREAMING_TURN {self.turn_id}: audio={audio_duration:.2f}s / infer={inference_time:.3f}s / delay={end_to_text_delay:.3f}s -> '{text_norm}' (intent={intent})"
-        )
-        self.turn_id += 1
 
 
 class ESLAudioReceiver:
