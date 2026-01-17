@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict
 
-from .state_store import get_session_state
+from ..core.state_store import get_session_state
 
 
 def save_transcript_event(

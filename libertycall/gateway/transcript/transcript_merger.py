@@ -5,7 +5,7 @@ import logging
 import time
 from typing import Optional, Tuple
 
-from .prompt_factory import render_templates
+from ..dialogue.prompt_factory import render_templates
 from .transcript_file_manager import TranscriptFileManager
 
 

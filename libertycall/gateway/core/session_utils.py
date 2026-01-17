@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
-from .text_utils import TEMPLATE_CONFIG, normalize_text
+from ..common.text_utils import TEMPLATE_CONFIG, normalize_text
 from .state_store import get_session_state
 
 logger = logging.getLogger(__name__)

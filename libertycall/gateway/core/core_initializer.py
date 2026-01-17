@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from typing import Any, Dict
 
-from .flow_engine import FlowEngine
+from ..dialogue.flow_engine import FlowEngine
 
 
 def init_core_state(core, client_id: str) -> None:

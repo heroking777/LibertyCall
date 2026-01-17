@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Optional
 
-from .text_utils import get_response_template
+from ..common.text_utils import get_response_template
 
 
 def render_templates_from_ids(

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import List, Tuple
 
-from .state_store import get_session_state
-from .text_utils import normalize_text
+from ..core.state_store import get_session_state
+from ..common.text_utils import normalize_text
 from .dialogue_phases import (
     handle_entry_phase,
     handle_entry_confirm_phase,

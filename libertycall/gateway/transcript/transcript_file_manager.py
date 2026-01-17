@@ -5,7 +5,7 @@ import logging
 import time
 from typing import Dict, Optional, Tuple
 
-from .text_utils import normalize_text_for_comparison
+from ..common.text_utils import normalize_text_for_comparison
 
 
 class TranscriptFileManager:

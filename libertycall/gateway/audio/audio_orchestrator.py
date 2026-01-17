@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-from .prompt_factory import render_templates
+from ..dialogue.prompt_factory import render_templates
 
 
 def break_playback(core, call_id: str) -> None:

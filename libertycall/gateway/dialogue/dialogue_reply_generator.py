@@ -6,7 +6,7 @@ from typing import List, Tuple
 
 from .dialogue_flow import get_response as dialogue_get_response
 from .prompt_factory import render_templates
-from .state_store import get_session_state
+from ..core.state_store import get_session_state
 from .dialogue_orchestrator import run_conversation_flow
 from .dialogue_handoff import handle_handoff_confirm
 

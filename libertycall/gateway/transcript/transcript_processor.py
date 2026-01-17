@@ -5,8 +5,8 @@ import logging
 import time
 from typing import Optional
 
-from .text_utils import normalize_text
-from .state_store import get_session_state
+from ..common.text_utils import normalize_text
+from ..core.state_store import get_session_state
 from .transcript_db_client import (
     save_transcript_event,
     append_user_call_log,
@@ -14,8 +14,8 @@ from .transcript_db_client import (
 )
 from .transcript_file_manager import TranscriptFileManager
 from .transcript_notifier import notify_event
-from .intent_classifier import classify_simple_intent
-from .audio_orchestrator import play_audio_response
+from ..dialogue.intent_classifier import classify_simple_intent
+from ..audio.audio_orchestrator import play_audio_response
 from .transcript_merger import merge_transcript
 
 

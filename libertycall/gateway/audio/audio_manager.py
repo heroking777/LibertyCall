@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from .text_utils import get_template_config
+from ..common.text_utils import get_template_config
 from .tts_utils import (
     synthesize_text_with_gemini,
     synthesize_template_audio,

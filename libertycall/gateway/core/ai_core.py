@@ -9,8 +9,8 @@ import os
 os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", "/opt/libertycall/config/google-credentials.json")
 from typing import Optional, Tuple, List
 
-from .text_utils import normalize_text
-from .flow_engine import FlowEngine
+from ..common.text_utils import normalize_text
+from ..dialogue.flow_engine import FlowEngine
 from .call_manager import (
     on_call_start as manage_call_start,
     on_call_end as manage_call_end,
@@ -19,7 +19,7 @@ from .call_manager import (
     trigger_transfer_if_needed as manage_trigger_transfer_if_needed,
     schedule_auto_hangup as manage_schedule_auto_hangup,
 )
-from .dialogue_engine import (
+from ..dialogue.dialogue_engine import (
     generate_reply,
     run_conversation_flow,
     handle_entry_phase,
@@ -33,33 +33,33 @@ from .dialogue_engine import (
     handle_handoff_phase,
     handle_handoff_confirm,
 )
-from .dialogue_handler import process_dialogue as handle_process_dialogue, on_asr_error
-from .prompt_factory import render_templates_from_ids, render_templates
-from .intent_classifier import classify_simple_intent, is_hallucination
-from .flow_manager import reload_flow as reload_flow_manager
-from .asr_logic import (
+from ..dialogue.dialogue_handler import process_dialogue as handle_process_dialogue, on_asr_error
+from ..dialogue.prompt_factory import render_templates_from_ids, render_templates
+from ..dialogue.intent_classifier import classify_simple_intent, is_hallucination
+from ..dialogue.flow_manager import reload_flow as reload_flow_manager
+from ..asr.asr_logic import (
     load_phrase_hints,
     enable_asr as enable_asr_logic,
     cleanup_stale_partials,
     check_for_transcript as check_for_transcript_logic,
 )
-from .audio_orchestrator import (
+from ..audio.audio_orchestrator import (
     break_playback,
     play_audio_response,
     play_template_sequence,
     send_playback_request_http,
 )
-from .activity_monitor import start_activity_monitor
-from .asr_manager import on_new_audio as handle_new_audio, init_asr
+from ..common.activity_monitor import start_activity_monitor
+from ..asr.asr_manager import on_new_audio as handle_new_audio, init_asr
 from .config_loader import load_flow, load_json, load_keywords_from_config
 from .core_initializer import init_core_state
-from .audio_manager import (
+from ..audio.audio_manager import (
     synthesize_text,
     synthesize_template_audio_for_core,
     synthesize_template_sequence_for_core,
 )
 from .state_logic import ConversationState, MisunderstandingGuard, HandoffStateMachine
-from .transcript_handler import handle_transcript
+from ..transcript.transcript_handler import handle_transcript
 from .session_utils import save_session_summary_from_core, save_debug_wav, save_transcript_event_from_core
 from .resource_manager import cleanup_call, cleanup_asr_instance
 from .state_store import set_call_id

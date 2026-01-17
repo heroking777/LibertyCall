@@ -5,7 +5,7 @@ import logging
 from typing import Any, Callable, Dict, List, Tuple
 
 from .state_validators import ConversationState
-from .text_utils import interpret_handoff_reply
+from ..common.text_utils import interpret_handoff_reply
 
 logger = logging.getLogger(__name__)
 

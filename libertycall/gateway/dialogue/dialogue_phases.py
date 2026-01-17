@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List, Tuple
 
-from .text_utils import normalize_text, contains_keywords
+from ..common.text_utils import normalize_text, contains_keywords
 
 
 def handle_entry_phase(

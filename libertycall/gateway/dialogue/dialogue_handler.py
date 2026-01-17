@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional, Tuple, List
 
-from .state_store import get_session_state
+from ..core.state_store import get_session_state
 from .prompt_factory import render_templates
 
 

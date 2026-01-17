@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from typing import List, Tuple
 
-from .text_utils import normalize_text, contains_keywords
+from ..common.text_utils import normalize_text, contains_keywords
 from .prompt_factory import render_templates
 
 

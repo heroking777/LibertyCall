@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 
-from .state_store import get_session_state
+from ..core.state_store import get_session_state
 
 
 def start_activity_monitor(core) -> None:

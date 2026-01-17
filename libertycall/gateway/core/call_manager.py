@@ -32,7 +32,7 @@ from .call_status_logger import (
 )
 from .state_logic import ConversationState
 from .state_store import get_session_state
-from .prompt_factory import render_templates
+from ..dialogue.prompt_factory import render_templates
 
 
 def on_call_end(core, call_id: Optional[str], source: str = "unknown") -> None:

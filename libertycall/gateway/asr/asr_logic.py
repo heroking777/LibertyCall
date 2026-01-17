@@ -7,8 +7,8 @@ import os
 import time
 from typing import List, Optional, Tuple
 
-from .flow_engine import FlowEngine
-from .state_store import get_session_state
+from ..dialogue.flow_engine import FlowEngine
+from ..core.state_store import get_session_state
 
 
 def load_phrase_hints(core) -> List[str]:
