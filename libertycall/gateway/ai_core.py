@@ -36,6 +36,7 @@ from .dialogue_engine import (
     handle_handoff_phase,
     handle_handoff_confirm,
 )
+from .dialogue_handler import process_dialogue as handle_process_dialogue, on_asr_error
 from .prompt_factory import render_templates_from_ids, render_templates
 from .audio_orchestrator import (
     break_playback,
@@ -560,127 +561,13 @@ class AICore:
         return generate_reply(self, call_id, raw_text)
 
     def process_dialogue(self, pcm16k_bytes):
-        # 0. WAV保存（デバッグ用、Whisperに渡す直前の音声を保存）
-        if not self._wav_saved:  # 1通話あたり最初の1回だけ保存
-            self._save_debug_wav(pcm16k_bytes)
-        
-        # 1. 音声認識 (ASR)
-        text = self.asr_model.transcribe_pcm16(pcm16k_bytes)  # type: ignore[union-attr]
-        self.logger.info(f"ASR Result: '{text}'")
-
-        # ★幻聴フィルター
-        if self._is_hallucination(text):
-            self.logger.debug(">> Ignored hallucination (noise)")
-            # ログ用に text と 'IGNORE' を返す
-            return None, False, text, "IGNORE", ""
-        state_key = self.call_id or "BATCH_CALL"
-        resp_text, template_ids, intent, transfer_requested = self._generate_reply(state_key, text)
-        self.logger.info(
-            "CONV_FLOW_BATCH: call_id=%s phase=%s intent=%s templates=%s",
-            state_key,
-            self._get_session_state(state_key).phase,
-            intent,
-            template_ids,
-        )
-        if transfer_requested:
-            self._trigger_transfer(state_key)
-        should_transfer = transfer_requested
-
-        # 4. 音声合成 (TTS) - template_ids ベースで合成
-        tts_audio = None
-        if template_ids and self.use_gemini_tts:
-            tts_audio = self._synthesize_template_sequence(template_ids)
-            if not tts_audio:
-                self.logger.debug("TTS synthesis failed for template_ids=%s", template_ids)
-        elif not resp_text:
-            self.logger.debug("No response text generated; skipping TTS synthesis.")
-        else:
-            self.logger.debug("TTS クライアント未初期化のため音声合成をスキップしました。")
-        
-        # 音声データ, 転送フラグ, テキスト, 意図 の4つを返す
-        return tts_audio, should_transfer, text, intent, resp_text
+        return handle_process_dialogue(self, pcm16k_bytes)
 
     def on_new_audio(self, call_id: str, pcm16k_bytes: bytes) -> None:
         handle_new_audio(self, call_id, pcm16k_bytes)
 
     def _on_asr_error(self, call_id: str, error: Exception) -> None:
-        """
-        GoogleASR がストリームエラー（Audio Timeout など）を起こしたときに呼ばれる。
-        無音で終わらないように、フォールバック発話＋必要なら担当者ハンドオフに寄せる。
-        
-        :param call_id: 通話ID
-        :param error: エラーオブジェクト（エラータイプによって処理を変える可能性がある）
-        
-        注意:
-        - Audio Timeout などの一時的なエラー: フォールバック発話 + ハンドオフ
-        - 認証エラーなどの永続的なエラー: ログのみ（フォールバック発話は出さない）
-        - tts_callback が未設定の場合: 転送のみ実行（発話なし）
-        """
-        error_type = type(error).__name__
-        error_msg = str(error)
-        self.logger.warning(
-            f"ASR_ERROR_HANDLER: call_id={call_id} error_type={error_type} error={error_msg!r}"
-        )
-        key = call_id or "GLOBAL_CALL"
-        state = self._get_session_state(call_id)
-        
-        # すでにハンドオフ完了状態（担当者への転送フローを出し終わっている）なら何もしない
-        # ※この場合だけ「二重に転送案内をしゃべらない」ようにする
-        if state.handoff_state == "done" and state.transfer_requested:
-            self.logger.info(f"ASR_ERROR_HANDLER: handoff already done (call_id={call_id})")
-            return
-        
-        # 認証エラーなどの永続的なエラーの場合は、フォールバック発話を出さない
-        # （ユーザーに誤解を与えないため）
-        is_permanent_error = any(keyword in error_msg.lower() for keyword in [
-            "credentials", "authentication", "permission", "unauthorized",
-            "forbidden", "not found", "invalid"
-        ])
-        
-        if is_permanent_error:
-            self.logger.error(
-                f"ASR_ERROR_HANDLER: permanent error detected (call_id={call_id}), "
-                f"skipping fallback speech. Error: {error_msg}"
-            )
-            # 永続的なエラーの場合は転送も実行しない（システムエラーとして扱う）
-            return
-        
-        # フォールバック文言（テンプレではなく生テキストで OK）
-        fallback_text = "恐れ入ります。うまくお話をお伺いできませんでしたので、担当者におつなぎいたします。"
-        
-        # 状態を「転送要求あり」にしておく
-        state.handoff_state = "done"
-        state.handoff_retry_count = 0
-        state.handoff_prompt_sent = True
-        state.transfer_requested = True
-        self._trigger_transfer_if_needed(call_id, state)
-        state.last_intent = "HANDOFF_ERROR_FALLBACK"
-        
-        # gateway 側に「転送前の一言」として渡す
-        # 注意: tts_callback が未設定の場合でも転送は実行される（発話なし）
-        if hasattr(self, "tts_callback") and self.tts_callback:  # type: ignore[attr-defined]
-            try:
-                # 081/082 に合わせたニュアンスなので template_ids は ["081", "082"] にしておく
-                template_ids = ["081", "082"]
-                try:
-                    # 再生予定テキスト（優先して生テキスト、なければテンプレから取得）
-                    self.current_system_text = fallback_text or self._render_templates(template_ids) or ""
-                except Exception:
-                    try:
-                        self.current_system_text = fallback_text or ""
-                    except Exception:
-                        self.current_system_text = ""
-                self.tts_callback(call_id, fallback_text, template_ids, True)  # type: ignore[misc, attr-defined]
-                self.logger.info(
-                    f"ASR_ERROR_HANDLER: TTS fallback sent (call_id={call_id}, text={fallback_text})"
-                )
-            except Exception as e:
-                self.logger.exception(f"ASR_ERROR_HANDLER: tts_callback error (call_id={call_id}): {e}")
-        else:
-            self.logger.warning(
-                f"ASR_ERROR_HANDLER: tts_callback not set (call_id={call_id}), "
-                f"transfer will proceed without fallback speech"
-            )
+        on_asr_error(self, call_id, error)
 
     def on_transcript(self, call_id: str, text: str, is_final: bool = True, **kwargs) -> Optional[str]:
         return handle_transcript(self, call_id, text, is_final=is_final, **kwargs)
