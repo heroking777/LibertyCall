@@ -2,11 +2,87 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 import traceback
 
 from .google_asr import GoogleASR
+
+
+def init_asr(core) -> None:
+    asr_provider = os.getenv("LC_ASR_PROVIDER", "google").lower()
+    if asr_provider not in ["google", "whisper"]:
+        raise ValueError(
+            f"未知のASRプロバイダ: {asr_provider}\n"
+            "有効な値: 'google' または 'whisper'\n"
+            "（'local' はサポートされていません。'whisper' を使用してください。）"
+        )
+
+    core.asr_provider = asr_provider
+    core.logger.info("AICore: ASR provider = %s", asr_provider)
+
+    core.streaming_enabled = os.getenv("LC_ASR_STREAMING_ENABLED", "0") == "1"
+
+    if core.init_clients:
+        if asr_provider == "google":
+            phrase_hints = core._load_phrase_hints()
+            try:
+                core.asr_model = GoogleASR(
+                    language_code="ja",
+                    sample_rate=16000,
+                    phrase_hints=phrase_hints,
+                    ai_core=core,
+                    error_callback=core._on_asr_error,
+                )
+                core.logger.info("AICore: GoogleASR を初期化しました")
+                core._phrase_hints = phrase_hints
+            except Exception as exc:
+                error_msg = str(exc)
+                if "was not found" in error_msg or "credentials" in error_msg.lower():
+                    core.logger.error(
+                        "AICore: GoogleASR の初期化に失敗しました（認証エラー）: %s\n"
+                        "環境変数 LC_GOOGLE_PROJECT_ID と LC_GOOGLE_CREDENTIALS_PATH を確認してください。\n"
+                        "ASR機能は無効化されますが、GatewayはRTP受信を継続します。",
+                        error_msg,
+                    )
+                else:
+                    core.logger.error(
+                        "AICore: GoogleASR の初期化に失敗しました: %s\n"
+                        "ASR機能は無効化されますが、GatewayはRTP受信を継続します。",
+                        error_msg,
+                    )
+                core.asr_model = None
+                core.logger.warning("AICore: ASR機能なしでGatewayを起動します（RTP受信は継続されます）")
+        elif asr_provider == "whisper":
+            from libertycall.asr.whisper_local import WhisperLocalASR  # type: ignore[import-untyped]
+
+            core.logger.debug("AICore: Loading Whisper via WhisperLocalASR...")
+            core.asr_model = WhisperLocalASR(
+                model_name="base",
+                input_sample_rate=16000,
+                language="ja",
+                device="cpu",
+                compute_type="int8",
+                temperature=0.0,
+                vad_filter=False,
+                vad_parameters=None,
+            )
+            core.logger.info("AICore: WhisperLocalASR を初期化しました")
+
+        if core.streaming_enabled:
+            core.logger.info("AICore: ストリーミングASRモード有効")
+
+        core._init_tts()
+        core.logger.info(
+            "ASR_BOOT: provider=%s streaming_enabled=%s",
+            asr_provider,
+            core.streaming_enabled,
+        )
+    else:
+        core.logger.info(
+            "AICore: init_clients=False のため ASR/TTS 初期化をスキップします (simulation mode)"
+        )
 
 
 def on_new_audio(core, call_id: str, pcm16k_bytes: bytes) -> None:
