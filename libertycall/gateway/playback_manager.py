@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 from typing import Optional, TYPE_CHECKING
-
-import wave
 
 from libertycall.gateway.tts_sender import TTSSender
 from libertycall.gateway.playback_controller import PlaybackController
@@ -85,6 +84,92 @@ class GatewayPlaybackManager:
 
     async def _handle_playback_stop(self, call_id: str) -> None:
         await self.controller.handle_playback_stop(call_id)
+
+    def _load_wav_as_ulaw8k(self, wav_path: Path) -> bytes:
+        return self.sequencer._load_wav_as_ulaw8k(wav_path)
+
+    def _generate_silence_ulaw(self, duration_sec: float) -> bytes:
+        return self.sequencer._generate_silence_ulaw(duration_sec)
+
+    async def _play_silence_warning(self, call_id: str, warning_interval: float) -> None:
+        """
+        無音時に流すアナウンス（音源ファイルから再生）
+
+        :param call_id: 通話ID
+        :param warning_interval: 警告間隔（5.0, 15.0, 25.0）
+        """
+        manager = self
+        try:
+            effective_client_id = (
+                manager.client_id or manager.default_client_id or "000"
+            )
+            audio_file_map = {
+                5.0: "000-004.wav",
+                15.0: "000-005.wav",
+                25.0: "000-006.wav",
+            }
+            audio_filename = audio_file_map.get(warning_interval)
+
+            if not audio_filename:
+                self.logger.warning(
+                    "[SILENCE_WARNING] Unknown warning_interval=%s, skipping",
+                    warning_interval,
+                )
+                return
+
+            audio_dir = (
+                Path(manager.audio_manager.project_root)
+                / "clients"
+                / effective_client_id
+                / "audio"
+            )
+            audio_path = audio_dir / audio_filename
+
+            if not audio_path.exists():
+                self.logger.warning(
+                    "[SILENCE_WARNING] Audio file not found: %s (client_id=%s, interval=%.0fs)",
+                    audio_path,
+                    effective_client_id,
+                    warning_interval,
+                )
+                return
+
+            self.logger.info(
+                "[SILENCE_WARNING] call_id=%s interval=%.0fs audio_file=%s client_id=%s",
+                call_id,
+                warning_interval,
+                audio_path,
+                effective_client_id,
+            )
+
+            try:
+                ulaw_payload = self._load_wav_as_ulaw8k(audio_path)
+                chunk_size = 160
+                for i in range(0, len(ulaw_payload), chunk_size):
+                    manager.tts_queue.append(ulaw_payload[i : i + chunk_size])
+
+                manager.is_speaking_tts = True
+                manager._tts_sender_wakeup.set()
+
+                self.logger.debug(
+                    "[SILENCE_WARNING] Enqueued %s chunks from %s",
+                    len(ulaw_payload) // chunk_size,
+                    audio_path,
+                )
+            except Exception as e:
+                self.logger.error(
+                    "[SILENCE_WARNING] Failed to load audio file %s: %s",
+                    audio_path,
+                    e,
+                    exc_info=True,
+                )
+        except Exception as e:
+            self.logger.error(
+                "Silence warning playback failed for call_id=%s: %s",
+                call_id,
+                e,
+                exc_info=True,
+            )
 
     def _schedule_playback_reset(self, call_id: str, audio_file: str) -> None:
         """Schedule is_playing reset based on wav duration with fallback timeout."""
