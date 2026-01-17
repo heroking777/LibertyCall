@@ -45,6 +45,7 @@ from libertycall.gateway.gateway_event_router import GatewayEventRouter
 from libertycall.gateway.gateway_config_manager import GatewayConfigManager
 from libertycall.gateway.gateway_activity_monitor import GatewayActivityMonitor
 from libertycall.gateway.gateway_console_manager import GatewayConsoleManager
+from libertycall.gateway.gateway_esl_manager import GatewayESLManager
 from libertycall.gateway.gateway_rtp_protocol import RTPPacketBuilder, RTPProtocol
 from libertycall.console_bridge import console_bridge
 from gateway.asr_controller import app as asr_app, set_gateway_instance
@@ -101,6 +102,7 @@ class RealtimeGateway:
         self.router = GatewayEventRouter(self)
         self.console_manager = GatewayConsoleManager(self)
         self.activity_monitor = GatewayActivityMonitor(self)
+        self.esl_manager = GatewayESLManager(self)
         self.monitor_manager = GatewayMonitorManager(
             self,
             RTPProtocol,
@@ -122,7 +124,7 @@ class RealtimeGateway:
         
         # FreeSWITCH ESL接続を初期化（再生制御・割り込み用）
         self.esl_connection = None
-        self._init_esl_connection()
+        self.esl_manager._init_esl_connection()
         self.logger.info(
             "HANGUP_CALLBACK_SET: hangup_callback=%s",
             "set" if self.ai_core.hangup_callback else "none"
@@ -156,6 +158,7 @@ class RealtimeGateway:
             "_record_dialogue": self.console_manager.record_dialogue,
             "_build_handover_summary": self.console_manager.build_handover_summary,
             "_generate_call_id_from_uuid": self.console_manager.generate_call_id_from_uuid,
+            "_init_esl_connection": self.esl_manager._init_esl_connection,
         }
         if name in alias_map:
             return alias_map[name]
@@ -166,6 +169,7 @@ class RealtimeGateway:
             self.utils,
             self.activity_monitor,
             self.console_manager,
+            self.esl_manager,
             self.session_handler,
             self.audio_processor,
             self.monitor_manager,
@@ -190,9 +194,13 @@ class RealtimeGateway:
                 result = self.ai_core.check_for_transcript(effective_call_id)
                 poll_count += 1
                 if result is not None:
-                    self.logger.debug(f"STREAMING_LOOP: polled call_id={effective_call_id} result=FOUND (poll_count={poll_count})")
+                    self.logger.debug(
+                        "STREAMING_LOOP: polled call_id=%s result=FOUND (poll_count=%s)",
+                        effective_call_id,
+                        poll_count,
+                    )
                     text, audio_duration, inference_time, end_to_text_delay = result
-                    await self._process_streaming_transcript(
+                    await self.asr_manager.handle_asr_result(
                         text, audio_duration, inference_time, end_to_text_delay
                     )
                 # ポーリングの詳細ログはDEBUG（スパム防止）
@@ -212,35 +220,6 @@ class RealtimeGateway:
         self.logger.debug("RealtimeGateway: transfer callback invoked (%s)", state_label)
         self._handle_transfer(call_id)
 
-    def _init_esl_connection(self) -> None:
-        """
-        FreeSWITCH Event Socket Interface (ESL) に接続
-        
-        :return: None
-        """
-        try:
-            from libs.esl.ESL import ESLconnection
-            
-            esl_host = os.getenv("LC_FREESWITCH_ESL_HOST", "127.0.0.1")
-            esl_port = os.getenv("LC_FREESWITCH_ESL_PORT", "8021")
-            esl_password = os.getenv("LC_FREESWITCH_ESL_PASSWORD", "ClueCon")
-            
-            self.logger.info(f"[ESL] Connecting to FreeSWITCH ESL: {esl_host}:{esl_port}")
-            self.esl_connection = ESLconnection(esl_host, esl_port, esl_password)
-            
-            if not self.esl_connection.connected():
-                self.logger.error("[ESL] Failed to connect to FreeSWITCH ESL")
-                self.esl_connection = None
-                return
-            
-            self.logger.info("[ESL] Connected to FreeSWITCH ESL successfully")
-        except ImportError:
-            self.logger.warning("[ESL] ESL module not available, playback interruption will be disabled")
-            self.esl_connection = None
-        except Exception as e:
-            self.logger.exception(f"[ESL] Failed to initialize ESL connection: {e}")
-            self.esl_connection = None
-    
 
 # ========================================
 # Main Entry Point
