@@ -160,6 +160,10 @@ class GatewayUtils:
             gateway._last_user_input_time.pop(old_call_id, None)
             gateway._last_tts_end_time.pop(old_call_id, None)
             gateway._no_input_elapsed.pop(old_call_id, None)
+            if hasattr(gateway, "_active_calls"):
+                gateway._active_calls.discard(old_call_id)
+            if hasattr(gateway, "_initial_sequence_played"):
+                gateway._initial_sequence_played.discard(old_call_id)
             if old_call_id in gateway._no_input_timers:
                 timer_task = gateway._no_input_timers.pop(old_call_id)
                 if timer_task and not timer_task.done():
