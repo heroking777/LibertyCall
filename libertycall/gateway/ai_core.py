@@ -51,15 +51,14 @@ from .audio_orchestrator import (
     send_playback_request_http,
 )
 from .activity_monitor import start_activity_monitor
-from .asr_manager import on_new_audio as handle_new_audio
+from .asr_manager import on_new_audio as handle_new_audio, init_asr
 from .config_loader import load_flow, load_json, load_keywords_from_config
 from .core_initializer import init_core_state
-from .tts_utils import (
-    synthesize_text_with_gemini,
-    synthesize_template_audio,
-    synthesize_template_sequence,
+from .audio_manager import (
+    synthesize_text,
+    synthesize_template_audio_for_core,
+    synthesize_template_sequence_for_core,
 )
-from .google_asr import GoogleASR
 from .state_logic import ConversationState, MisunderstandingGuard, HandoffStateMachine
 from .transcript_handler import handle_transcript
 from .session_utils import (
@@ -75,10 +74,7 @@ from .session_utils import (
 from .resource_manager import cleanup_call, cleanup_asr_instance
 from .state_store import get_session_state, reset_session_state, set_call_id
 
-# 定数定義
 MIN_TEXT_LENGTH_FOR_INTENT = 2  # 「はい」「うん」も判定可能に
-
-
 class AICore:
     # キーワードはインスタンス変数として初期化時にJSONから読み込まれる（後方互換性のためクラス変数としても定義）
     AFTER_085_NEGATIVE_KEYWORDS = []  # 初期化時にJSONから読み込まれる
@@ -94,80 +90,7 @@ class AICore:
         self.client_id = client_id
         init_core_state(self, client_id)
         
-        # ASR プロバイダの選択（デフォルト: google）
-        asr_provider = os.getenv("LC_ASR_PROVIDER", "google").lower()
-        
-        # プロバイダの検証（local を含む不正な値はエラー）
-        if asr_provider not in ["google", "whisper"]:
-            raise ValueError(
-                f"未知のASRプロバイダ: {asr_provider}\n"
-                f"有効な値: 'google' または 'whisper'\n"
-                f"（'local' はサポートされていません。'whisper' を使用してください。）"
-            )
-        
-        self.asr_provider = asr_provider  # プロバイダを属性として保持
-        self.logger.info(f"AICore: ASR provider = {asr_provider}")
-        
-        # ストリーミングモード判定
-        self.streaming_enabled = os.getenv("LC_ASR_STREAMING_ENABLED", "0") == "1"
-        
-        if self.init_clients:
-            # ASR モデルの初期化（プロバイダごとに完全に分離）
-            if asr_provider == "google":
-                # phrase_hints の読み込み
-                phrase_hints = self._load_phrase_hints()
-                
-                try:
-                    self.asr_model = GoogleASR(
-                        language_code="ja",  # universal_speech_modelは"ja"をサポート（"ja-JP"は無効）
-                        sample_rate=16000,  # Gateway側で既に16kHzに変換済み
-                        phrase_hints=phrase_hints,
-                        ai_core=self,  # AICore への参照を渡す（on_transcript 呼び出し用）
-                        error_callback=self._on_asr_error,  # ASR エラー時のコールバック
-                    )
-                    self.logger.info("AICore: GoogleASR を初期化しました")
-                    self._phrase_hints = phrase_hints
-                except Exception as e:
-                    error_msg = str(e)
-                    if "was not found" in error_msg or "credentials" in error_msg.lower():
-                        self.logger.error(
-                            f"AICore: GoogleASR の初期化に失敗しました（認証エラー）: {error_msg}\n"
-                            f"環境変数 LC_GOOGLE_PROJECT_ID と LC_GOOGLE_CREDENTIALS_PATH を確認してください。\n"
-                            f"ASR機能は無効化されますが、GatewayはRTP受信を継続します。"
-                        )
-                    else:
-                        self.logger.error(f"AICore: GoogleASR の初期化に失敗しました: {error_msg}\nASR機能は無効化されますが、GatewayはRTP受信を継続します。")
-                    # エラーを再スローせず、asr_modelをNoneに設定して続行
-                    self.asr_model = None
-                    self.logger.warning("AICore: ASR機能なしでGatewayを起動します（RTP受信は継続されます）")
-            elif asr_provider == "whisper":
-                # WhisperLocalASR は whisper プロバイダ使用時のみインポート（google 使用時は絶対にインポートしない）
-                from libertycall.asr.whisper_local import WhisperLocalASR  # type: ignore[import-untyped]
-                
-                self.logger.debug("AICore: Loading Whisper via WhisperLocalASR...")
-                # WhisperLocalASR を使用（16kHz入力想定）
-                self.asr_model = WhisperLocalASR(
-                    model_name="base",
-                    input_sample_rate=16000,  # Gateway側で既に16kHzに変換済み
-                    language="ja",
-                    device="cpu",
-                    compute_type="int8",
-                    temperature=0.0,
-                    vad_filter=False,
-                    vad_parameters=None
-                )
-                self.logger.info("AICore: WhisperLocalASR を初期化しました")
-            
-            if self.streaming_enabled:
-                self.logger.info("AICore: ストリーミングASRモード有効")
-            
-            # TTS の初期化
-            self._init_tts()
-            
-            # 起動時ログ（ASR_BOOT）を強制的に出力
-            self.logger.info(f"ASR_BOOT: provider={asr_provider} streaming_enabled={self.streaming_enabled}")
-        else:
-            self.logger.info("AICore: init_clients=False のため ASR/TTS 初期化をスキップします (simulation mode)")
+        init_asr(self)
     
     def _load_phrase_hints(self) -> List[str]:
         return load_phrase_hints(self)
@@ -288,56 +211,13 @@ class AICore:
         return render_templates(template_ids)
 
     def _synthesize_text_with_gemini(self, text: str, speaking_rate: float = 1.0, pitch: float = 0.0) -> Optional[bytes]:
-        """
-        Gemini APIを使用してテキストから音声を合成する（日本語音声に最適化）
-        
-        :param text: 音声化するテキスト
-        :param speaking_rate: 話す速度（デフォルト: 1.0）
-        :param pitch: ピッチ（デフォルト: 0.0）
-        :return: 音声データ（bytes）または None
-        """
-        if not self.use_gemini_tts:
-            return None
-        
-        return synthesize_text_with_gemini(text, speaking_rate, pitch)
+        return synthesize_text(self, text, speaking_rate, pitch)
 
     def _synthesize_template_audio(self, template_id: str) -> Optional[bytes]:
-        """
-        テンプレIDから音声を合成する
-        
-        :param template_id: テンプレID
-        :return: 音声データ（bytes）または None
-        """
-        if not self.use_gemini_tts:
-            return None
-        
-        def get_template_config_with_client(template_id: str):
-            # まず self.templates（クライアント固有）から読み込む
-            if self.templates and template_id in self.templates:
-                return self.templates[template_id]
-            # クライアント固有にない場合はグローバルから読み込む
-            return get_template_config(template_id)
-        
-        return synthesize_template_audio(template_id, get_template_config_with_client)
+        return synthesize_template_audio_for_core(self, template_id)
 
     def _synthesize_template_sequence(self, template_ids: List[str]) -> Optional[bytes]:
-        """
-        テンプレIDのリストから順番に音声を合成して結合する
-        
-        :param template_ids: テンプレIDのリスト
-        :return: 結合された音声データ（bytes）または None
-        """
-        if not template_ids:
-            return None
-        
-        def get_template_config_with_client(template_id: str):
-            # まず self.templates（クライアント固有）から読み込む
-            if self.templates and template_id in self.templates:
-                return self.templates[template_id]
-            # クライアント固有にない場合はグローバルから読み込む
-            return get_template_config(template_id)
-        
-        return synthesize_template_sequence(template_ids, get_template_config_with_client)
+        return synthesize_template_sequence_for_core(self, template_ids)
 
     def _append_call_log(self, role: str, text: str, template_id: Optional[str] = None) -> None:
         append_call_log_entry(self, role, text, template_id=template_id)
