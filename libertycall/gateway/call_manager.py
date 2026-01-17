@@ -8,6 +8,7 @@ from typing import Optional
 
 from .state_logic import ConversationState
 from .state_store import get_session_state
+from .prompt_factory import render_templates
 
 
 def on_call_end(core, call_id: Optional[str], source: str = "unknown") -> None:
@@ -273,7 +274,7 @@ def on_call_start(core, call_id: str, client_id: str = None, **kwargs) -> None:
                 )
                 try:
                     try:
-                        core.current_system_text = core._render_templates(["000-002"]) or ""
+                        core.current_system_text = render_templates(["000-002"]) or ""
                     except Exception:
                         core.current_system_text = "000-002"
                 except Exception:
