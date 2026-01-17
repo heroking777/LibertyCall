@@ -40,6 +40,12 @@ from .dialogue_handler import process_dialogue as handle_process_dialogue, on_as
 from .prompt_factory import render_templates_from_ids, render_templates
 from .intent_classifier import classify_simple_intent
 from .flow_manager import reload_flow as reload_flow_manager
+from .asr_logic import (
+    load_phrase_hints,
+    enable_asr as enable_asr_logic,
+    cleanup_stale_partials,
+    check_for_transcript as check_for_transcript_logic,
+)
 from .audio_orchestrator import (
     break_playback,
     play_audio_response,
@@ -122,11 +128,7 @@ class AICore:
                         error_callback=self._on_asr_error,  # ASR エラー時のコールバック
                     )
                     self.logger.info("AICore: GoogleASR を初期化しました")
-                    # 【追加】通話ごとの独立したASRインスタンス管理用辞書
-                    self.asr_instances: Dict[str, GoogleASR] = {}
-                    self.asr_lock = threading.Lock()  # ASRインスタンス作成用ロック（競合状態防止）
-                    self._phrase_hints = phrase_hints  # 新規インスタンス作成時に使用
-                    print("[AICORE_INIT] asr_instances initialized with lock", flush=True)
+                    self._phrase_hints = phrase_hints
                 except Exception as e:
                     error_msg = str(e)
                     if "was not found" in error_msg or "credentials" in error_msg.lower():
@@ -170,28 +172,7 @@ class AICore:
             self.logger.info("AICore: init_clients=False のため ASR/TTS 初期化をスキップします (simulation mode)")
     
     def _load_phrase_hints(self) -> List[str]:
-        """
-        phrase_hints を設定ファイルから読み込む
-        
-        :return: phrase_hints のリスト
-        """
-        try:
-            from libertycall.config.config import ASR_PHRASE_HINTS  # type: ignore[import-untyped]
-            if ASR_PHRASE_HINTS:
-                self.logger.info(f"AICore: phrase_hints を読み込みました: {ASR_PHRASE_HINTS}")
-                return ASR_PHRASE_HINTS
-        except (ImportError, AttributeError):
-            pass
-        
-        # 環境変数から読み込む（カンマ区切り）
-        env_phrase_hints = os.getenv("LC_ASR_PHRASE_HINTS")
-        if env_phrase_hints:
-            hints = [h.strip() for h in env_phrase_hints.split(",") if h.strip()]
-            if hints:
-                self.logger.info(f"AICore: phrase_hints を環境変数から読み込みました: {hints}")
-                return hints
-        
-        return []
+        return load_phrase_hints(self)
     
     def _init_tts(self):
         init_api_clients(self)
@@ -203,56 +184,7 @@ class AICore:
         self._wav_chunk_counter = 0
     
     def enable_asr(self, uuid: str, client_id: Optional[str] = None) -> None:
-        """
-        FreeSWITCHからの通知を受けてASRストリーミングを開始する
-        
-        :param uuid: 通話UUID（FreeSWITCHのcall UUID）
-        :param client_id: クライアントID（指定されない場合はデフォルトまたは自動判定）
-        """
-        if not self.asr_model:
-            self.logger.warning(f"enable_asr: ASR model not initialized (uuid={uuid})")
-            return
-        
-        if not self.streaming_enabled:
-            self.logger.warning(f"enable_asr: streaming not enabled (uuid={uuid})")
-            return
-        
-        # クライアントIDの決定（優先順位: 引数 > 既存のマッピング > デフォルト）
-        if not client_id:
-            client_id = self.call_client_map.get(uuid) or self.client_id or "000"
-        
-        # call_idとclient_idのマッピングを保存
-        self.call_client_map[uuid] = client_id
-        
-        # このUUID用のFlowEngineが存在しない場合は作成
-        if uuid not in self.flow_engines:
-            try:
-                self.flow_engines[uuid] = FlowEngine(client_id=client_id)
-                self.logger.info(f"FlowEngine created for call: uuid={uuid} client_id={client_id}")
-            except Exception as e:
-                self.logger.error(f"Failed to create FlowEngine for uuid={uuid} client_id={client_id}: {e}")
-                # エラー時はデフォルトのFlowEngineを使用
-                self.flow_engines[uuid] = self.flow_engine
-        
-        # セッション状態を初期化（フェーズをENTRYに設定）
-        state = self._get_session_state(uuid)
-        if state.phase == "ENTRY" or not state.phase:
-            state.phase = "ENTRY"
-            state.meta["client_id"] = client_id
-            self.logger.info(f"Session state initialized: uuid={uuid} phase=ENTRY client_id={client_id}")
-        
-        # call_idを設定（ASR結果の処理で使用される）
-        self.set_call_id(uuid)
-        
-        # GoogleASRのストリーミングを開始
-        if hasattr(self.asr_model, '_start_stream_worker'):
-            self.asr_model._start_stream_worker(uuid)
-            self.logger.info(f"ASR enabled for call uuid={uuid} client_id={client_id}")
-            # runtime.logへの主要イベント出力（詳細フォーマット）
-            runtime_logger = logging.getLogger("runtime")
-            runtime_logger.info(f"[ASR] start uuid={uuid} client_id={client_id}")
-        else:
-            self.logger.error(f"enable_asr: ASR model does not have _start_stream_worker method (uuid={uuid})")
+        enable_asr_logic(self, uuid, client_id=client_id)
     
     def _classify_simple_intent(self, text: str, normalized: str) -> Optional[str]:
         return classify_simple_intent(text, normalized)
@@ -547,50 +479,10 @@ class AICore:
         log_ai_templates(self, template_ids)
     
     def _cleanup_stale_partials(self, max_age_sec: float = 30.0) -> None:
-        """
-        古いpartial transcriptsをクリーンアップ
-        
-        :param max_age_sec: 最大保持時間（秒）。デフォルト: 30秒
-        """
-        now = time.time()
-        stale_keys = [
-            call_id for call_id, data in self.partial_transcripts.items()
-            if now - data.get("updated", 0) > max_age_sec
-        ]
-        for key in stale_keys:
-            self.logger.warning(
-                f"PARTIAL_CLEANUP: removing stale partial for call_id={key} "
-                f"(age={now - self.partial_transcripts[key].get('updated', 0):.1f}s)"
-            )
-            del self.partial_transcripts[key]
+        cleanup_stale_partials(self, max_age_sec=max_age_sec)
     
     def check_for_transcript(self, call_id: str) -> Optional[Tuple[str, float, float, float]]:
-        """
-        ストリーミングモード: 確定した発話があればテキストを返す。
-        
-        :param call_id: 通話ID
-        :return: (text, audio_duration_sec, inference_time_sec, end_to_text_delay_sec) または None
-        """
-        if not self.streaming_enabled:
-            return None
-
-        # 【修正】asr_model が None の場合は安全にリターン（初期化失敗や認証エラーで None になる）
-        if self.asr_model is None:
-            # 頻繁に出る可能性があるため WARNING を吐かない（必要ならデバッグ用に変更可）
-            return None
-
-        # poll_result 呼び出し時に競合で asr_model が None になる可能性もあるため例外を吸収
-        try:
-            result = self.asr_model.poll_result(call_id)  # type: ignore[union-attr]
-        except AttributeError:
-            # 万が一 asr_model が途中で None に変わっていた場合、安全に無視して None を返す
-            return None
-
-        if result is None:
-            return None
-
-        # poll_resultは既に (text, audio_duration, inference_time, end_to_text_delay) を返す
-        return result
+        return check_for_transcript_logic(self, call_id)
 
     def reset_call(self, call_id: str) -> None:
         manage_reset_call(self, call_id)

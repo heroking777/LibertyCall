@@ -45,6 +45,9 @@ def init_core_state(core, client_id: str) -> None:
     core._wav_saved = False
     core._wav_chunk_counter = 0
     core.asr_model = None
+    core.asr_instances: Dict[str, Any] = {}
+    core.asr_lock = threading.Lock()
+    core._phrase_hints = []
     core.transfer_callback = None
     core.hangup_callback = None
     core.playback_callback = None
