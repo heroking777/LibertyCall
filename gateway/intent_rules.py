@@ -181,8 +181,13 @@ def interpret_handoff_reply(
     base_intent: str = "UNKNOWN",
     retry_count: int = 0,
 ) -> str:
-    """Legacy wrapper for tests; base_intent is ignored in current logic."""
-    _ = base_intent
+    """Legacy wrapper for tests; align handoff confirmation intent handling."""
+    normalized = normalize_text(raw_text)
+    if base_intent in ("HANDOFF_CONFIRM_WAIT", "HANDOFF_REQUEST"):
+        if any(k in normalized for k in YES_KEYWORDS):
+            return "HANDOFF_YES"
+        if any(k in normalized for k in NO_KEYWORDS):
+            return "HANDOFF_NO"
     return _interpret_handoff_reply(raw_text, retry_count=retry_count)
 
 

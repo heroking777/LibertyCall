@@ -76,6 +76,7 @@ class AICore:
         self.logger = logging.getLogger(__name__)
         self._handoff_sm = HandoffStateMachine(self.logger)
         self._mis_guard = MisunderstandingGuard(self.logger)
+        self.history: List[List[str]] = []
         self.init_clients = init_clients
         self.client_id = client_id
         init_core_state(self, client_id)
@@ -149,6 +150,9 @@ class AICore:
 
     def _load_keywords_from_config(self) -> None:
         self.load_keywords_from_config()
+
+    def _log_ai_templates(self, template_ids: List[str]) -> None:
+        self.history.append(list(template_ids or []))
 
     def start_activity_monitor(self) -> None:
         start_activity_monitor(self)
