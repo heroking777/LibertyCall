@@ -60,11 +60,7 @@ except ImportError:
 logger_debug = logging.getLogger("libertycall.gateway.core.ai_core")
 logger_debug.warning("DEBUG_IMPORT_CHECK: AICore class from %r", AICore.__module__)
 logger_debug.warning("DEBUG_IMPORT_CHECK_FILE: ai_core file = %r", AICore.__init__.__code__.co_filename)
-try:
-    from ..audio.audio_manager import AudioManager
-except ImportError:  # 実行形式(py gateway/realtime_gateway.py)との両立
-    from audio_manager import AudioManager  # type: ignore
-
+from ..audio import AudioManager
 def load_config(config_path: str | Path) -> dict:
     return GatewayConfigManager.load_config(Path(config_path))
 
