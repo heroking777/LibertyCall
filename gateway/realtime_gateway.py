@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Optional, Tuple, Dict
 import yaml
 import audioop
-import collections
 import time
 import uvicorn
 try:
@@ -287,12 +286,6 @@ class RealtimeGateway:
         self.logger = logging.getLogger(__name__)
         # 起動確認用ログ（修正版が起動したことを示す）
         self.logger.warning("[DEBUG_VERSION] RealtimeGateway initialized with UPDATED LOGGING logic.")
-        # デバッグ用パケットカウンター初期化
-        self._debug_packet_count = 0
-        # RTPパケット重複処理ガード用（各通話ごとの最新シーケンス番号を保持）
-        self._last_processed_sequence = {}  # {call_id: sequence_number}
-        # 初期アナウンス実行済みフラグ（各通話ごとの初期アナウンス状態を保持）
-        self._initial_sequence_played = set()  # {call_id}
         self.rtp_host = config["rtp"]["listen_host"]
         # ポート番号の優先順位: コマンドライン引数 > LC_RTP_PORT > LC_GATEWAY_PORT > gateway.yaml > 固定値 7100
         if rtp_port_override is not None:
@@ -319,13 +312,6 @@ class RealtimeGateway:
         self.ws_url = config["ws"]["url"]
         self.reconnect_delay = config["ws"]["reconnect_delay_sec"]
 
-        self.rtp_peer: Optional[Tuple[str, int]] = None
-        self.websocket = None
-        self.rtp_transport = None
-        self.rtp_builder: Optional[RTPPacketBuilder] = None
-        self.running = False
-        self.shutdown_event = asyncio.Event()
-
         # --- AI & 音声制御用パラメータ ---
         self.logger.debug("Initializing AI Core...")
         # デフォルトクライアントIDで初期化（後でWebSocket init時に再読み込みされる）
@@ -344,6 +330,8 @@ class RealtimeGateway:
             udp_cls=UDP if SCAPY_AVAILABLE else None,
             esl_receiver_cls=ESLAudioReceiver,
         )
+        self.audio_manager = AudioManager(_PROJECT_ROOT)
+        self.utils.init_state(console_bridge, self.audio_manager)
         # TTS 送信用コールバックを設定
         self.ai_core.tts_callback = self._send_tts
         self.ai_core.transfer_callback = self._handle_transfer
@@ -377,133 +365,6 @@ class RealtimeGateway:
         self.asr_manager = GatewayASRManager(self)
         # Playback/TTSマネージャ初期化
         self.playback_manager = GatewayPlaybackManager(self)
-        
-        self.audio_buffer = bytearray()          
-        self.tts_queue = collections.deque(maxlen=100)  # バッファ拡張（音途切れ防止）
-        self.is_speaking_tts = False             
-        self.last_voice_time = time.time()
-        self.is_user_speaking = False
-        
-        # 転送処理の遅延実行用
-        self._pending_transfer_call_id: Optional[str] = None  # 転送待ちのcall_id
-        self._transfer_task_queue = collections.deque()  # イベントループが起動する前の転送タスクキュー 
-        
-        # FreeSWITCH送信RTPポート監視（pull型ASR用）
-        self.fs_rtp_monitor = self.monitor_manager.fs_rtp_monitor
-        
-        # 調整パラメータ
-        self.BARGE_IN_THRESHOLD = 1000 
-        self.SILENCE_DURATION = 0.9     # 無音判定 (0.8 -> 0.9)
-        self.MAX_SEGMENT_SEC = 2.3      # ★ 最大セグメント長
-        self.MIN_AUDIO_LEN = 16000
-        self.MIN_RMS_FOR_ASR = 80      # ★ RMS閾値（これ以下のセグメントはASRに送らない）
-        self.NO_INPUT_TIMEOUT = 10.0    # 無音10秒で再促し
-        self.NO_INPUT_STREAK_LIMIT = 4  # 無音ストリーク上限
-        self.MAX_NO_INPUT_TIME = 60.0   # 無音の累積上限（秒）※1分で強制切断を検討
-        self.SILENCE_WARNING_INTERVALS = [5.0, 15.0, 25.0]  # 無音警告を送る秒数（5秒、15秒、25秒）
-        self.SILENCE_HANGUP_TIME = 60.0  # 無音60秒で自動切断
-        self.NO_INPUT_SILENT_PHRASES = {"すみません", "ええと", "あの"}  # 無音扱いでリセットするフィラー
-        
-        # ============================================================
-        # 【既存バッファリング仕様（非ストリーミングモード）】
-        # ============================================================
-        # 現状の実装では、以下の条件で音声をためてから一括ASRを実行：
-        # 1. audio_buffer に 16kHz PCM を蓄積（handle_rtp_packet 内で extend）
-        # 2. 無音が SILENCE_DURATION (0.9秒) 続いたら should_cut=True
-        # 3. または、話し始めてから MAX_SEGMENT_SEC (2.3秒) 経過したら強制カット
-        # 4. should_cut が True になった時点で、audio_buffer 全体を
-        #    AICore.process_dialogue() に渡して一括 transcribe
-        # 
-        # 結果として：
-        # - 短い発話（1秒）でも、無音判定待ちで 0.9秒 + 推論 0.5秒 = 1.4秒遅延
-        # - 長い発話（2秒）でも、MAX_SEGMENT_SEC 待ちで 2.3秒 + 推論 0.5秒 = 2.8秒遅延
-        # - ログ上「audio=2.3〜3.0秒 / infer≈0.5〜0.6秒」となる理由は上記の通り
-        # 
-        # ストリーミングモード（LC_ASR_STREAMING_ENABLED=1）では、
-        # この「2〜3秒ためる方式」を廃止し、小さいチャンク単位でASRを実行する。
-        # ============================================================      
-        
-        # ★ セグメント開始時刻管理
-        self.current_segment_start = None
-        # -------------------------------------
-
-        # ログ用変数
-        # turn_id: ユーザー発話の通し番号（ストリーミング/非ストリーミングモード共通で使用）
-        self.turn_id = 1
-        self.turn_rms_values = []
-        
-        # ユーザー発話のturn_index管理（補正用）
-        self.user_turn_index = 0  # ユーザー発話のカウンター（1始まり）
-        self.call_start_time = None  # 通話開始時刻
-        # 最大通話時間（デフォルト30分）
-        self.max_call_duration_sec = float(os.getenv("LC_MAX_CALL_DURATION_SEC", "1800"))
-        
-        # RTP受信ログ用カウンター（50パケットに1回だけINFO）
-        self.rtp_packet_count = 0
-        self.last_rtp_packet_time = 0.0
-        self.RTP_PEER_IDLE_TIMEOUT = float(os.getenv("LC_RTP_PEER_IDLE_TIMEOUT", "2.0"))
-        
-        # クライアントプロファイル管理
-        self.client_id = None
-        self.client_profile = None
-        self.rules = None
-        self.console_bridge = console_bridge
-        self.audio_manager = AudioManager(_PROJECT_ROOT)
-        self.default_client_id = os.getenv("LC_DEFAULT_CLIENT_ID", "000")
-        # リアルタイム更新用のAPI URL（環境変数から取得、デフォルトはlocalhost:8001）
-        self.console_api_url = os.getenv(
-            "LIBERTYCALL_CONSOLE_API_BASE_URL",
-            "http://localhost:8001"
-        )
-        self.initial_sequence_played = False
-        self.initial_sequence_playing = False  # 初回シーケンス再生中フラグ
-        self.initial_sequence_completed = False  # 初回シーケンス完了フラグ
-        self.initial_sequence_completed_time: Optional[float] = None
-        self._asr_enable_timer: Optional[threading.Timer] = None
-        self.initial_silence_sec = 0.5
-        self.call_id: Optional[str] = None
-        self.current_state = "init"
-        
-        # 音量レベル送信用
-        self.last_audio_level_sent = 0.0
-        self.last_audio_level_time = 0.0
-        self.AUDIO_LEVEL_INTERVAL = 0.2  # 200ms間隔（5Hz）
-        self.AUDIO_LEVEL_THRESHOLD = 0.05  # レベル変化が5%未満なら送らない
-        self.RMS_MAX = 32767.0  # 16bit PCMの最大値（正規化用）
-        self.recent_dialogue = collections.deque(maxlen=8)
-        self.transfer_notified = False
-        self.call_completed = False
-        
-        # ストリーミングモード用変数を事前に初期化
-        self._stream_chunk_counter = 0
-        self._last_feed_time = time.time()
-        
-        # 無音検出用変数
-        self._last_user_input_time: Dict[str, float] = {}  # call_id -> 最後のユーザー発話時刻
-        self._last_tts_end_time: Dict[str, float] = {}  # call_id -> 最後のTTS送信完了時刻
-        self._no_input_timers: Dict[str, asyncio.Task] = {}  # call_id -> 無音検出タイマータスク
-        self._no_input_elapsed: Dict[str, float] = {}  # call_id -> 無音経過秒数（累積）
-        self._silence_warning_sent: Dict[str, set] = {}  # call_id -> 送信済み警告秒数のセット（5, 10, 15秒）
-        self._last_silence_time: Dict[str, float] = {}  # call_id -> 最後の無音フレーム検出時刻
-        self._last_voice_time: Dict[str, float] = {}  # call_id -> 最後の有音フレーム検出時刻
-        self._active_calls: set = set()  # アクティブな通話IDのセット
-        self._initial_tts_sent: set = set()  # 初期TTS送信済みの通話IDセット
-        self._last_tts_text: Optional[str] = None  # 直前のTTSテキスト（重複防止用）
-        self._call_addr_map: Dict[Tuple[str, int], str] = {}  # (host, port) -> call_id のマッピング
-        self._recovery_counts: Dict[str, int] = {}  # call_id -> RTP_RECOVERY回数（ゾンビ蘇生防止）
-        
-        # 録音機能の初期化
-        self.recording_enabled = os.getenv("LC_ENABLE_RECORDING", "0") == "1"
-        self.recording_file: Optional[wave.Wave_write] = None
-        self.recording_path: Optional[Path] = None
-        if self.recording_enabled:
-            recordings_dir = Path("/opt/libertycall/recordings")
-            recordings_dir.mkdir(parents=True, exist_ok=True)
-            self.logger.info(f"録音機能が有効です。録音ファイルは {recordings_dir} に保存されます。")
-        
-        # FreeSWITCHイベント受信用Unixソケット
-        self.event_socket_path = Path("/tmp/liberty_gateway_events.sock")
-        self.event_server: Optional[asyncio.Server] = None
 
     async def start(self):
         await self.utils.start()
@@ -631,68 +492,7 @@ class RealtimeGateway:
 
     async def shutdown(self):
         """Graceful shutdown for RTP transport and all resources"""
-        self.logger.info("[SHUTDOWN] Starting graceful shutdown...")
-        self.running = False
-        self._complete_console_call()
-        
-        # WebSocket接続を閉じる
-        if self.websocket:
-            try:
-                await self.websocket.close()
-                self.logger.debug("[SHUTDOWN] WebSocket closed")
-            except Exception as e:
-                self.logger.warning(f"[SHUTDOWN] Error while closing WebSocket: {e}")
-        
-        # RTP transport を優雅に閉じる
-        if self.rtp_transport:
-            try:
-                self.logger.info("[SHUTDOWN] Closing RTP transport...")
-                self.rtp_transport.close()
-                # 少し待機して確実に閉じる
-                await asyncio.sleep(0.1)
-                self.logger.info("[SHUTDOWN] RTP transport closed")
-            except Exception as e:
-                self.logger.error(f"[SHUTDOWN] Error while closing RTP transport: {e}")
-        
-        # 無音検知タイマーを全てキャンセル
-        for call_id, timer_task in list(self._no_input_timers.items()):
-            if timer_task and not timer_task.done():
-                try:
-                    timer_task.cancel()
-                    self.logger.debug(f"[SHUTDOWN] Cancelled no_input_timer for call_id={call_id}")
-                except Exception as e:
-                    self.logger.warning(f"[SHUTDOWN] Error cancelling timer for call_id={call_id}: {e}")
-        self._no_input_timers.clear()
-        
-        # ASRハンドラーを停止
-        if self.call_id and remove_handler:
-            try:
-                remove_handler(self.call_id)
-                self.logger.info(f"[SHUTDOWN] ASR handler removed for call_id={self.call_id}")
-            except Exception as e:
-                self.logger.warning(f"[SHUTDOWN] Error removing ASR handler: {e}")
-        
-        # Unixソケットサーバーを停止
-        if self.event_server:
-            try:
-                self.logger.info("[SHUTDOWN] Closing event socket server...")
-                self.event_server.close()
-                await self.event_server.wait_closed()
-                self.logger.info("[SHUTDOWN] Event socket server closed")
-            except Exception as e:
-                self.logger.warning(f"[SHUTDOWN] Error closing event socket server: {e}")
-        
-        # ソケットファイルを削除
-        if self.event_socket_path.exists():
-            try:
-                self.event_socket_path.unlink()
-                self.logger.info(f"[SHUTDOWN] Removed socket file: {self.event_socket_path}")
-            except Exception as e:
-                self.logger.warning(f"[SHUTDOWN] Error removing socket file: {e}")
-        
-        # シャットダウンイベントを設定
-        self.shutdown_event.set()
-        self.logger.info("[SHUTDOWN] Graceful shutdown completed")
+        await self.utils.shutdown(remove_handler)
 
     # ------------------------------------------------------------------ console bridge helpers
     def _ensure_console_session(self, call_id_override: Optional[str] = None) -> None:
@@ -881,60 +681,7 @@ class RealtimeGateway:
         self.utils._maybe_send_audio_level(rms)
 
     def _complete_console_call(self) -> None:
-        if not self.console_bridge.enabled or not self.call_id or self.call_completed:
-            return
-        call_id_to_complete = self.call_id
-        try:
-            self.console_bridge.complete_call(call_id_to_complete, ended_at=datetime.utcnow())
-            # ストリーミングモード: call_idの状態をリセット
-            if self.streaming_enabled:
-                self.ai_core.reset_call(call_id_to_complete)
-            # 明示的な通話終了処理（フラグクリア）
-            if hasattr(self.ai_core, 'on_call_end'):
-                self.ai_core.on_call_end(call_id_to_complete, source="_complete_console_call")
-            # 【追加】通話ごとのASRインスタンスをクリーンアップ
-            if hasattr(self.ai_core, 'cleanup_asr_instance'):
-                self.ai_core.cleanup_asr_instance(call_id_to_complete)
-            self.call_completed = True
-            self.call_id = None
-            self.recent_dialogue.clear()
-            self.transfer_notified = False
-            # 音量レベル送信もリセット
-            self.last_audio_level_sent = 0.0
-            self.last_audio_level_time = 0.0
-            # 補正用の変数もリセット
-        except Exception as e:
-            self.logger.error(f"[COMPLETE_CALL_ERR] Error during _complete_console_call for call_id={call_id_to_complete}: {e}", exc_info=True)
-        finally:
-            # ★どんなエラーがあっても、ここは必ず実行する★
-            self.logger.warning(f"[FINALLY_BLOCK_ENTRY] Entered finally block for call_id={call_id_to_complete}")
-            if call_id_to_complete:
-                complete_time = time.time()
-                # _active_calls から削除
-                self.logger.warning(f"[FINALLY_ACTIVE_CALLS] Before removal: call_id={call_id_to_complete} in _active_calls={call_id_to_complete in self._active_calls if hasattr(self, '_active_calls') else False}")
-                if hasattr(self, '_active_calls') and call_id_to_complete in self._active_calls:
-                    self._active_calls.remove(call_id_to_complete)
-                    self.logger.warning(f"[COMPLETE_CALL_DONE] Removed {call_id_to_complete} from active_calls (finally block) at {complete_time:.3f}")
-                self.logger.warning(f"[FINALLY_ACTIVE_CALLS_REMOVED] After removal: call_id={call_id_to_complete} in _active_calls={call_id_to_complete in self._active_calls if hasattr(self, '_active_calls') else False}")
-                
-                # 管理用データのクリーンアップ
-                if call_id_to_complete in self._recovery_counts:
-                    del self._recovery_counts[call_id_to_complete]
-                if call_id_to_complete in self._initial_sequence_played:
-                    self._initial_sequence_played.discard(call_id_to_complete)
-                if call_id_to_complete in self._last_processed_sequence:
-                    del self._last_processed_sequence[call_id_to_complete]
-                self._last_voice_time.pop(call_id_to_complete, None)
-                self._last_silence_time.pop(call_id_to_complete, None)
-                self._last_tts_end_time.pop(call_id_to_complete, None)
-                self._last_user_input_time.pop(call_id_to_complete, None)
-                self._silence_warning_sent.pop(call_id_to_complete, None)
-                if hasattr(self, '_initial_tts_sent'):
-                    self._initial_tts_sent.discard(call_id_to_complete)
-                self.logger.debug(f"[CALL_CLEANUP] Cleared state for call_id={call_id_to_complete}")
-        self.user_turn_index = 0
-        self.call_start_time = None
-        self._reset_call_state()
+        self.utils.complete_console_call()
 
     def _load_wav_as_ulaw8k(self, wav_path: Path) -> bytes:
         return self.playback_manager._load_wav_as_ulaw8k(wav_path)
@@ -989,67 +736,7 @@ class RealtimeGateway:
                 self.recording_path = None
 
     def _reset_call_state(self) -> None:
-        was_playing = self.initial_sequence_playing
-        self.initial_sequence_played = False
-        self.initial_sequence_playing = False  # 初回シーケンス再生中フラグもリセット
-        self.initial_sequence_completed = False
-        self.initial_sequence_completed_time = None
-        if self._asr_enable_timer:
-            try:
-                self._asr_enable_timer.cancel()
-            except Exception:
-                pass
-            self._asr_enable_timer = None
-        if was_playing:
-            self.logger.info("[INITIAL_SEQUENCE] OFF: call state reset (initial_sequence_playing=False)")
-        self.tts_queue.clear()
-        self.is_speaking_tts = False
-        self.audio_buffer = bytearray()
-        self.current_segment_start = None
-        self.is_user_speaking = False
-        self.last_voice_time = time.time()
-        self.rtp_peer = None
-        self._rtp_src_addr = None  # 受信元アドレスもリセット
-        self.rtp_packet_count = 0
-        self.last_rtp_packet_time = 0.0
-        self._last_tts_text = None  # 直前のTTSテキストもリセット
-        
-        # ストリーミングモード用変数もリセット
-        self._stream_chunk_counter = 0
-        self._last_feed_time = time.time()
-        
-        # ★ call_id関連をリセット（新しい通話の識別のため）
-        old_call_id = self.call_id
-        self.call_id = None
-        self.call_start_time = None
-        self.user_turn_index = 0
-        self.call_completed = False
-        self.transfer_notified = False
-        self.recent_dialogue.clear()
-        
-        # 無音検出用変数もリセット
-        if old_call_id:
-            self._last_user_input_time.pop(old_call_id, None)
-            self._last_tts_end_time.pop(old_call_id, None)
-            self._no_input_elapsed.pop(old_call_id, None)
-            if old_call_id in self._no_input_timers:
-                timer_task = self._no_input_timers.pop(old_call_id)
-                if timer_task and not timer_task.done():
-                    timer_task.cancel()
-        
-        # AICoreのcall_idもリセット
-        if hasattr(self.ai_core, 'set_call_id'):
-            self.ai_core.set_call_id(None)
-        if hasattr(self.ai_core, 'call_id'):
-            self.ai_core.call_id = None
-        if hasattr(self.ai_core, 'log_session_id'):
-            self.ai_core.log_session_id = None
-        
-        if old_call_id:
-            self.logger.info(f"[RESET_CALL_STATE] call_id reset: {old_call_id} -> None")
-        
-        # 録音を停止
-        self._stop_recording()
+        self.utils.reset_call_state()
 
     async def _process_streaming_transcript(
         self, text: str, audio_duration: float, inference_time: float, end_to_text_delay: float
