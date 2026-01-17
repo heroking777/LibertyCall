@@ -37,6 +37,44 @@ def generate_reply(core, call_id: str, raw_text: str) -> Tuple[str, List[str], s
                     dialogue_phase,
                 )
 
+                if state.not_heard_streak >= 2 and handoff_state in ("idle", "done"):
+                    state.not_heard_streak = 0
+                    state.handoff_state = "confirming"
+                    state.handoff_retry_count = 0
+                    state.handoff_prompt_sent = True
+                    state.transfer_requested = False
+                    state.transfer_executed = False
+                    state.phase = "HANDOFF_CONFIRM_WAIT"
+                    template_ids = ["0604"]
+                    reply_text = render_templates(template_ids)
+                    state.last_intent = "HANDOFF_REQUEST"
+                    return reply_text, template_ids, "HANDOFF_REQUEST", False
+
+                auto_intent, triggered = core._mis_guard.check_auto_handoff_from_unclear(
+                    call_id, state, "UNKNOWN"
+                )
+                if triggered:
+                    state.handoff_state = "confirming"
+                    state.handoff_retry_count = 0
+                    state.handoff_prompt_sent = True
+                    state.transfer_requested = False
+                    state.transfer_executed = False
+                    state.phase = "HANDOFF_CONFIRM_WAIT"
+                    template_ids = ["0604"]
+                    reply_text = render_templates(template_ids)
+                    state.last_intent = auto_intent
+                    return reply_text, template_ids, auto_intent, False
+
+                if "0604" in dialogue_templates or dialogue_phase in (
+                    "HANDOFF",
+                    "HANDOFF_CONFIRM_WAIT",
+                ):
+                    state.handoff_state = "confirming"
+                    state.handoff_retry_count = 0
+                    state.handoff_prompt_sent = True
+                    state.transfer_requested = False
+                    state.transfer_executed = False
+
                 state.phase = dialogue_phase
                 for key, value in dialogue_state.items():
                     setattr(state, key, value)

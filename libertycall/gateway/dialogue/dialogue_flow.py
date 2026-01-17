@@ -42,9 +42,18 @@ __all__ = [
 ]
 
 
-def get_response(text: str, phase: str, state: dict | None = None):
+def get_response(
+    text: str | None = None,
+    phase: str | None = None,
+    state: dict | None = None,
+    **kwargs,
+):
     """Lightweight dialogue flow handler without core dependencies."""
-    current_state = dict(state or {})
+    if text is None:
+        text = kwargs.get("user_text", "")
+    if phase is None:
+        phase = kwargs.get("current_phase", "QA")
+    current_state = dict(state or kwargs.get("state") or {})
     text = text or ""
 
     if is_silence(text):

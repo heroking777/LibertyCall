@@ -60,7 +60,12 @@ from ..audio.audio_manager import (
 )
 from .state_logic import ConversationState, MisunderstandingGuard, HandoffStateMachine
 from ..transcript.transcript_handler import handle_transcript
-from .session_utils import save_session_summary_from_core, save_debug_wav, save_transcript_event_from_core
+from .session_utils import (
+    save_session_summary_from_core,
+    save_debug_wav,
+    save_transcript_event_from_core,
+    append_call_log_entry,
+)
 from .resource_manager import cleanup_call, cleanup_asr_instance
 from .state_store import get_session_state, reset_session_state, set_call_id
 
@@ -80,6 +85,9 @@ class AICore:
         self.init_clients = init_clients
         self.client_id = client_id
         init_core_state(self, client_id)
+        if not init_clients:
+            self.flow_engine = None
+            self.flow_engines = {}
         
         init_asr(self)
     
@@ -154,6 +162,9 @@ class AICore:
     def _log_ai_templates(self, template_ids: List[str]) -> None:
         self.history.append(list(template_ids or []))
 
+    def _append_call_log(self, role: str, text: str, template_id: Optional[str] = None) -> None:
+        append_call_log_entry(self, role, text, template_id=template_id)
+
     def start_activity_monitor(self) -> None:
         start_activity_monitor(self)
 
@@ -181,6 +192,34 @@ class AICore:
 
     def _trigger_transfer_if_needed(self, call_id: str, state: ConversationState) -> None:
         self.trigger_transfer_if_needed(call_id, state)
+
+    def _handle_flow_engine_transition(
+        self,
+        call_id: str,
+        text: str,
+        normalized_text: str,
+        intent: str,
+        state: ConversationState,
+        flow_engine: FlowEngine,
+        client_id: str,
+    ) -> Tuple[str, List[str], str, bool]:
+        return self.handle_flow_engine_transition(
+            call_id,
+            text,
+            normalized_text,
+            intent,
+            state,
+            flow_engine,
+            client_id,
+        )
+
+    def _play_template_sequence(
+        self,
+        call_id: str,
+        template_ids: List[str],
+        client_id: Optional[str] = None,
+    ) -> None:
+        self.play_template_sequence(call_id, template_ids, client_id=client_id)
 
     def _is_hallucination(self, text: str) -> bool:
         return self.is_hallucination(text)
