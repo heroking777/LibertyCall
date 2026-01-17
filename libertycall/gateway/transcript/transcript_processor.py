@@ -101,11 +101,13 @@ def handle_transcript(
             merged_text[:50],
         )
 
-        simple_intent = classify_simple_intent(merged_text, normalized)
-        if simple_intent:
-            logger.info("[SIMPLE_INTENT] %s (text=%r)", simple_intent, merged_text)
-            play_audio_response(core, call_id, simple_intent)
-            return None
+        skip_simple_intent = state.handoff_state == "confirming" or state.phase == "HANDOFF_CONFIRM_WAIT"
+        if not skip_simple_intent:
+            simple_intent = classify_simple_intent(merged_text, normalized)
+            if simple_intent:
+                logger.info("[SIMPLE_INTENT] %s (text=%r)", simple_intent, merged_text)
+                play_audio_response(core, call_id, simple_intent)
+                return None
 
     flow_engine = core.flow_engines.get(call_id) or core.flow_engine
     if flow_engine:
@@ -290,5 +292,8 @@ def handle_transcript(
             )
         except Exception as exc:
             logger.exception("TTS_ERROR: call_id=%s error=%s", call_id, exc)
+
+    if transfer_requested:
+        core._trigger_transfer_if_needed(call_id, state)
 
     return reply_text
