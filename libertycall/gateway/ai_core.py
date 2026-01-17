@@ -55,8 +55,9 @@ from .session_utils import (
     get_session_dir,
     ensure_session_dir,
     save_transcript_event,
-    save_session_summary,
-    append_call_log,
+    save_session_summary_from_core,
+    append_call_log_entry,
+    log_ai_templates,
     cleanup_stale_sessions,
 )
 
@@ -1189,63 +1190,7 @@ class AICore:
             self.logger.exception(f"[SESSION_LOG] Failed to save transcript event: {e}")
     
     def _save_session_summary(self, call_id: str) -> None:
-        """
-        セッション終了時にsummary.jsonを保存
-        
-        :param call_id: 通話UUID
-        """
-        try:
-            # セッション情報を取得
-            session_info = self.session_info.get(call_id, {})
-            state = self._get_session_state(call_id)
-            client_id = self.call_client_map.get(call_id) or state.meta.get("client_id") or self.client_id or "000"
-            
-            # 開始時刻と終了時刻を取得
-            start_time = session_info.get("start_time", datetime.now())
-            end_time = datetime.now()
-            
-            if isinstance(start_time, str):
-                start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-            elif not isinstance(start_time, datetime):
-                start_time = datetime.now()
-            
-            # intentリストを取得（phrasesから抽出）
-            phrases = session_info.get("phrases", [])
-            intents = []
-            for phrase in phrases:
-                # phraseからintentを抽出（既存のロジックを使用）
-                text = phrase.get("text", "")
-                if text:
-                    normalized = normalize_text(text)
-                    # Intent方式は廃止されました。UNKNOWNとして扱います
-                    intent = "UNKNOWN"
-                    if intent and intent not in intents:
-                        intents.append(intent)
-            
-            # handoff_occurredを判定
-            handoff_occurred = state.transfer_requested or state.handoff_completed or state.phase == "HANDOFF_DONE"
-            
-            # summary.jsonを作成
-            summary = {
-                "client_id": client_id,
-                "uuid": call_id,
-                "start_time": start_time.isoformat(),
-                "end_time": end_time.isoformat(),
-                "total_phrases": len(phrases),
-                "intents": intents,
-                "handoff_occurred": handoff_occurred,
-                "final_phase": state.phase or "UNKNOWN",
-            }
-            
-            # summary.jsonを保存（モジュール関数を使用）
-            save_session_summary(call_id, summary, client_id)
-            
-            self.logger.info(f"[SESSION_SUMMARY] Saved session summary: call_id={call_id} client_id={client_id}")
-            
-            # セッション情報をクリア（メモリ節約）
-            self.session_info.pop(call_id, None)
-        except Exception as e:
-            self.logger.exception(f"[SESSION_SUMMARY] Failed to save session summary: {e}")
+        save_session_summary_from_core(self, call_id)
     
     def reload_flow(self) -> None:
         """
@@ -1333,28 +1278,7 @@ class AICore:
         return synthesize_template_sequence(template_ids, get_template_config_with_client)
 
     def _append_call_log(self, role: str, text: str, template_id: Optional[str] = None) -> None:
-        """
-        通話ログを 1行追記する。
-        形式: [YYYY-mm-dd HH:MM:SS] [caller] ROLE (tpl=XXX) text
-        """
-        try:
-            call_id = getattr(self, "call_id", None)
-            client_id = getattr(self, "client_id", "000")
-            if not client_id:
-                client_id = "000"
-            
-            # TMP_CALLやunknownの場合はログセッションIDを使用
-            if not call_id or str(call_id).lower() in ("unknown", "temp_call"):
-                if not getattr(self, "log_session_id", None):
-                    now = datetime.now()
-                    self.log_session_id = now.strftime("CALL_%Y%m%d_%H%M%S%f")
-                call_id = self.log_session_id
-            
-            append_call_log(str(call_id), role, text, template_id, client_id)
-            
-        except Exception as e:
-            # 予期せぬ例外もログには残すが、会話は止めない
-            self.logger.exception(f"CALL_LOGGING_ERROR in _append_call_log: {e}")
+        append_call_log_entry(self, role, text, template_id=template_id)
 
     def _trigger_transfer(self, call_id: str) -> None:
         manage_trigger_transfer(self, call_id)
@@ -1689,15 +1613,7 @@ class AICore:
         return handle_transcript(self, call_id, text, is_final=is_final, **kwargs)
     
     def _log_ai_templates(self, template_ids: List[str]) -> None:
-        """AI応答のログ記録を分離"""
-        try:
-            from .text_utils import TEMPLATE_CONFIG
-            for tid in template_ids:
-                cfg = TEMPLATE_CONFIG.get(tid)
-                if cfg and cfg.get("text"):
-                    self._append_call_log("AI", cfg["text"], template_id=tid)
-        except Exception as e:
-            self.logger.exception(f"CALL_LOGGING_ERROR (AI): {e}")
+        log_ai_templates(self, template_ids)
     
     def _cleanup_stale_partials(self, max_age_sec: float = 30.0) -> None:
         """

@@ -10,7 +10,9 @@ import os
 import stat
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+
+from .text_utils import TEMPLATE_CONFIG, normalize_text
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +155,95 @@ def append_call_log(call_id: str, role: str, text: str, template_id: Optional[st
         
     except Exception as e:
         logger.exception(f"通話ログの追記に失敗しました: {e}")
+
+
+def append_call_log_entry(core, role: str, text: str, template_id: Optional[str] = None) -> None:
+    """
+    AICoreの状態を参照して通話ログに1行追記
+    """
+    try:
+        call_id = getattr(core, "call_id", None)
+        client_id = getattr(core, "client_id", "000") or "000"
+
+        if not call_id or str(call_id).lower() in ("unknown", "temp_call"):
+            if not getattr(core, "log_session_id", None):
+                now = datetime.now()
+                core.log_session_id = now.strftime("CALL_%Y%m%d_%H%M%S%f")
+            call_id = core.log_session_id
+
+        append_call_log(str(call_id), role, text, template_id, client_id)
+    except Exception as e:
+        core.logger.exception(f"CALL_LOGGING_ERROR in append_call_log_entry: {e}")
+
+
+def log_ai_templates(core, template_ids: List[str]) -> None:
+    """AI応答テンプレートをログに記録"""
+    try:
+        for tid in template_ids:
+            cfg = TEMPLATE_CONFIG.get(tid)
+            if cfg and cfg.get("text"):
+                append_call_log_entry(core, "AI", cfg["text"], template_id=tid)
+    except Exception as e:
+        core.logger.exception(f"CALL_LOGGING_ERROR (AI): {e}")
+
+
+def save_session_summary_from_core(core, call_id: str) -> None:
+    """AICoreのセッション情報からsummary.jsonを保存"""
+    try:
+        session_info = core.session_info.get(call_id, {})
+        state = core._get_session_state(call_id)
+        client_id = (
+            core.call_client_map.get(call_id)
+            or state.meta.get("client_id")
+            or core.client_id
+            or "000"
+        )
+
+        start_time = session_info.get("start_time", datetime.now())
+        end_time = datetime.now()
+
+        if isinstance(start_time, str):
+            start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        elif not isinstance(start_time, datetime):
+            start_time = datetime.now()
+
+        phrases = session_info.get("phrases", [])
+        intents = []
+        for phrase in phrases:
+            text = phrase.get("text", "")
+            if text:
+                normalized = normalize_text(text)
+                intent = "UNKNOWN"
+                if intent and intent not in intents:
+                    intents.append(intent)
+
+        handoff_occurred = (
+            state.transfer_requested
+            or state.handoff_completed
+            or state.phase == "HANDOFF_DONE"
+        )
+
+        summary = {
+            "client_id": client_id,
+            "uuid": call_id,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "total_phrases": len(phrases),
+            "intents": intents,
+            "handoff_occurred": handoff_occurred,
+            "final_phase": state.phase or "UNKNOWN",
+        }
+
+        save_session_summary(call_id, summary, client_id)
+        core.logger.info(
+            "[SESSION_SUMMARY] Saved session summary: call_id=%s client_id=%s",
+            call_id,
+            client_id,
+        )
+
+        core.session_info.pop(call_id, None)
+    except Exception as e:
+        core.logger.exception(f"[SESSION_SUMMARY] Failed to save session summary: {e}")
 
 
 def cleanup_stale_sessions(max_age_days: int = 30) -> None:
