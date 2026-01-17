@@ -200,11 +200,10 @@ class PlaybackSequencer:
                     manager.initial_silence_sec
                 )
             silence_samples = len(silence_payload)
-            silence_chunks = 0
+            silence_chunks_data = []
             for i in range(0, len(silence_payload), chunk_size):
-                manager.tts_queue.append(silence_payload[i : i + chunk_size])
-                silence_chunks += 1
-                queued_chunks += 1
+                silence_chunks_data.append(silence_payload[i : i + chunk_size])
+            silence_chunks = len(silence_chunks_data)
             if silence_chunks:
                 queue_labels.append(f"silence({manager.initial_silence_sec:.1f}s)")
                 self.logger.info(
@@ -263,6 +262,10 @@ class PlaybackSequencer:
                 for i in range(0, len(ulaw_payload), chunk_size):
                     manager.tts_queue.append(ulaw_payload[i : i + chunk_size])
                     queued_chunks += 1
+
+            for chunk in reversed(silence_chunks_data):
+                manager.tts_queue.appendleft(chunk)
+                queued_chunks += 1
 
             if file_entries:
                 self.logger.info(
