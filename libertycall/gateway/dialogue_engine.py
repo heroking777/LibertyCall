@@ -468,7 +468,7 @@ def generate_reply(core, call_id: str, raw_text: str) -> Tuple[str, List[str], s
         call_id, state, template_ids, intent, base_intent
     )
     if should_return_early:
-        reply_text = core._render_templates(template_ids)
+        reply_text = render_templates(template_ids)
         return reply_text, template_ids, base_intent, transfer_requested
 
     core._mis_guard.handle_unclear_streak(call_id, state, template_ids)
