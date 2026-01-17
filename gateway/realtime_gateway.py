@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""
-README (dev tips):
-    本番 Gateway (UDP 7000) を止めずに開発用でログを確認する場合:
-        export LC_GATEWAY_PORT=7001
-        ./venv/bin/python libertycall/gateway/realtime_gateway.py
-    これで Whisper / VAD / 推論ログが前面に流れます。
-"""
+"""RealtimeGateway entrypoint (set LC_GATEWAY_PORT for dev runs)."""
 import asyncio
 import logging
 import signal
@@ -57,9 +51,9 @@ from libertycall.gateway.asr_manager import GatewayASRManager
 from libertycall.gateway.playback_manager import GatewayPlaybackManager
 from libertycall.gateway.call_session_handler import GatewayCallSessionHandler
 from libertycall.gateway.network_manager import GatewayNetworkManager
-from libertycall.gateway.monitor_manager import GatewayMonitorManager
+from libertycall.gateway.monitor_manager import GatewayMonitorManager, ESLAudioReceiver
 from libertycall.gateway.audio_processor import GatewayAudioProcessor
-from libertycall.gateway.gateway_utils import GatewayUtils
+from libertycall.gateway.gateway_utils import GatewayUtils, IGNORE_RTP_IPS
 from libertycall.console_bridge import console_bridge
 from gateway.asr_controller import app as asr_app, set_gateway_instance
 
@@ -135,13 +129,8 @@ class RTPProtocol(asyncio.DatagramProtocol):
         if self._raw_packet_count % 50 == 1:
             print(f"DEBUG_TRACE: [RTP_RECV_RAW] Received {len(data)} bytes from {addr} (count={self._raw_packet_count})", flush=True)
         
-        # --- [DEBUG & FILTER ADDITION START] ---
-        # フィルタリング: FreeSWITCH自身のIP（送信パケットのループバック）からのパケットは無視する
-        # ログで確認されたFreeSWITCHのIP: 160.251.170.253
-        # および localhost も念のため除外
-        ignore_ips = {'160.251.170.253', '127.0.0.1', '::1'}
-        
-        if addr[0] in ignore_ips:
+        # FreeSWITCH/localhostからのループバックは除外
+        if addr[0] in IGNORE_RTP_IPS:
             # FreeSWITCH自身からのパケット（システム音声の逆流）を無視
             if self._raw_packet_count % 100 == 1:
                 print(f"DEBUG_TRACE: [RTP_FILTER] Ignored packet from local IP: {addr[0]} (count={self._raw_packet_count})", flush=True)
@@ -153,7 +142,6 @@ class RTPProtocol(asyncio.DatagramProtocol):
         self._packet_count += 1
         if self._packet_count % 50 == 1:
             print(f"DEBUG_TRACE: RTPProtocol packet from user IP={addr[0]} port={addr[1]} len={len(data)} count={self._packet_count}", flush=True)
-        # --- [DEBUG & FILTER ADDITION END] ---
         
         # 【追加】SSRCフィルタリング（優先）および送信元IP/Portの検証（混線防止）
         try:
@@ -220,66 +208,6 @@ class RTPProtocol(asyncio.DatagramProtocol):
                 "Failed to create task for handle_rtp_packet: %r", e, exc_info=True
             )
 
-class ESLAudioReceiver:
-    """FreeSWITCHのESL経由でデコード済み音声を受信"""
-    
-    def __init__(self, call_id, uuid, gateway, logger):
-        self.call_id = call_id
-        self.uuid = uuid
-        self.gateway = gateway
-        self.logger = logger
-        self.running = False
-        self.thread = None
-        self.conn = None
-        
-    def start(self):
-        """ESL接続と音声受信を開始"""
-        self.running = True
-        self.thread = threading.Thread(target=self._receive_loop, daemon=True)
-        self.thread.start()
-        self.logger.info(f"[ESL_AUDIO] Started for call_id={self.call_id}, uuid={self.uuid}")
-        
-    def _receive_loop(self):
-        """ESLイベントループ（別スレッド）"""
-        try:
-            from libs.esl.ESL import ESLconnection
-            
-            self.conn = ESLconnection('127.0.0.1', '8021', 'ClueCon')
-            
-            if not self.conn.connected():
-                self.logger.error(f"[ESL_AUDIO] Failed to connect to FreeSWITCH ESL")
-                return
-            
-            self.conn.events('plain', 'CHANNEL_AUDIO')
-            self.conn.filter('Unique-ID', self.uuid)
-            
-            self.logger.info(f"[ESL_AUDIO] Connected and subscribed to UUID={self.uuid}")
-            
-            while self.running:
-                event = self.conn.recvEventTimed(100)
-                
-                if not event:
-                    continue
-                
-                event_name = event.getHeader('Event-Name')
-                
-                if event_name == 'CHANNEL_AUDIO':
-                    audio_data = event.getBody()
-                    
-                    if audio_data:
-                        self.gateway.handle_rtp_packet(self.call_id, audio_data)
-                        
-        except Exception as e:
-            self.logger.error(f"[ESL_AUDIO] Exception: {e}")
-            import traceback
-            traceback.print_exc()
-            
-    def stop(self):
-        """ESL受信を停止"""
-        self.running = False
-        if self.conn:
-            self.conn.disconnect()
-        self.logger.info(f"[ESL_AUDIO] Stopped for call_id={self.call_id}")
 class RealtimeGateway:
     def __init__(self, config: dict, rtp_port_override: Optional[int] = None):
         self.config = config

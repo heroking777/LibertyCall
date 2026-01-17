@@ -4,6 +4,7 @@ import asyncio
 import socket
 import threading
 import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -503,6 +504,68 @@ class FreeswitchRTPMonitor:
         if self.monitor_sock:
             self.monitor_sock.close()
         self.logger.info("[FS_RTP_MONITOR] Stopped monitoring FreeSWITCH RTP port")
+
+
+class ESLAudioReceiver:
+    """FreeSWITCH ESL経由の音声受信。"""
+
+    def __init__(self, call_id, uuid, gateway, logger):
+        self.call_id = call_id
+        self.uuid = uuid
+        self.gateway = gateway
+        self.logger = logger
+        self.running = False
+        self.thread = None
+        self.conn = None
+
+    def start(self):
+        """ESL接続と音声受信を開始。"""
+        self.running = True
+        self.thread = threading.Thread(target=self._receive_loop, daemon=True)
+        self.thread.start()
+        self.logger.info(
+            "[ESL_AUDIO] Started for call_id=%s, uuid=%s", self.call_id, self.uuid
+        )
+
+    def _receive_loop(self):
+        """ESLイベントを受信してRTPに流す。"""
+        try:
+            from libs.esl.ESL import ESLconnection
+
+            self.conn = ESLconnection("127.0.0.1", "8021", "ClueCon")
+
+            if not self.conn.connected():
+                self.logger.error("[ESL_AUDIO] Failed to connect to FreeSWITCH ESL")
+                return
+
+            self.conn.events("plain", "CHANNEL_AUDIO")
+            self.conn.filter("Unique-ID", self.uuid)
+
+            self.logger.info(
+                "[ESL_AUDIO] Connected and subscribed to UUID=%s", self.uuid
+            )
+
+            while self.running:
+                event = self.conn.recvEventTimed(100)
+
+                if not event:
+                    continue
+
+                if event.getHeader("Event-Name") == "CHANNEL_AUDIO":
+                    audio_data = event.getBody()
+                    if audio_data:
+                        self.gateway.handle_rtp_packet(self.call_id, audio_data)
+
+        except Exception as e:
+            self.logger.error("[ESL_AUDIO] Exception: %s", e)
+            traceback.print_exc()
+
+    def stop(self):
+        """ESL受信を停止。"""
+        self.running = False
+        if self.conn:
+            self.conn.disconnect()
+        self.logger.info("[ESL_AUDIO] Stopped for call_id=%s", self.call_id)
 
 
 class GatewayMonitorManager:

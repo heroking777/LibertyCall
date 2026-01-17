@@ -13,6 +13,9 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 
+IGNORE_RTP_IPS = {"160.251.170.253", "127.0.0.1", "::1"}
+
+
 class GatewayUtils:
     def __init__(self, gateway: "RealtimeGateway", rtp_builder_cls, rtp_protocol_cls):
         self.gateway = gateway
