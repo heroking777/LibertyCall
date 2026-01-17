@@ -9,7 +9,7 @@ sys.path.insert(0, str(project_root))
 
 try:
     from console_backend.database import Base, engine
-    from console_backend import models  # noqa: F401
+    import console_backend.models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 except Exception:
