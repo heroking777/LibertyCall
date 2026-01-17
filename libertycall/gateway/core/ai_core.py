@@ -139,7 +139,23 @@ class AICore:
     
     def load_keywords_from_config(self) -> None:
         load_keywords_from_config(self)
-    
+
+    # --- legacy compatibility helpers (keep tests relying on old private API alive) ---
+    def _load_flow(self, client_id: str) -> dict:
+        return self.load_flow(client_id)
+
+    def _load_json(self, path: str, default: str | None = None) -> dict:
+        return self.load_json(path, default=default)
+
+    def _load_keywords_from_config(self) -> None:
+        self.load_keywords_from_config()
+
+    def start_activity_monitor(self) -> None:
+        start_activity_monitor(self)
+
+    def _start_activity_monitor(self) -> None:
+        self.start_activity_monitor()
+
         
     def save_transcript_event(self, call_id: str, text: str, is_final: bool, kwargs: dict) -> None:
         save_transcript_event_from_core(self, call_id, text, is_final, kwargs)
