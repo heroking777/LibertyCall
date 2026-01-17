@@ -13,14 +13,11 @@ import struct
 import sys
 import json
 import os
-import subprocess
 import wave
-import socket
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Dict
-import glob
 import yaml
 import websockets
 import audioop
@@ -64,6 +61,7 @@ from libertycall.gateway.call_session_handler import GatewayCallSessionHandler
 from libertycall.gateway.network_manager import GatewayNetworkManager
 from libertycall.gateway.monitor_manager import GatewayMonitorManager
 from libertycall.gateway.audio_processor import GatewayAudioProcessor
+from libertycall.gateway.gateway_utils import GatewayUtils
 from libertycall.console_bridge import console_bridge
 from gateway.asr_controller import app as asr_app, set_gateway_instance
 
@@ -337,6 +335,7 @@ class RealtimeGateway:
         self.session_handler = GatewayCallSessionHandler(self)
         self.network_manager = GatewayNetworkManager(self)
         self.audio_processor = GatewayAudioProcessor(self)
+        self.utils = GatewayUtils(self, RTPPacketBuilder, RTPProtocol)
         self.monitor_manager = GatewayMonitorManager(
             self,
             RTPProtocol,
@@ -508,88 +507,7 @@ class RealtimeGateway:
         self.event_server: Optional[asyncio.Server] = None
 
     async def start(self):
-        self.logger.info("[RTP_START] RealtimeGateway.start() called")
-        self.running = True
-        self.rtp_builder = RTPPacketBuilder(self.payload_type, self.sample_rate)
-
-        try:
-            loop = asyncio.get_running_loop()
-            
-            # ソケットをメンバに保持してbind（IPv4固定、0.0.0.0で全インターフェースにバインド）
-            # 0.0.0.0 にバインドすることで、FreeSWITCHからのRTPパケットを確実に受信できる
-            self.rtp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.rtp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.rtp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            self.rtp_sock.bind(("0.0.0.0", self.rtp_port))
-            self.rtp_sock.setblocking(False)  # asyncio用にノンブロッキングへ
-            bound_addr = self.rtp_sock.getsockname()
-            self.logger.info(f"[RTP_BIND_FINAL] Bound UDP socket to {bound_addr}")
-            
-            # asyncioにソケットを渡す
-            self.rtp_transport, _ = await loop.create_datagram_endpoint(
-                lambda: RTPProtocol(self),
-                sock=self.rtp_sock
-            )
-            self.logger.info(f"[RTP_READY_FINAL] RTP listener active and awaiting packets on {bound_addr}")
-
-            # WebSocketサーバー起動処理
-            try:
-                ws_task = asyncio.create_task(self._ws_server_loop())
-                self.logger.info("[BOOT] WebSocket server startup scheduled on port 9001 (task=%r)", ws_task)
-            except Exception as e:
-                self.logger.error(f"[BOOT] Failed to start WebSocket server: {e}", exc_info=True)
-            
-            asyncio.create_task(self._ws_client_loop())
-            asyncio.create_task(self._tts_sender_loop())
-            
-            # ストリーミングモード: 定期的にASR結果をポーリング
-            if self.streaming_enabled:
-                asyncio.create_task(self._streaming_poll_loop())
-            
-            # 無音検出ループ開始（TTS送信後の無音を監視）
-            self.monitor_manager.start_no_input_monitoring()
-            
-            # ログファイル監視ループ開始（転送失敗時のTTSアナウンス用）
-            asyncio.create_task(self._log_monitor_loop())
-            
-            # イベントループ起動後にキューに追加された転送タスクを処理
-            # 注意: イベントループが起動した後でないと asyncio.create_task が呼べない
-            async def process_queued_transfers():
-                while self._transfer_task_queue:
-                    call_id = self._transfer_task_queue.popleft()
-                    self.logger.info(f"TRANSFER_TASK_PROCESSING: call_id={call_id} (from queue)")
-                    asyncio.create_task(self._wait_for_tts_and_transfer(call_id))
-                # 定期的にキューをチェック（新しいタスクが追加される可能性があるため）
-                while self.running:
-                    await asyncio.sleep(0.5)  # 0.5秒間隔でチェック
-                    while self._transfer_task_queue:
-                        call_id = self._transfer_task_queue.popleft()
-                        self.logger.info(f"TRANSFER_TASK_PROCESSING: call_id={call_id} (from queue, delayed)")
-                        asyncio.create_task(self._wait_for_tts_and_transfer(call_id))
-            
-            asyncio.create_task(process_queued_transfers())
-            
-            # FreeSWITCH送信RTPポート監視を開始（pull型ASR用）
-            # record_session方式では不要なため、条件付きで実行
-            if self.monitor_manager.fs_rtp_monitor:
-                self.monitor_manager.start_rtp_monitoring()
-
-            # FreeSWITCHイベント受信用Unixソケットサーバーを起動
-            self.logger.info("[EVENT_SOCKET_DEBUG] Creating event server task")
-            asyncio.create_task(self._event_socket_server_loop()) 
-
-            # サービスを維持（停止イベントを待つ）
-            await self.shutdown_event.wait()
-
-        except Exception as e:
-            self.logger.error(f"[RTP_BIND_ERROR_FINAL] {e}", exc_info=True)
-        finally:
-            if hasattr(self, "rtp_transport") and self.rtp_transport:
-                self.logger.info("[RTP_EXIT_FINAL] Closing RTP transport")
-                self.rtp_transport.close()
-            if hasattr(self, "rtp_sock") and self.rtp_sock:
-                self.rtp_sock.close()
-                self.logger.info("[RTP_EXIT_FINAL] Socket closed")
+        await self.utils.start()
 
     def _find_rtp_info_by_port(self, rtp_port: int) -> Optional[str]:
         """
@@ -598,46 +516,7 @@ class RealtimeGateway:
         :param rtp_port: RTP port番号
         :return: UUID または None
         """
-        try:
-            # 全ての rtp_info ファイルを検索
-            rtp_info_files = glob.glob("/tmp/rtp_info_*.txt")
-            
-            self.logger.debug(
-                f"[RTP_INFO_SEARCH] port={rtp_port} total_files={len(rtp_info_files)}"
-            )
-            
-            for filepath in rtp_info_files:
-                try:
-                    with open(filepath, 'r') as f:
-                        content = f.read()
-                        
-                        # port が含まれるかチェック（local または remote）
-                        if f":{rtp_port}" in content:
-                            # UUID を抽出
-                            for line in content.split('\n'):
-                                if line.startswith('uuid='):
-                                    uuid = line.split('=', 1)[1].strip()
-                                    self.logger.info(
-                                        f"[RTP_INFO_FOUND] port={rtp_port} file={filepath} uuid={uuid}"
-                                    )
-                                    return uuid
-                                    
-                except Exception as e:
-                    self.logger.debug(
-                        f"[RTP_INFO_READ_ERROR] file={filepath} error={e}"
-                    )
-                    continue
-            
-            self.logger.warning(
-                f"[RTP_INFO_NOT_FOUND] No file found for port={rtp_port} searched_files={len(rtp_info_files)}"
-            )
-            return None
-            
-        except Exception as e:
-            self.logger.exception(
-                f"[RTP_INFO_SEARCH_ERROR] port={rtp_port} error={e}"
-            )
-            return None
+        return self.utils._find_rtp_info_by_port(rtp_port)
 
     def _send_tts(
         self,
@@ -852,69 +731,7 @@ class RealtimeGateway:
 
     def _free_port(self, port: int):
         """安全にポートを解放する（自分自身は殺さない）"""
-        try:
-            # まずポートが使用中かチェック
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind(("0.0.0.0", port))
-                s.close()
-                self.logger.debug(f"[BOOT] Port {port} is available")
-                return  # ポートが空いているので何もしない
-        except OSError as e:
-            if e.errno == 98:  # Address already in use
-                self.logger.warning(f"[BOOT] Port {port} is in use, attempting to free it...")
-                try:
-                    # fuserでポートを使用しているプロセスのPIDを取得
-                    res = subprocess.run(
-                        ["fuser", f"{port}/tcp"],
-                        capture_output=True,
-                        text=True,
-                        timeout=5
-                    )
-                    
-                    if not res.stdout.strip():
-                        self.logger.debug(f"[BOOT] Port {port} appears to be free now")
-                        return
-                    
-                    # PIDを抽出（fuserの出力例: "9001/tcp: 12345 67890"）
-                    pids = []
-                    for part in res.stdout.strip().split():
-                        # "9001/tcp:" や "12345" のような形式からPIDを抽出
-                        if part.replace(":", "").replace("/", "").isdigit():
-                            pid_str = part.replace(":", "").replace("/", "")
-                            if pid_str.isdigit():
-                                pids.append(int(pid_str))
-                        elif part.isdigit():
-                            pids.append(int(part))
-                    
-                    # 自分自身のPIDを取得
-                    current_pid = os.getpid()
-                    
-                    # 自分自身を除外
-                    target_pids = [pid for pid in pids if pid != current_pid]
-                    
-                    if not target_pids:
-                        self.logger.info(f"[BOOT] Port {port} in use by current process only (PID {current_pid}) — skipping kill")
-                        return
-                    
-                    # 自分以外のプロセスのみKILL
-                    pid_strs = [str(pid) for pid in target_pids]
-                    subprocess.run(
-                        ["kill", "-9"] + pid_strs,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        timeout=5,
-                        check=False
-                    )
-                    self.logger.info(f"[BOOT] Port {port} freed by killing PIDs: {', '.join(pid_strs)}")
-                    
-                    # 少し待機してから再確認
-                    import time
-                    time.sleep(0.5)
-                except Exception as free_error:
-                    self.logger.warning(f"[BOOT] Port free check failed: {free_error}")
-            else:
-                self.logger.warning(f"[BOOT] Error checking port {port}: {e}")
+        self.utils._free_port(port)
 
     async def _ws_server_loop(self):
         """WebSocketサーバーとしてAsterisk側からの接続を受け付ける"""
@@ -1205,30 +1022,7 @@ class RealtimeGateway:
         :param max_retries: 最大リトライ回数（デフォルト: 3）
         :return: 再接続に成功したかどうか
         """
-        if self.esl_connection and self.esl_connection.connected():
-            return True  # 既に接続されている場合は成功として返す
-        
-        self.logger.warning(f"[ESL_RECOVERY] ESL connection lost, attempting to reconnect (max_retries={max_retries})...")
-        import time
-        
-        for attempt in range(1, max_retries + 1):
-            try:
-                time.sleep(3)  # 3秒待機してから再接続
-                self._init_esl_connection()
-                
-                if self.esl_connection and self.esl_connection.connected():
-                    self.logger.info(f"[ESL_RECOVERY] ESL connection recovered successfully (attempt {attempt}/{max_retries})")
-                    # イベントリスナーも再起動
-                    if hasattr(self, 'esl_listener_thread') and self.esl_listener_thread and not self.esl_listener_thread.is_alive():
-                        self._start_esl_event_listener()
-                    return True
-                else:
-                    self.logger.warning(f"[ESL_RECOVERY] ESL reconnection failed (attempt {attempt}/{max_retries})")
-            except Exception as e:
-                self.logger.exception(f"[ESL_RECOVERY] Failed to recover ESL connection (attempt {attempt}/{max_retries}): {e}")
-        
-        self.logger.error(f"[ESL_RECOVERY] ESL reconnection failed after {max_retries} attempts")
-        return False
+        return self.utils._recover_esl_connection(max_retries=max_retries)
     
     def _start_esl_event_listener(self) -> None:
         """
@@ -1236,94 +1030,10 @@ class RealtimeGateway:
         
         :return: None
         """
-        if not self.esl_connection or not self.esl_connection.connected():
-            self.logger.warning("[ESL_LISTENER] ESL not available, event listener not started")
-            return
-        
-        def _esl_event_listener_worker():
-            """ESLイベントリスナーのワーカースレッド（自動リカバリ対応）"""
-            try:
-                from libs.esl.ESL import ESLevent
-                
-                # CHANNEL_EXECUTE_COMPLETEイベントを購読
-                self.esl_connection.events("plain", "CHANNEL_EXECUTE_COMPLETE")
-                self.logger.info("[ESL_LISTENER] Started listening for CHANNEL_EXECUTE_COMPLETE events")
-                
-                consecutive_errors = 0
-                max_consecutive_errors = 5
-                
-                while self.running:
-                    try:
-                        # ESL接続が切れている場合は自動リカバリを試みる
-                        if not self.esl_connection or not self.esl_connection.connected():
-                            self.logger.warning("[ESL_LISTENER] ESL connection lost, attempting recovery...")
-                            self._recover_esl_connection()
-                            if not self.esl_connection or not self.esl_connection.connected():
-                                time.sleep(3)  # 再接続に失敗した場合は3秒待機
-                                continue
-                            # 再接続成功時はイベント購読を再設定
-                            self.esl_connection.events("plain", "CHANNEL_EXECUTE_COMPLETE")
-                            consecutive_errors = 0
-                        
-                        # イベントを受信（タイムアウト: 1秒）
-                        event = self.esl_connection.recvEventTimed(1000)
-                        
-                        if not event:
-                            consecutive_errors = 0  # タイムアウトはエラーではない
-                            continue
-                        
-                        event_name = event.getHeader('Event-Name')
-                        if event_name != 'CHANNEL_EXECUTE_COMPLETE':
-                            continue
-                        
-                        application = event.getHeader('Application')
-                        if application != 'playback':
-                            continue
-                        
-                        uuid = event.getHeader('Unique-ID') or event.getHeader('Channel-Call-UUID')
-                        if not uuid:
-                            continue
-                        
-                        # 再生完了を検知: is_playing[uuid] = False に更新
-                        if hasattr(self.ai_core, 'is_playing'):
-                            if self.ai_core.is_playing.get(uuid, False):
-                                self.ai_core.is_playing[uuid] = False
-                                self.logger.info(f"[ESL_LISTENER] Playback completed: uuid={uuid} is_playing[{uuid}] = False")
-                        
-                        consecutive_errors = 0  # 成功時はエラーカウントをリセット
-                        
-                    except Exception as e:
-                        consecutive_errors += 1
-                        if self.running:
-                            self.logger.exception(f"[ESL_LISTENER] Error processing event (consecutive_errors={consecutive_errors}): {e}")
-                        
-                        # 連続エラーが一定回数を超えた場合は自動リカバリを試みる
-                        if consecutive_errors >= max_consecutive_errors:
-                            self.logger.warning(f"[ESL_LISTENER] Too many consecutive errors ({consecutive_errors}), attempting recovery...")
-                            self._recover_esl_connection()
-                            consecutive_errors = 0
-                        
-                        time.sleep(0.1)
-            except Exception as e:
-                self.logger.exception(f"[ESL_LISTENER] Event listener thread error: {e}")
-                # スレッドがクラッシュした場合、3秒後に再起動を試みる
-                if self.running:
-                    self.logger.warning("[ESL_LISTENER] Event listener thread crashed, will restart in 3 seconds...")
-                    import threading
-                    def _restart_listener():
-                        time.sleep(3)
-                        if self.running:
-                            self._start_esl_event_listener()
-                    threading.Thread(target=_restart_listener, daemon=True).start()
-        
-        # イベントリスナースレッドを開始
-        import threading
-        self.esl_listener_thread = threading.Thread(target=_esl_event_listener_worker, daemon=True)
-        self.esl_listener_thread.start()
-        self.logger.info("[ESL_LISTENER] ESL event listener thread started")
+        self.utils._start_esl_event_listener()
     
     def _update_uuid_mapping_directly(self, call_id: str) -> Optional[str]:
-        return self.session_handler._update_uuid_mapping_directly(call_id)
+        return self.utils._update_uuid_mapping_directly(call_id)
     
     def _handle_playback(self, call_id: str, audio_file: str) -> None:
         self.playback_manager._handle_playback(call_id, audio_file)
@@ -1353,71 +1063,11 @@ class RealtimeGateway:
         :param addr: RTP送信元のアドレス (host, port)。Noneの場合は既存のロジックを使用
         :return: 有効なcall_id、見つからない場合はNone
         """
-        # アドレスが指定されている場合は、アドレス紐づけを優先
-        if addr and hasattr(self, '_call_addr_map') and addr in self._call_addr_map:
-            return self._call_addr_map[addr]
-        
-        # すでにアクティブ通話が1件のみの場合はそれを使う
-        if hasattr(self, '_active_calls') and len(self._active_calls) == 1:
-            return next(iter(self._active_calls))
-        
-        # アクティブな通話がある場合は最後に開始された通話を使用
-        if hasattr(self, '_active_calls') and self._active_calls:
-            active = list(self._active_calls)
-            if active:
-                return active[-1]  # 最後に開始された通話を使用
-        
-        # 既存のロジック（call_idが未設定の場合は正式なcall_idを生成）
-        if not self.call_id:
-            # call_idが未設定の場合は正式なcall_idを生成
-            if self.client_id:
-                self.call_id = self.console_bridge.issue_call_id(self.client_id)
-                self.logger.debug(f"Generated call_id: {self.call_id}")
-                # AICoreにcall_idを設定
-                if self.call_id:
-                    self.ai_core.set_call_id(self.call_id)
-            else:
-                # client_idが未設定の場合はデフォルト値を使用（警告を出さない）
-                effective_client_id = self.default_client_id or "000"
-                self.call_id = self.console_bridge.issue_call_id(effective_client_id)
-                self.logger.debug(f"Generated call_id: {self.call_id} using default client_id={effective_client_id}")
-                # AICoreにcall_idを設定
-                if self.call_id:
-                    self.ai_core.set_call_id(self.call_id)
-                    # client_idも設定
-                    self.client_id = effective_client_id
-                    self.logger.debug(f"Set client_id to default: {effective_client_id}")
-        
-        return self.call_id
+        return self.utils._get_effective_call_id(addr)
     
     def _maybe_send_audio_level(self, rms: int) -> None:
         """RMS値を正規化して、一定間隔で音量レベルを管理画面に送信。"""
-        if not self.console_bridge.enabled or not self.call_id:
-            return
-        
-        now = time.time()
-        # RMSを0.0〜1.0に正規化
-        normalized_level = min(1.0, rms / self.RMS_MAX)
-        
-        # 送信間隔チェック
-        time_since_last = now - self.last_audio_level_time
-        if time_since_last < self.AUDIO_LEVEL_INTERVAL:
-            return
-        
-        # レベル変化が小さい場合は送らない（スパム防止）
-        level_diff = abs(normalized_level - self.last_audio_level_sent)
-        if level_diff < self.AUDIO_LEVEL_THRESHOLD and normalized_level < 0.1:
-            return
-        
-        # 送信
-        self.console_bridge.send_audio_level(
-            self.call_id,
-            normalized_level,
-            direction="user",
-            client_id=self.client_id,
-        )
-        self.last_audio_level_sent = normalized_level
-        self.last_audio_level_time = now
+        self.utils._maybe_send_audio_level(rms)
 
     def _complete_console_call(self) -> None:
         if not self.console_bridge.enabled or not self.call_id or self.call_completed:
