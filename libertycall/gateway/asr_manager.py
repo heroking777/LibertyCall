@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import os
-import threading
 import time
-import traceback
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from libertycall.client_loader import load_client_profile
-from libertycall.console_bridge import console_bridge
 from .google_asr import GoogleASR
 from .asr_audio_processor import ASRAudioProcessor
 from .asr_stream_handler import ASRStreamHandler
