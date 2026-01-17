@@ -18,11 +18,7 @@ from datetime import datetime
 from typing import Optional, Tuple, List, Dict, Any, Callable
 from dataclasses import dataclass
 
-from .text_utils import (
-    get_response_template,
-    get_template_config,
-    normalize_text,
-)
+from .text_utils import get_template_config, normalize_text
 from .flow_engine import FlowEngine
 from .api_client import init_api_clients
 from .call_manager import (
@@ -46,6 +42,7 @@ from .dialogue_engine import (
     handle_handoff_phase,
     handle_handoff_confirm,
 )
+from .prompt_factory import render_templates_from_ids, render_templates
 from .tts_utils import (
     synthesize_text_with_gemini,
     synthesize_template_audio,
@@ -520,51 +517,13 @@ class AICore:
         return reply_text, template_ids, intent, transfer_requested
     
     def _render_templates_from_ids(self, template_ids: List[str], client_id: Optional[str] = None) -> str:
-        """
-        テンプレートIDのリストから返答テキストを生成
-        
-        :param template_ids: テンプレートIDのリスト
-        :param client_id: クライアントID（指定されない場合はself.client_idを使用）
-        :return: 結合された返答テキスト
-        """
-        effective_client_id = client_id or self.client_id or "000"
-        texts = []
-        
-        for template_id in template_ids:
-            # クライアント別のtemplates.jsonからテキストを取得
-            template_config = None
-            
-            # まず、指定されたクライアントIDのtemplates.jsonを読み込む
-            if client_id and client_id != self.client_id:
-                try:
-                    client_templates_path = f"/opt/libertycall/config/clients/{client_id}/templates.json"
-                    if Path(client_templates_path).exists():
-                        with open(client_templates_path, 'r', encoding='utf-8') as f:
-                            import json
-                            client_templates = json.load(f)
-                            template_config = client_templates.get(template_id)
-                except Exception as e:
-                    self.logger.debug(f"Failed to load client templates for {client_id}: {e}")
-            
-            # クライアント別のtemplates.jsonが見つからない場合は、self.templatesを使用
-            if not template_config:
-                template_config = self.templates.get(template_id)
-            
-            if template_config and isinstance(template_config, dict):
-                text = template_config.get("text", "")
-                if text:
-                    texts.append(text)
-            else:
-                # フォールバック: intent_rulesから取得
-                try:
-                    from .text_utils import get_response_template
-                    text = get_response_template(template_id)
-                    if text:
-                        texts.append(text)
-                except Exception:
-                    pass
-        
-        return " ".join(texts) if texts else ""
+        return render_templates_from_ids(
+            self.templates,
+            template_ids,
+            client_id,
+            self.client_id,
+            self.logger,
+        )
     
     def _play_template_sequence(self, call_id: str, template_ids: List[str], client_id: Optional[str] = None) -> None:
         """
@@ -1319,12 +1278,7 @@ class AICore:
         return any(k for k in keywords if k and k in normalized_text)
 
     def _render_templates(self, template_ids: List[str]) -> str:
-        texts: List[str] = []
-        for template_id in template_ids:
-            template_text = get_response_template(template_id)
-            if template_text:
-                texts.append(template_text)
-        return " ".join(texts).strip()
+        return render_templates(template_ids)
 
     def _synthesize_text_with_gemini(self, text: str, speaking_rate: float = 1.0, pitch: float = 0.0) -> Optional[bytes]:
         """
