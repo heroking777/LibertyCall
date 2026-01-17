@@ -8,7 +8,6 @@ import os
 # 明示的に認証ファイルパスを指定（存在する候補ファイルがあればデフォルトで設定）
 # 実稼働では環境変数で設定するのが望ましいが、ここでは一時的にデフォルトを補完する
 os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", "/opt/libertycall/config/google-credentials.json")
-import wave
 import time
 import threading
 import queue
@@ -38,6 +37,7 @@ from .dialogue_engine import (
     handle_entry_confirm_phase,
     handle_waiting_phase,
     handle_not_heard_phase,
+    handle_flow_engine_transition,
     handle_closing_phase,
     handle_handoff_phase,
     handle_handoff_confirm,
@@ -65,6 +65,7 @@ from .session_utils import (
     save_session_summary_from_core,
     append_call_log_entry,
     log_ai_templates,
+    save_debug_wav,
     cleanup_stale_sessions,
 )
 
@@ -288,78 +289,16 @@ class AICore:
         flow_engine: FlowEngine,
         client_id: str
     ) -> Tuple[str, List[str], str, bool]:
-        """
-        FlowEngineを使ってフェーズ遷移とテンプレート選択を行う
-        
-        :param call_id: 通話ID
-        :param text: 元のテキスト
-        :param normalized_text: 正規化されたテキスト
-        :param intent: 判定されたIntent
-        :param state: セッション状態
-        :return: (reply_text, template_ids, intent, transfer_requested)
-        """
-        current_phase = state.phase or "ENTRY"
-        
-        # コンテキスト情報を構築
-        context = {
-            "intent": intent or "UNKNOWN",
-            "text": text,
-            "normalized_text": normalized_text,
-            "keywords": self.keywords,
-            "user_reply_received": bool(text and len(text.strip()) > 0),
-            "user_voice_detected": bool(text and len(text.strip()) > 0),
-            "timeout": False,
-            "is_first_sales_call": getattr(state, "is_first_sales_call", False),
-        }
-        
-        # FlowEngineでフェーズ遷移を決定
-        next_phase = flow_engine.transition(current_phase, context)
-        
-        # フェーズを更新
-        if next_phase != current_phase:
-            state.phase = next_phase
-            self.logger.info(
-                f"[FLOW_ENGINE] Phase transition: {current_phase} -> {next_phase} "
-                f"(call_id={call_id}, client_id={client_id}, intent={intent})"
-            )
-        
-        # フェーズ遷移のテンプレート選択ロジック
-        # ENTRY -> 他フェーズの遷移時は、ENTRYのテンプレートを使用
-        # それ以外は次のフェーズのテンプレートを使用
-        if current_phase == "ENTRY" and next_phase != "ENTRY":
-            template_ids = flow_engine.get_templates(current_phase)
-            self.logger.info(f"[FLOW_ENGINE] Using ENTRY phase templates for transition: {current_phase} -> {next_phase}")
-        else:
-            template_ids = flow_engine.get_templates(next_phase)
-        
-        # テンプレートが空の場合は、現在のフェーズのテンプレートを使用
-        if not template_ids:
-            template_ids = flow_engine.get_templates(current_phase)
-        
-        # テンプレートIDリストから実際に使用するテンプレートを選択
-        # 複数のテンプレートIDがある場合は、リストの最初の要素を使用
-        if template_ids and len(template_ids) > 1:
-            # Intent方式は削除されました。リストの最初の要素を使用
-            try:
-                # 選択できない場合は、リストの最初の要素を使用
-                template_ids = [template_ids[0]]
-            except Exception as e:
-                self.logger.warning(f"[FLOW_ENGINE] Failed to select template: {e}, using first template")
-                template_ids = [template_ids[0]]
-        elif template_ids and len(template_ids) == 1:
-            # 1つのテンプレートIDのみの場合はそのまま使用
-            pass
-        else:
-            # テンプレートIDがない場合は、フォールバック（110を使用）
-            template_ids = ["110"]
-        
-        # テンプレートから返答テキストを生成（クライアント別templates.jsonを使用）
-        reply_text = self._render_templates_from_ids(template_ids, client_id=client_id) if template_ids else ""
-        
-        # 転送要求の判定（HANDOFF_DONEフェーズの場合）
-        transfer_requested = (next_phase == "HANDOFF_DONE")
-        
-        return reply_text, template_ids, intent, transfer_requested
+        return handle_flow_engine_transition(
+            self,
+            call_id,
+            text,
+            normalized_text,
+            intent,
+            state,
+            flow_engine,
+            client_id,
+        )
     
     def _render_templates_from_ids(self, template_ids: List[str], client_id: Optional[str] = None) -> str:
         return render_templates_from_ids(
@@ -377,45 +316,8 @@ class AICore:
         send_playback_request_http(self, call_id, audio_file)
     
     def _save_debug_wav(self, pcm16k_bytes: bytes):
-        """Whisperに渡す直前のPCM音声をWAVファイルとして保存"""
-        if not self.debug_save_wav:
-            return
-        
-        # 1通話あたり最初の1回だけ保存（5-10秒分を想定）
-        # ただし、短すぎる場合はスキップ
-        sample_rate = 16000
-        duration_sec = len(pcm16k_bytes) / 2 / sample_rate  # PCM16なので2バイト/サンプル
-        
-        if duration_sec < 1.0:  # 1秒未満はスキップ
-            return
-        
-        # 保存先ディレクトリを作成
-        debug_dir = Path("/opt/libertycall/debug_audio")
-        debug_dir.mkdir(parents=True, exist_ok=True)
-        
-        # ファイル名を生成
-        call_id_str = self.call_id or "unknown"
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self._wav_chunk_counter += 1
-        filename = f"call_{call_id_str}_chunk_{self._wav_chunk_counter:03d}_{timestamp}.wav"
-        filepath = debug_dir / filename
-        
-        # WAVファイルに保存
-        try:
-            with wave.open(str(filepath), 'wb') as wav_file:
-                wav_file.setnchannels(1)  # モノラル
-                wav_file.setsampwidth(2)   # 16bit = 2 bytes
-                wav_file.setframerate(sample_rate)
-                wav_file.writeframes(pcm16k_bytes)
-            
-            # ログ出力
-            self.logger.info(
-                f"ASR_DEBUG: saved debug WAV for call_id={call_id_str} "
-                f"path={filepath} sr={sample_rate} duration={duration_sec:.2f}s"
-            )
-            self._wav_saved = True
-        except Exception as e:
-            self.logger.error(f"Failed to save debug WAV: {e}")
+        save_debug_wav(self, pcm16k_bytes)
+    
 
     def _is_hallucination(self, text):
         """Whisperの幻聴（繰り返しノイズ）を判定"""
