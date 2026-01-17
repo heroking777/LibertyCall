@@ -19,7 +19,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 import yaml
-import websockets
 import audioop
 import collections
 import time
@@ -569,58 +568,7 @@ class RealtimeGateway:
         await self.playback_manager._wait_for_tts_and_transfer(call_id, timeout=timeout)
 
     async def _tts_sender_loop(self):
-        self.logger.debug("TTS Sender loop started.")
-        consecutive_skips = 0
-        while self.running:
-            # ChatGPT音声風: wakeupイベントがセットされていたら即flush
-            if self._tts_sender_wakeup.is_set():
-                await self._flush_tts_queue()
-                self._tts_sender_wakeup.clear()
-            
-            if self.tts_queue and self.rtp_transport:
-                # FreeSWITCH双方向化: 受信元アドレス（rtp_peer）に送信
-                # rtp_peerが設定されていない場合は警告を出してスキップ
-                # （rtp_peerは最初のRTPパケット受信時に自動設定される）
-                if self.rtp_peer:
-                    rtp_dest = self.rtp_peer
-                else:
-                    # rtp_peerが未設定の場合は送信をスキップ（最初のRTPパケット受信待ち）
-                    if consecutive_skips == 0:
-                        self.logger.warning("[TTS_SENDER] rtp_peer not set yet, waiting for first RTP packet...")
-                    consecutive_skips += 1
-                    await asyncio.sleep(0.02)
-                    continue
-                try:
-                    payload = self.tts_queue.popleft()
-                    packet = self.rtp_builder.build_packet(payload)
-                    self.rtp_transport.sendto(packet, rtp_dest)
-                    # 実際に送信したタイミングでログ出力（運用ログ整備）
-                    payload_type = packet[1] & 0x7F
-                    self.logger.debug(f"[TTS_QUEUE_SEND] sent RTP packet to {rtp_dest}, queue_len={len(self.tts_queue)}, payload_type={payload_type}")
-                    # デバッグログ拡張: RTP_SENT（最初のパケットのみ）
-                    if not hasattr(self, '_rtp_sent_logged'):
-                        self.logger.info(f"[RTP_SENT] {rtp_dest}")
-                        self._rtp_sent_logged = True
-                    consecutive_skips = 0  # リセット
-                except Exception as e:
-                    self.logger.error(f"TTS sender failed: {e}", exc_info=True)
-            else:
-                # キューが空 or 停止状態
-                if not self.tts_queue:
-                    self.is_speaking_tts = False
-                    consecutive_skips = 0
-                    # 初回シーケンス再生が完了したらフラグをリセット
-                    if self.initial_sequence_playing:
-                        # スレッドスイッチを確保してからフラグを変更（非同期ループの確実な実行のため）
-                        await asyncio.sleep(0.01)
-                        self.initial_sequence_playing = False
-                        self.initial_sequence_completed = True
-                        self.initial_sequence_completed_time = time.time()
-                        self.logger.info(
-                            "[INITIAL_SEQUENCE] OFF: initial_sequence_playing=False -> completed=True (ASR enable allowed)"
-                        )
-            
-            await asyncio.sleep(0.02)  # CPU負荷を軽減（送信間隔を20ms空ける）
+        await self.playback_manager._tts_sender_loop()
 
     async def _streaming_poll_loop(self):
         """ストリーミングモード: 定期的にASR結果をポーリングし、確定した発話を処理する。"""
@@ -644,151 +592,14 @@ class RealtimeGateway:
             await asyncio.sleep(0.1)  # 100ms間隔でポーリング
 
     async def _ws_client_loop(self):
-        while self.running:
-            try:
-                async with websockets.connect(self.ws_url) as websocket:
-                    self.websocket = websocket
-                    self.logger.info("WebSocket connected (Control Plane)")
-                    async for message in websocket:
-                        if isinstance(message, str):
-                            try:
-                                data = json.loads(message)
-                                msg_type = data.get("type")
-                                
-                                # ▼▼▼ クライアント初期化ロジック ▼▼▼
-                                if msg_type == "init":
-                                    try:
-                                        req_client_id = data.get("client_id")
-                                        req_call_id = data.get("call_id")
-                                        req_caller_number = data.get("caller_number")  # caller_numberを取得
-                                        self.logger.debug(f"[Init] Request for client_id: {req_client_id}")
-
-                                        # プロファイル読み込み
-                                        self.client_profile = load_client_profile(req_client_id)
-
-                                        # メモリ展開
-                                        if self.call_id and (
-                                            self.client_id != req_client_id
-                                            or (req_call_id and self.call_id != req_call_id)
-                                        ):
-                                            self._complete_console_call()
-                                        self._reset_call_state()
-                                        self.client_id = req_client_id
-                                        self.config = self.client_profile["config"]
-                                        self.rules = self.client_profile["rules"]
-                                        
-                                        # クライアントIDが変更された場合、AICoreの会話フローを再読み込み
-                                        if hasattr(self.ai_core, 'set_client_id'):
-                                            self.ai_core.set_client_id(req_client_id)
-                                        elif hasattr(self.ai_core, 'client_id'):
-                                            self.ai_core.client_id = req_client_id
-                                            if hasattr(self.ai_core, 'reload_flow'):
-                                                self.ai_core.reload_flow()
-                                        
-                                        # caller_numberをAICoreに設定
-                                        if req_caller_number:
-                                            self.ai_core.caller_number = req_caller_number
-                                            self.logger.debug(f"[Init] Set caller_number: {req_caller_number}")
-                                        else:
-                                            # caller_numberが送られてこない場合はNone（後で"-"として記録される）
-                                            self.ai_core.caller_number = None
-                                            self.logger.debug("[Init] caller_number not provided in init message")
-                                        
-                                        self._ensure_console_session(call_id_override=req_call_id)
-                                        # 非同期タスクとして実行（結果を待たない）
-                                        task = asyncio.create_task(self._queue_initial_audio_sequence(self.client_id))
-                                        def _log_init_task_result(t):
-                                            try:
-                                                t.result()  # 例外があればここで再送出される
-                                                # self.logger.warning(f"[INIT_TASK_DONE] Initial sequence task completed successfully.")
-                                            except Exception as e:
-                                                import traceback
-                                                self.logger.error(f"[INIT_TASK_ERR] Initial sequence task failed: {e}\n{traceback.format_exc()}")
-                                        task.add_done_callback(_log_init_task_result)
-                                        self.logger.warning(f"[INIT_TASK_START] Created task for {self.client_id}")
-
-                                        self.logger.debug(f"[Init] Loaded: {self.config.get('client_name')}")
-                                    except Exception as e:
-                                        self.logger.debug(f"[Init Error] {e}")
-                                    continue
-                                if msg_type == "call_end":
-                                    try:
-                                        req_call_id = data.get("call_id")
-                                        if req_call_id and self.call_id == req_call_id:
-                                            self._stop_recording()
-                                            self._complete_console_call()
-                                    except Exception as e:
-                                        self.logger.error("call_end handling failed: %s", e)
-                                    continue
-                                # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-
-                            except json.JSONDecodeError:
-                                pass
-            except Exception:
-                await asyncio.sleep(self.reconnect_delay)
-            finally:
-                self.websocket = None
+        await self.network_manager._ws_client_loop()
 
     def _free_port(self, port: int):
         """安全にポートを解放する（自分自身は殺さない）"""
         self.utils._free_port(port)
 
     async def _ws_server_loop(self):
-        """WebSocketサーバーとしてAsterisk側からの接続を受け付ける"""
-        ws_server_port = 9001
-        ws_server_host = "0.0.0.0"
-        
-        # WebSocket起動前にポートを確認・解放
-        self.logger.debug(f"[BOOT] Checking WebSocket port {ws_server_port} availability")
-        self._free_port(ws_server_port)
-        
-        async def handle_asterisk_connection(websocket):
-            """Asterisk側からのWebSocket接続を処理"""
-            self.logger.info(f"[WS Server] New connection from {websocket.remote_address}")
-            try:
-                async for message in websocket:
-                    if isinstance(message, str):
-                        try:
-                            data = json.loads(message)
-                            msg_type = data.get("type")
-                            
-                            if msg_type == "init":
-                                self.logger.info(f"[WS Server] INIT from Asterisk: {data}")
-                                # 既存のinit処理ロジックを再利用
-                                await self._handle_init_from_asterisk(data)
-                            else:
-                                self.logger.debug(f"[WS Server] Unknown message type: {msg_type}")
-                        except json.JSONDecodeError as e:
-                            self.logger.warning(f"[WS Server] Invalid JSON: {e}")
-                        except Exception as e:
-                            self.logger.error(f"[WS Server] Error processing message: {e}", exc_info=True)
-            except websockets.exceptions.ConnectionClosed:
-                self.logger.debug(f"[WS Server] Connection closed: {websocket.remote_address}")
-            except Exception as e:
-                self.logger.error(f"[WS Server] Connection error: {e}", exc_info=True)
-        
-        while self.running:
-            try:
-                async with websockets.serve(handle_asterisk_connection, ws_server_host, ws_server_port) as server:
-                    self.logger.info(f"[WS Server] Listening on ws://{ws_server_host}:{ws_server_port}")
-                    # サーバーが実際に起動したことを確認
-                    if server:
-                        self.logger.info(f"[WS Server] Server started successfully, waiting for connections...")
-                    # サーバーを起動し続ける
-                    await asyncio.Future()  # 永久に待機
-            except OSError as e:
-                if e.errno == 98:  # Address already in use
-                    self.logger.error(f"[WS Server] Port {ws_server_port} still in use after cleanup, retrying in 5s...")
-                    await asyncio.sleep(5)
-                    # 再試行前に再度ポートを解放
-                    self._free_port(ws_server_port)
-                    continue
-                else:
-                    self.logger.error(f"[WS Server] Failed to start: {e}", exc_info=True)
-                    await asyncio.sleep(5)  # エラー時は5秒待って再試行
-            except Exception as e:
-                self.logger.error(f"[WS Server] Failed to start: {e}", exc_info=True)
-                await asyncio.sleep(5)  # エラー時は5秒待って再試行
+        await self.network_manager._ws_server_loop()
 
     async def _handle_init_from_asterisk(self, data: dict):
         """
