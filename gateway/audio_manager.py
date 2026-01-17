@@ -33,6 +33,7 @@ class AudioManager:
         self.config_loader = ClientConfigLoader(project_root)
         self.project_root = self.config_loader.project_root
         self._client_cache = {}  # クライアントごとの設定キャッシュ
+        self.logger = logging.getLogger(__name__)
     
     def get_incoming_sequence(self, client_id: str) -> List[str]:
         """
