@@ -203,11 +203,11 @@ def handle_flow_engine_transition(
 
 
 def handle_closing_phase(core, call_id: str, raw_text: str, normalized_text: str, state) -> Tuple[str, List[str], bool]:
-    if core._contains_keywords(normalized_text, core.CLOSING_YES_KEYWORDS):
+    if contains_keywords(normalized_text, core.CLOSING_YES_KEYWORDS):
         state.phase = "HANDOFF"
         state.last_intent = "SETUP"
         return "SETUP", ["060", "061", "062", "104"], False
-    if core._contains_keywords(normalized_text, core.CLOSING_NO_KEYWORDS):
+    if contains_keywords(normalized_text, core.CLOSING_NO_KEYWORDS):
         state.phase = "END"
         state.last_intent = "END_CALL"
         return "END_CALL", ["087", "088"], False
