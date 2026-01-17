@@ -17,13 +17,6 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Tuple, List, Dict, Any, Callable
 from dataclasses import dataclass
-# Gemini API インポート
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ModuleNotFoundError:
-    genai = None
-    GEMINI_AVAILABLE = False
 
 from .text_utils import (
     get_response_template,
@@ -31,6 +24,7 @@ from .text_utils import (
     normalize_text,
 )
 from .flow_engine import FlowEngine
+from .api_client import init_api_clients
 from .call_manager import (
     on_call_start as manage_call_start,
     on_call_end as manage_call_end,
@@ -275,86 +269,7 @@ class AICore:
         return []
     
     def _init_tts(self):
-        """
-        Gemini API TTS の初期化（クライアント別設定対応）
-        """
-        # ChatGPT音声風: TTSを完全非同期化するためのThreadPoolExecutorを初期化
-        from concurrent.futures import ThreadPoolExecutor
-        self.tts_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="TTS")
-        self.logger.debug("AICore: TTS ThreadPoolExecutor initialized (max_workers=2)")
-
-        # WAV保存機能の設定
-        self.debug_save_wav = os.getenv("LC_DEBUG_SAVE_WAV", "0") == "1"
-        self.call_id = None
-        self._wav_saved = False  # 1通話あたり最初の1回だけ保存
-        self._wav_chunk_counter = 0
-        
-        # クライアント別TTS設定辞書
-        # クライアント001はテンポ早め設定、002はゆっくりで穏やか
-        TTS_CONFIGS = {
-            "000": {
-                "voice": "ja-JP-Neural2-B",
-                "pitch": 0.0,
-                "speaking_rate": 1.2
-            },
-            "001": {
-                "voice": "ja-JP-Neural2-B",
-                "pitch": 2.0,
-                "speaking_rate": 1.2
-            },
-            "002": {
-                "voice": "ja-JP-Wavenet-C",
-                "pitch": 0.5,
-                "speaking_rate": 1.0
-            }
-        }
-        
-        # クライアントIDに基づいてTTS設定を取得（fallback: 000）
-        tts_conf = TTS_CONFIGS.get(self.client_id, TTS_CONFIGS["000"])
-        
-        # Gemini API設定
-        self.use_gemini_tts = False
-        self.gemini_model = None
-        
-        # Gemini API認証情報の確認
-        gemini_api_key = os.getenv("GEMINI_API_KEY")
-        google_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        
-        # Gemini APIの初期化
-        if not GEMINI_AVAILABLE or not genai:
-            self.logger.error("[TTS_INIT] Gemini API (google-generativeai) が利用できません。インストールしてください: pip install google-generativeai")
-            return
-        
-        try:
-            if gemini_api_key:
-                genai.configure(api_key=gemini_api_key)
-                self.use_gemini_tts = True
-                self.logger.info("[TTS_INIT] Gemini API認証成功 (APIキー使用)")
-            elif google_creds:
-                # サービスアカウントキーを使用する場合
-                # 注: Gemini APIは主にAPIキーを使用しますが、サービスアカウントもサポートされる場合があります
-                try:
-                    # サービスアカウントキーからAPIキーを取得するか、直接認証を試行
-                    genai.configure(api_key=None)  # サービスアカウント認証を試行
-                    self.use_gemini_tts = True
-                    self.logger.info("[TTS_INIT] Gemini API認証成功 (サービスアカウント使用)")
-                except Exception as e:
-                    self.logger.error(f"[TTS_INIT] Gemini API認証失敗 (サービスアカウント): {e}")
-                    return
-            else:
-                self.logger.error("[TTS_INIT] Gemini API認証情報が未設定です。GEMINI_API_KEYまたはGOOGLE_APPLICATION_CREDENTIALSを設定してください。")
-                return
-        except Exception as e:
-            self.logger.error(f"[TTS_INIT] Gemini API初期化エラー: {e}")
-            return
-        
-        # Gemini API設定を保存
-        self.tts_config = tts_conf
-        # TTS設定ログ出力
-        self.logger.info(
-            f"[TTS_PROFILE] client={self.client_id} voice={tts_conf['voice']} "
-            f"speed={tts_conf['speaking_rate']} pitch={tts_conf['pitch']} (Gemini API)"
-        )
+        init_api_clients(self)
     
     def set_call_id(self, call_id: str):
         """call_idを設定し、WAV保存フラグをリセット"""
