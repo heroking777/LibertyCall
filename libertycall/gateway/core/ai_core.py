@@ -156,6 +156,14 @@ class AICore:
     def _start_activity_monitor(self) -> None:
         self.start_activity_monitor()
 
+    def _load_phrase_hints(self):
+        return getattr(self, "_phrase_hints", [])
+
+    def _init_tts(self):
+        if hasattr(self, "init_tts"):
+            return self.init_tts()
+        return None
+
         
     def save_transcript_event(self, call_id: str, text: str, is_final: bool, kwargs: dict) -> None:
         save_transcript_event_from_core(self, call_id, text, is_final, kwargs)

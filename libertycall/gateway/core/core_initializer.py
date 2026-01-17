@@ -48,6 +48,9 @@ def init_core_state(core, client_id: str) -> None:
     core.asr_instances: Dict[str, Any] = {}
     core.asr_lock = threading.Lock()
     core._phrase_hints = []
+    core.tts_client = None
+    core.voice_params = None
+    core.audio_config = None
     core.transfer_callback = None
     core.hangup_callback = None
     core.playback_callback = None
