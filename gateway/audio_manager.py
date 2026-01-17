@@ -36,6 +36,8 @@ class AudioManager:
         self.project_root = self.config_loader.project_root
         self._client_cache = {}  # クライアントごとの設定キャッシュ
         self.logger = logging.getLogger(__name__)
+        self.logger.error("!!! AUDIO_MANAGER_INITIALIZED_AT_PATH: {} !!!".format(__file__))
+        self.logger.error("!!! AUDIO_MANAGER_INITIALIZED_AT_PATH: {} !!!".format(__file__))
     
     def get_incoming_sequence(self, client_id: str) -> List[str]:
         """
