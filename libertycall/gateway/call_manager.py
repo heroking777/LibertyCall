@@ -14,6 +14,22 @@ from .call_session_store import (
     remove_call_tracking,
     set_call_client_meta,
 )
+from .call_status_logger import (
+    log_call_end,
+    log_call_start_entry,
+    log_call_start_proceeding,
+    log_call_start_skipped,
+    log_duplicate_call_start,
+    log_existing_active_session,
+    log_intro_error,
+    log_intro_missing_tts,
+    log_intro_phase_entry,
+    log_intro_phase_start,
+    log_intro_queued,
+    log_intro_sent,
+    log_intro_tts_callback_set,
+    log_phase_entry,
+)
 from .state_logic import ConversationState
 from .state_store import get_session_state
 from .prompt_factory import render_templates
@@ -28,9 +44,8 @@ def on_call_end(core, call_id: Optional[str], source: str = "unknown") -> None:
 
     was_started, was_intro_played = remove_call_tracking(core, call_id)
 
-    core.logger.info(
-        "[AICORE] on_call_end() call_id=%s source=%s client_id=%s phase=%s "
-        "_call_started_calls=%s _intro_played_calls=%s -> cleared",
+    log_call_end(
+        core.logger,
         call_id,
         source,
         effective_client_id,
@@ -148,10 +163,7 @@ def on_call_start(core, call_id: str, client_id: str = None, **kwargs) -> None:
         current_time = time.time()
         last_time = getattr(core, "last_start_times", {}).get(call_id, 0)
         if (current_time - last_time) < 2.0:
-            try:
-                core.logger.warning("[CALL_START] Ignored duplicate start event for %s", call_id)
-            except Exception:
-                print(f"[CALL_START] Ignored duplicate start event for {call_id}", flush=True)
+            log_duplicate_call_start(core.logger, call_id)
             return
         try:
             if not hasattr(core, "last_start_times"):
@@ -175,10 +187,7 @@ def on_call_start(core, call_id: str, client_id: str = None, **kwargs) -> None:
         ):
             active_found = True
         if active_found:
-            core.logger.warning(
-                "[CLEANUP] Found existing active session for %s at start. Forcing cleanup.",
-                call_id,
-            )
+            log_existing_active_session(core.logger, call_id)
             try:
                 core.cleanup_call(call_id)
             except Exception as exc:
@@ -186,56 +195,30 @@ def on_call_start(core, call_id: str, client_id: str = None, **kwargs) -> None:
     except Exception:
         pass
 
-    print(
-        f"[DEBUG_PRINT] on_call_start called call_id={call_id} client_id={effective_client_id} "
-        f"self.client_id={core.client_id}",
-        flush=True,
-    )
+    log_call_start_entry(core.logger, call_id, effective_client_id)
 
     if call_id in core._call_started_calls:
-        print(
-            f"[DEBUG_PRINT] on_call_start=skipped call_id={call_id} reason=already_called",
-            flush=True,
-        )
-        core.logger.info(
-            "[AICORE] on_call_start=skipped call_id=%s reason=already_called",
-            call_id,
-        )
+        log_call_start_skipped(core.logger, call_id)
         return
 
-    print(
-        f"[DEBUG_PRINT] on_call_start proceeding call_id={call_id} "
-        f"effective_client_id={effective_client_id}",
-        flush=True,
-    )
-    core.logger.info(
-        "[AICORE] on_call_start() call_id=%s client_id=%s",
+    log_call_start_proceeding(
+        core.logger,
         call_id,
         effective_client_id,
+        core.client_id,
     )
     mark_call_started(core, call_id)
 
     set_call_client_meta(core, call_id, effective_client_id)
 
     if effective_client_id == "001":
-        print("[DEBUG_PRINT] client_id=001 detected, proceeding with intro template", flush=True)
         state = get_session_state(core, call_id)
         state.phase = "INTRO"
-        core.logger.debug(
-            "[AICORE] Phase set to INTRO for call_id=%s (client_id=001, will change to ENTRY after intro)",
-            call_id,
-        )
+        log_intro_phase_start(core.logger, call_id)
         if hasattr(core, "tts_callback") and core.tts_callback:
-            print("[DEBUG_PRINT] tts_callback is set, calling with template 000-002", flush=True)
+            log_intro_tts_callback_set()
             try:
-                print(
-                    f"[DEBUG_PRINT] intro=queued template_id=000-002 call_id={call_id}",
-                    flush=True,
-                )
-                core.logger.info(
-                    "[AICORE] intro=queued template_id=000-002 call_id=%s",
-                    call_id,
-                )
+                log_intro_queued(core.logger, call_id)
                 try:
                     try:
                         core.current_system_text = render_templates(["000-002"]) or ""
@@ -245,51 +228,24 @@ def on_call_start(core, call_id: str, client_id: str = None, **kwargs) -> None:
                     pass
                 core.tts_callback(call_id, None, ["000-002"], False)  # type: ignore[misc, attr-defined]
                 mark_intro_played(core, call_id)
-                print(
-                    f"[DEBUG_PRINT] intro=sent template_id=000-002 call_id={call_id}",
-                    flush=True,
-                )
-                core.logger.info(
-                    "[AICORE] intro=sent template_id=000-002 call_id=%s",
-                    call_id,
-                )
+                log_intro_sent(core.logger, call_id)
 
                 state = get_session_state(core, call_id)
                 state.phase = "ENTRY"
-                core.logger.debug(
-                    "[AICORE] Phase changed from INTRO to ENTRY for call_id=%s (after intro sent)",
-                    call_id,
-                )
-
-                core.logger.debug(
-                    "[AICORE] intro_sent entry_templates=deferred (will be sent by on_transcript when user speaks) "
-                    "call_id=%s",
-                    call_id,
-                )
+                log_intro_phase_entry(core.logger, call_id)
 
             except Exception as exc:
-                core.logger.exception(
-                    "[AICORE] intro=error template_id=000-002 call_id=%s error=%s",
-                    call_id,
-                    exc,
-                )
+                log_intro_error(core.logger, call_id, exc)
                 state = get_session_state(core, call_id)
                 state.phase = "ENTRY"
         else:
-            print(f"[DEBUG_PRINT] intro=error tts_callback not set call_id={call_id}", flush=True)
-            core.logger.warning(
-                "[AICORE] intro=error tts_callback not set, cannot send template 000-002"
-            )
+            log_intro_missing_tts(call_id, core.logger)
             state = get_session_state(core, call_id)
             state.phase = "ENTRY"
     else:
         state = get_session_state(core, call_id)
         state.phase = "ENTRY"
-        core.logger.debug(
-            "[AICORE] Phase set to ENTRY for call_id=%s (client_id=%s)",
-            call_id,
-            effective_client_id,
-        )
+        log_phase_entry(core.logger, call_id, effective_client_id)
 
 
 def reset_call(core, call_id: str) -> None:
