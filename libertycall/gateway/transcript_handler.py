@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from typing import Optional
 
+from .prompt_factory import render_templates
 from .text_utils import normalize_text, normalize_text_for_comparison
 from .state_store import get_session_state
 
@@ -267,12 +268,12 @@ def handle_transcript(
                 )
                 intent = "NOT_HEARD"
                 template_ids = ["110"]
-                reply_text = core._render_templates(template_ids)
+                reply_text = render_templates(template_ids)
                 if hasattr(core, "tts_callback") and core.tts_callback:  # type: ignore[attr-defined]
                     try:
                         try:
                             core.current_system_text = (
-                                reply_text or core._render_templates(template_ids) or ""
+                                reply_text or render_templates(template_ids) or ""
                             )
                         except Exception:
                             core.current_system_text = reply_text or ""
@@ -511,7 +512,7 @@ def handle_transcript(
         try:
             try:
                 core.current_system_text = (
-                    reply_text or core._render_templates(template_ids) or ""
+                    reply_text or render_templates(template_ids) or ""
                 )
             except Exception:
                 core.current_system_text = reply_text or ""

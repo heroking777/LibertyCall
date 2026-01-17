@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 from .text_utils import TEMPLATE_CONFIG, normalize_text
+from .state_store import get_session_state
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +193,7 @@ def save_session_summary_from_core(core, call_id: str) -> None:
     """AICoreのセッション情報からsummary.jsonを保存"""
     try:
         session_info = core.session_info.get(call_id, {})
-        state = core._get_session_state(call_id)
+        state = get_session_state(core, call_id)
         client_id = (
             core.call_client_map.get(call_id)
             or state.meta.get("client_id")

@@ -7,6 +7,7 @@ import time
 from typing import Optional
 
 from .state_logic import ConversationState
+from .state_store import get_session_state
 
 
 def on_call_end(core, call_id: Optional[str], source: str = "unknown") -> None:
@@ -14,7 +15,7 @@ def on_call_end(core, call_id: Optional[str], source: str = "unknown") -> None:
         return
 
     try:
-        state = core._get_session_state(call_id)
+        state = get_session_state(core, call_id)
         phase_at_end = state.phase
         client_id_from_state = state.meta.get("client_id") if hasattr(state, "meta") and state.meta else None
     except Exception:
@@ -246,14 +247,14 @@ def on_call_start(core, call_id: str, client_id: str = None, **kwargs) -> None:
     )
     core._call_started_calls.add(call_id)
 
-    state = core._get_session_state(call_id)
+    state = get_session_state(core, call_id)
     if not hasattr(state, "meta") or state.meta is None:
         state.meta = {}
     state.meta["client_id"] = effective_client_id
 
     if effective_client_id == "001":
         print("[DEBUG_PRINT] client_id=001 detected, proceeding with intro template", flush=True)
-        state = core._get_session_state(call_id)
+        state = get_session_state(core, call_id)
         state.phase = "INTRO"
         core.logger.debug(
             "[AICORE] Phase set to INTRO for call_id=%s (client_id=001, will change to ENTRY after intro)",
@@ -288,7 +289,7 @@ def on_call_start(core, call_id: str, client_id: str = None, **kwargs) -> None:
                     call_id,
                 )
 
-                state = core._get_session_state(call_id)
+                state = get_session_state(core, call_id)
                 state.phase = "ENTRY"
                 core.logger.debug(
                     "[AICORE] Phase changed from INTRO to ENTRY for call_id=%s (after intro sent)",
@@ -307,17 +308,17 @@ def on_call_start(core, call_id: str, client_id: str = None, **kwargs) -> None:
                     call_id,
                     exc,
                 )
-                state = core._get_session_state(call_id)
+                state = get_session_state(core, call_id)
                 state.phase = "ENTRY"
         else:
             print(f"[DEBUG_PRINT] intro=error tts_callback not set call_id={call_id}", flush=True)
             core.logger.warning(
                 "[AICORE] intro=error tts_callback not set, cannot send template 000-002"
             )
-            state = core._get_session_state(call_id)
+            state = get_session_state(core, call_id)
             state.phase = "ENTRY"
     else:
-        state = core._get_session_state(call_id)
+        state = get_session_state(core, call_id)
         state.phase = "ENTRY"
         core.logger.debug(
             "[AICORE] Phase set to ENTRY for call_id=%s (client_id=%s)",

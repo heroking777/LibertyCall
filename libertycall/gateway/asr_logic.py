@@ -8,6 +8,7 @@ import time
 from typing import List, Optional, Tuple
 
 from .flow_engine import FlowEngine
+from .state_store import get_session_state
 
 
 def load_phrase_hints(core) -> List[str]:
@@ -57,7 +58,7 @@ def enable_asr(core, uuid: str, client_id: Optional[str] = None) -> None:
             )
             core.flow_engines[uuid] = core.flow_engine
 
-    state = core._get_session_state(uuid)
+    state = get_session_state(core, uuid)
     if state.phase == "ENTRY" or not state.phase:
         state.phase = "ENTRY"
         state.meta["client_id"] = client_id
