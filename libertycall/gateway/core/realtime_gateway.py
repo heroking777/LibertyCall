@@ -145,35 +145,45 @@ class RealtimeGateway:
 
     def __getattr__(self, name: str):
         alias_map = {
-            "_ensure_console_session": self.console_manager.ensure_console_session,
-            "_append_console_log": self.console_manager.append_console_log,
-            "_record_dialogue": self.console_manager.record_dialogue,
-            "_build_handover_summary": self.console_manager.build_handover_summary,
-            "_generate_call_id_from_uuid": self.console_manager.generate_call_id_from_uuid,
-            "_init_esl_connection": self.esl_manager._init_esl_connection,
+            "_ensure_console_session": "console_manager",
+            "_append_console_log": "console_manager",
+            "_record_dialogue": "console_manager",
+            "_build_handover_summary": "console_manager",
+            "_generate_call_id_from_uuid": "console_manager",
+            "_init_esl_connection": "esl_manager",
         }
         if name in alias_map:
-            return alias_map[name]
+            manager = object.__getattribute__(self, alias_map[name])
+            return getattr(manager, name)
 
-        delegates = (
-            self.playback_manager,
-            self.network_manager,
-            self.utils,
-            self.activity_monitor,
-            self.console_manager,
-            self.esl_manager,
-            self.session_handler,
-            self.audio_processor,
-            self.monitor_manager,
-            self.asr_manager,
+        delegate_names = (
+            "playback_manager",
+            "network_manager",
+            "utils",
+            "activity_monitor",
+            "console_manager",
+            "esl_manager",
+            "session_handler",
+            "audio_processor",
+            "monitor_manager",
+            "asr_manager",
         )
-        for delegate in delegates:
+        for delegate_name in delegate_names:
+            try:
+                delegate = object.__getattribute__(self, delegate_name)
+            except AttributeError:
+                continue
+            if delegate is None:
+                continue
             attr = getattr(type(delegate), name, None)
             if attr is not None:
                 return getattr(delegate, name)
             if name in getattr(delegate, "__dict__", {}):
                 return delegate.__dict__[name]
         raise AttributeError(f"{type(self).__name__} has no attribute {name}")
+
+    def _stop_recording(self) -> None:
+        self.activity_monitor._stop_recording()
 
     async def _streaming_poll_loop(self):
         """ストリーミングモード: 定期的にASR結果をポーリングし、確定した発話を処理する。"""
