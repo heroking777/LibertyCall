@@ -9,8 +9,6 @@ import os
 os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", "/opt/libertycall/config/google-credentials.json")
 import time
 import threading
-import json
-from datetime import datetime
 from typing import Optional, Tuple, List, Dict, Any, Callable
 
 from .text_utils import get_template_config, normalize_text
@@ -46,6 +44,8 @@ from .audio_orchestrator import (
     send_playback_request_http,
 )
 from .activity_monitor import start_activity_monitor
+from .asr_manager import on_new_audio as handle_new_audio
+from .config_loader import load_flow, load_json, load_keywords_from_config
 from .core_initializer import init_core_state
 from .tts_utils import (
     synthesize_text_with_gemini,
@@ -58,11 +58,11 @@ from .transcript_handler import handle_transcript
 from .session_utils import (
     get_session_dir,
     ensure_session_dir,
-    save_transcript_event,
     save_session_summary_from_core,
     append_call_log_entry,
     log_ai_templates,
     save_debug_wav,
+    save_transcript_event_from_core,
     cleanup_stale_sessions,
 )
 from .resource_manager import cleanup_call, cleanup_asr_instance
@@ -350,105 +350,17 @@ class AICore:
         cleanup_call(self, call_id)
 
     def _load_flow(self, client_id: str) -> dict:
-        """
-        クライアントごとの会話フローを読み込む
-        
-        :param client_id: クライアントID
-        :return: 会話フロー設定（dict）
-        """
-        path = f"/opt/libertycall/config/clients/{client_id}/flow.json"
-        default_path = "/opt/libertycall/config/system/default_flow.json"
-        
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                flow = json.load(f)
-                version = flow.get("version", "unknown")
-                self.logger.info(f"[FLOW] client={client_id} version={version} loaded")
-                return flow
-        else:
-            if os.path.exists(default_path):
-                with open(default_path, "r", encoding="utf-8") as f:
-                    flow = json.load(f)
-                    self.logger.warning(f"[FLOW] client={client_id} missing, loaded default version={flow.get('version', 'unknown')}")
-                    return flow
-            else:
-                self.logger.error(f"[FLOW] client={client_id} missing and default not found, using empty flow")
-                return {}
+        return load_flow(self, client_id)
     
     def _load_json(self, path: str, default: str = None) -> dict:
-        """
-        汎用JSON読み込みヘルパー
-        
-        :param path: JSONファイルのパス
-        :param default: フォールバック用のデフォルトパス
-        :return: JSONデータ（dict）
-        """
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        elif default and os.path.exists(default):
-            with open(default, "r", encoding="utf-8") as f:
-                self.logger.debug(f"[FLOW] Using default file: {default}")
-                return json.load(f)
-        return {}
+        return load_json(self, path, default=default)
     
     def _load_keywords_from_config(self) -> None:
-        """
-        keywords.jsonからキーワードを読み込んでインスタンス変数に設定
-        """
-        if not self.keywords:
-            self.logger.warning("[FLOW] keywords not loaded, using empty lists")
-            self.AFTER_085_NEGATIVE_KEYWORDS = []
-            self.ENTRY_TRIGGER_KEYWORDS = []
-            self.CLOSING_YES_KEYWORDS = []
-            self.CLOSING_NO_KEYWORDS = []
-            return
-        
-        self.AFTER_085_NEGATIVE_KEYWORDS = self.keywords.get("AFTER_085_NEGATIVE_KEYWORDS", [])
-        self.ENTRY_TRIGGER_KEYWORDS = self.keywords.get("ENTRY_TRIGGER_KEYWORDS", [])
-        self.CLOSING_YES_KEYWORDS = self.keywords.get("CLOSING_YES_KEYWORDS", [])
-        self.CLOSING_NO_KEYWORDS = self.keywords.get("CLOSING_NO_KEYWORDS", [])
-        
-        self.logger.debug(
-            f"[FLOW] Keywords loaded: ENTRY_TRIGGER={len(self.ENTRY_TRIGGER_KEYWORDS)}, "
-            f"CLOSING_YES={len(self.CLOSING_YES_KEYWORDS)}, CLOSING_NO={len(self.CLOSING_NO_KEYWORDS)}, "
-            f"AFTER_085_NEGATIVE={len(self.AFTER_085_NEGATIVE_KEYWORDS)}"
-        )
+        load_keywords_from_config(self)
     
         
     def _save_transcript_event(self, call_id: str, text: str, is_final: bool, kwargs: dict) -> None:
-        """
-        on_transcriptイベントをtranscript.jsonlに保存（JSONL形式で逐次追記）
-        ログエラー発生時でも音声再生を継続するように保護
-        
-        :param call_id: 通話UUID
-        :param text: 認識されたテキスト
-        :param is_final: 確定した発話かどうか
-        :param kwargs: 追加パラメータ
-        """
-        try:
-            client_id = getattr(self, "client_id", "000")
-            save_transcript_event(call_id, text, is_final, kwargs, client_id)
-            
-            # セッション情報を更新（intent追跡用）
-            if call_id not in self.session_info:
-                self.session_info[call_id] = {
-                    "start_time": datetime.now(),
-                    "intents": [],
-                    "phrases": [],
-                }
-            
-            # finalの場合はintentを記録
-            if is_final and text:
-                session_info = self.session_info[call_id]
-                session_info["phrases"].append({
-                    "text": text,
-                    "timestamp": datetime.now().isoformat(),
-                })
-            
-            self.logger.debug(f"[SESSION_LOG] Saved transcript event: call_id={call_id} is_final={is_final}")
-        except Exception as e:
-            self.logger.exception(f"[SESSION_LOG] Failed to save transcript event: {e}")
+        save_transcript_event_from_core(self, call_id, text, is_final, kwargs)
     
     def _save_session_summary(self, call_id: str) -> None:
         save_session_summary_from_core(self, call_id)
@@ -689,107 +601,7 @@ class AICore:
         return tts_audio, should_transfer, text, intent, resp_text
 
     def on_new_audio(self, call_id: str, pcm16k_bytes: bytes) -> None:
-        """
-        ストリーミングモード: 新しい音声チャンクをASRにfeedする。
-        【修正】通話ごとに独立したASRインスタンスを使用（混線防止）
-        
-        :param call_id: 通話ID
-        :param pcm16k_bytes: 16kHz PCM音声データ
-        """
-        # 受信ログ（デバッグレベル）
-        self.logger.debug(f"[AI_CORE] on_new_audio called. Len={len(pcm16k_bytes)} call_id={call_id}")
-        
-        if not self.streaming_enabled:
-            return
-        
-        # 通話が既に終了している場合は処理をスキップ（ゾンビ化防止）
-        # 【修正】未登録ならリカバリ登録を行ってから処理を続行
-        if call_id not in self._call_started_calls:
-            self.logger.warning(f"[ASR_RECOVERY] call_id={call_id} not in _call_started_calls but receiving audio. Auto-registering.")
-            self._call_started_calls.add(call_id)
-            # return はしない！そのまま処理を続行させる
-        
-        # GoogleASR の場合は通話ごとの独立したASRインスタンスを使用
-        if self.asr_provider == "google":
-            self.logger.debug(f"AICore: on_new_audio (provider=google) call_id={call_id} len={len(pcm16k_bytes)} bytes")
-            
-            # 【修正】遅延初期化（古いプロセスとの互換性）
-            if not hasattr(self, 'asr_instances'):
-                self.asr_instances = {}
-                self.asr_lock = threading.Lock()
-                self._phrase_hints = []
-                print(f"[ASR_INSTANCES_LAZY_INIT] asr_instances and lock created (lazy)", flush=True)
-            
-            # 【修正】スレッドセーフにASRインスタンスを取得または作成
-            asr_instance = None
-            newly_created = False
-            with self.asr_lock:
-                # === 追加：ロック取得時の状態をログ ===
-                print(f"[ASR_LOCK_ACQUIRED] call_id={call_id}, current_instances={list(self.asr_instances.keys())}", flush=True)
-                
-                if call_id not in self.asr_instances:
-                    import traceback
-                    caller_stack = traceback.extract_stack()
-                    caller_info = f"{caller_stack[-3].filename}:{caller_stack[-3].lineno} in {caller_stack[-3].name}"
-                    print(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}", flush=True)
-                    print(f"[ASR_CREATE_CALLER] call_id={call_id}, caller={caller_info}", flush=True)
-                    self.logger.info(f"[ASR_INSTANCE_CREATE] Creating new GoogleASR for call_id={call_id}")
-                    try:
-                        new_asr = GoogleASR(
-                            language_code="ja",
-                            sample_rate=16000,
-                            phrase_hints=getattr(self, '_phrase_hints', []),
-                            ai_core=self,
-                            error_callback=self._on_asr_error,
-                        )
-                        self.asr_instances[call_id] = new_asr
-                        newly_created = True
-                        print(f"[ASR_INSTANCE_CREATED] call_id={call_id}, total_instances={len(self.asr_instances)}", flush=True)
-                        self.logger.info(f"[ASR_INSTANCE_CREATED] call_id={call_id}, total_instances={len(self.asr_instances)}")
-                    except Exception as e:
-                        self.logger.error(f"[ASR_INSTANCE_CREATE_FAILED] call_id={call_id}: {e}", exc_info=True)
-                        print(f"[ASR_INSTANCE_CREATE_FAILED] call_id={call_id}: {e}", flush=True)
-                        return
-                else:
-                    # === 追加：既存インスタンス再利用時のログ ===
-                    print(f"[ASR_INSTANCE_REUSE] call_id={call_id} already exists", flush=True)
-                # ロック内でインスタンスを取得
-                asr_instance = self.asr_instances.get(call_id)
-            
-            # 【追加】新規作成時はストリームスレッド開始を待機（最大500ms）
-            if newly_created and asr_instance is not None:
-                # 明示的にストリームワーカーを起動
-                asr_instance._start_stream_worker(call_id)
-                max_wait = 0.5  # 最大500ms待機
-                wait_interval = 0.02  # 20msごとにチェック
-                elapsed = 0.0
-                print(f"[ASR_STREAM_WAIT] call_id={call_id} Waiting for stream thread to start...", flush=True)
-                while elapsed < max_wait:
-                    if asr_instance._stream_thread is not None and asr_instance._stream_thread.is_alive():
-                        break
-                    time.sleep(wait_interval)
-                    elapsed += wait_interval
-                
-                stream_ready = (asr_instance._stream_thread is not None and asr_instance._stream_thread.is_alive())
-                if stream_ready:
-                    print(f"[ASR_STREAM_READY] call_id={call_id} Stream thread ready after {elapsed:.3f}s", flush=True)
-                    self.logger.info(f"[ASR_STREAM_READY] call_id={call_id} Stream thread ready after {elapsed:.3f}s")
-                else:
-                    print(f"[ASR_STREAM_TIMEOUT] call_id={call_id} Stream thread not ready after {elapsed:.3f}s", flush=True)
-                    self.logger.warning(f"[ASR_STREAM_TIMEOUT] call_id={call_id} Stream thread not ready after {elapsed:.3f}s")
-            
-            # ロック外で音声をフィード（ASR処理をブロックしないため）
-            if asr_instance is not None:
-                try:
-                    self.logger.warning(f"[ON_NEW_AUDIO_FEED] About to call feed_audio for call_id={call_id}, chunk_size={len(pcm16k_bytes)}")
-                    asr_instance.feed_audio(call_id, pcm16k_bytes)
-                    self.logger.warning(f"[ON_NEW_AUDIO_FEED_DONE] feed_audio completed for call_id={call_id}")
-                except Exception as e:
-                    self.logger.error(f"AICore: GoogleASR.feed_audio 失敗 (call_id={call_id}): {e}", exc_info=True)
-                    self.logger.info(f"ASR_GOOGLE_ERROR: feed_audio失敗 (call_id={call_id}): {e}")
-        else:
-            # Whisper の場合
-            self.asr_model.feed(call_id, pcm16k_bytes)  # type: ignore[union-attr]
+        handle_new_audio(self, call_id, pcm16k_bytes)
 
     def _on_asr_error(self, call_id: str, error: Exception) -> None:
         """

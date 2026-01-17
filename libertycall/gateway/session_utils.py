@@ -278,6 +278,35 @@ def save_debug_wav(core, pcm16k_bytes: bytes) -> None:
         logger.exception("Failed to save debug WAV: %s", e)
 
 
+def save_transcript_event_from_core(core, call_id: str, text: str, is_final: bool, kwargs: dict) -> None:
+    """Save transcript events and update in-memory session info for AICore."""
+    try:
+        client_id = getattr(core, "client_id", "000")
+        save_transcript_event(call_id, text, is_final, kwargs, client_id)
+
+        if call_id not in core.session_info:
+            core.session_info[call_id] = {
+                "start_time": datetime.now(),
+                "intents": [],
+                "phrases": [],
+            }
+
+        if is_final and text:
+            session_info = core.session_info[call_id]
+            session_info["phrases"].append({
+                "text": text,
+                "timestamp": datetime.now().isoformat(),
+            })
+
+        core.logger.debug(
+            "[SESSION_LOG] Saved transcript event: call_id=%s is_final=%s",
+            call_id,
+            is_final,
+        )
+    except Exception as exc:
+        core.logger.exception("[SESSION_LOG] Failed to save transcript event: %s", exc)
+
+
 def cleanup_stale_sessions(max_age_days: int = 30) -> None:
     """
     古いセッションディレクトリをクリーンアップ
