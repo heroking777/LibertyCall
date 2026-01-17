@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import audioop
 import os
 import socket
 import subprocess
 import threading
 import time
 import traceback
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from .google_asr import GoogleASR
+import numpy as np
+from scipy.signal import resample_poly
 
 try:  # pragma: no cover - optional dependency
     from scapy.all import IP, UDP, sniff
@@ -23,6 +27,40 @@ except ImportError:  # pragma: no cover - optional dependency
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
     from libertycall.gateway.realtime_gateway import RealtimeGateway
+
+
+@dataclass
+class DialogueResult:
+    call_id: str
+    user_audio: bytes
+    text_raw: Optional[str]
+    intent: Optional[str]
+    reply_text: Optional[str]
+    tts_audio_24k: Optional[bytes]
+    should_transfer: bool
+    rms_avg: float
+    duration_sec: float
+
+
+@dataclass
+class ASRProcessResult:
+    dialogue: Optional[DialogueResult] = None
+    barge_in_triggered: bool = False
+    reset_no_input_timer: bool = False
+
+
+@dataclass
+class CallAudioState:
+    audio_buffer: bytearray = field(default_factory=bytearray)
+    turn_rms_values: List[int] = field(default_factory=list)
+    is_user_speaking: bool = False
+    current_segment_start: Optional[float] = None
+    last_voice_wall: float = field(default_factory=time.time)
+    last_voice_mono: float = field(default_factory=time.monotonic)
+    last_silence_mono: Optional[float] = None
+    backchannel_sent: bool = False
+    stream_chunk_counter: int = 0
+    last_feed_time: float = field(default_factory=time.time)
 
 
 def init_asr(core) -> None:
