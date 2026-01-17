@@ -7,7 +7,7 @@ import logging
 クライアント別の着信音声シーケンスを管理し、音声ファイルを読み込んで再生する
 """
 
-print("DEBUG: LOADING AUDIO MANAGER FROM /opt/libertycall_fixed/gateway/audio_manager.py")
+print("DEBUG: LOADING AUDIO MANAGER FROM /opt/libertycall/gateway/audio_manager.py")
 
 import glob
 import logging
