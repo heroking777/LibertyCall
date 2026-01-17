@@ -7,11 +7,10 @@ import os
 # 明示的に認証ファイルパスを指定（存在する候補ファイルがあればデフォルトで設定）
 # 実稼働では環境変数で設定するのが望ましいが、ここでは一時的にデフォルトを補完する
 os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", "/opt/libertycall/config/google-credentials.json")
-from typing import Optional, Tuple, List, Dict, Any, Callable
+from typing import Optional, Tuple, List
 
-from .text_utils import get_template_config, normalize_text
+from .text_utils import normalize_text
 from .flow_engine import FlowEngine
-from .api_client import init_api_clients
 from .call_manager import (
     on_call_start as manage_call_start,
     on_call_end as manage_call_end,
@@ -61,18 +60,9 @@ from .audio_manager import (
 )
 from .state_logic import ConversationState, MisunderstandingGuard, HandoffStateMachine
 from .transcript_handler import handle_transcript
-from .session_utils import (
-    get_session_dir,
-    ensure_session_dir,
-    save_session_summary_from_core,
-    append_call_log_entry,
-    log_ai_templates,
-    save_debug_wav,
-    save_transcript_event_from_core,
-    cleanup_stale_sessions,
-)
+from .session_utils import save_session_summary_from_core, save_debug_wav, save_transcript_event_from_core
 from .resource_manager import cleanup_call, cleanup_asr_instance
-from .state_store import get_session_state, reset_session_state, set_call_id
+from .state_store import set_call_id
 
 MIN_TEXT_LENGTH_FOR_INTENT = 2  # 「はい」「うん」も判定可能に
 class AICore:
@@ -98,16 +88,7 @@ class AICore:
     def enable_asr(self, uuid: str, client_id: Optional[str] = None) -> None:
         enable_asr_logic(self, uuid, client_id=client_id)
     
-    def _classify_simple_intent(self, text: str, normalized: str) -> Optional[str]:
-        return classify_simple_intent(text, normalized)
-    
-    def _break_playback(self, call_id: str) -> None:
-        break_playback(self, call_id)
-    
-    def _play_audio_response(self, call_id: str, intent: str) -> None:
-        play_audio_response(self, call_id, intent)
-    
-    def _handle_flow_engine_transition(
+    def handle_flow_engine_transition(
         self,
         call_id: str,
         text: str,
@@ -115,7 +96,7 @@ class AICore:
         intent: str,
         state: ConversationState,
         flow_engine: FlowEngine,
-        client_id: str
+        client_id: str,
     ) -> Tuple[str, List[str], str, bool]:
         return handle_flow_engine_transition(
             self,
@@ -128,24 +109,21 @@ class AICore:
             client_id,
         )
     
-    def _play_template_sequence(self, call_id: str, template_ids: List[str], client_id: Optional[str] = None) -> None:
-        play_template_sequence(self, call_id, template_ids, client_id=client_id)
+    def play_template_sequence(self, call_id: str, template_ids: List[str], client_id: Optional[str] = None) -> None:
+        play_template_sequence(call_id, template_ids, client_id=client_id)
     
-    def _send_playback_request_http(self, call_id: str, audio_file: str) -> None:
-        send_playback_request_http(self, call_id, audio_file)
+    def send_playback_request_http(self, call_id: str, audio_file: str) -> None:
+        send_playback_request_http(call_id, audio_file)
     
-    def _save_debug_wav(self, pcm16k_bytes: bytes):
-        save_debug_wav(self, pcm16k_bytes)
+    def save_debug_wav(self, pcm16k_bytes: bytes):
+        save_debug_wav(pcm16k_bytes)
     
 
-    def _is_hallucination(self, text):
+    def is_hallucination(self, text):
         return is_hallucination(text)
 
-    def _start_activity_monitor(self) -> None:
-        start_activity_monitor(self)
-    
     def on_call_end(self, call_id: Optional[str], source: str = "unknown") -> None:
-        manage_call_end(self, call_id, source=source)
+        manage_call_end(call_id, source=source)
 
     def cleanup_asr_instance(self, call_id: str) -> None:
         cleanup_asr_instance(self, call_id)
@@ -153,20 +131,20 @@ class AICore:
     def cleanup_call(self, call_id: str) -> None:
         cleanup_call(self, call_id)
 
-    def _load_flow(self, client_id: str) -> dict:
+    def load_flow(self, client_id: str) -> dict:
         return load_flow(self, client_id)
     
-    def _load_json(self, path: str, default: str = None) -> dict:
+    def load_json(self, path: str, default: str = None) -> dict:
         return load_json(self, path, default=default)
     
-    def _load_keywords_from_config(self) -> None:
+    def load_keywords_from_config(self) -> None:
         load_keywords_from_config(self)
     
         
-    def _save_transcript_event(self, call_id: str, text: str, is_final: bool, kwargs: dict) -> None:
+    def save_transcript_event(self, call_id: str, text: str, is_final: bool, kwargs: dict) -> None:
         save_transcript_event_from_core(self, call_id, text, is_final, kwargs)
     
-    def _save_session_summary(self, call_id: str) -> None:
+    def save_session_summary(self, call_id: str) -> None:
         save_session_summary_from_core(self, call_id)
     
     def reload_flow(self) -> None:
@@ -181,28 +159,28 @@ class AICore:
         self.client_id = client_id
         reload_flow_manager(self)
 
-    def _synthesize_text_with_gemini(self, text: str, speaking_rate: float = 1.0, pitch: float = 0.0) -> Optional[bytes]:
+    def synthesize_text_with_gemini(self, text: str, speaking_rate: float = 1.0, pitch: float = 0.0) -> Optional[bytes]:
         return synthesize_text(text, speaking_rate, pitch)
 
-    def _synthesize_template_audio(self, template_id: str) -> Optional[bytes]:
+    def synthesize_template_audio(self, template_id: str) -> Optional[bytes]:
         return synthesize_template_audio_for_core(self, template_id)
 
-    def _synthesize_template_sequence(self, template_ids: List[str]) -> Optional[bytes]:
+    def synthesize_template_sequence(self, template_ids: List[str]) -> Optional[bytes]:
         return synthesize_template_sequence_for_core(self, template_ids)
 
-    def _trigger_transfer(self, call_id: str) -> None:
+    def trigger_transfer(self, call_id: str) -> None:
         manage_trigger_transfer(self, call_id)
 
-    def _trigger_transfer_if_needed(self, call_id: str, state: ConversationState) -> None:
+    def trigger_transfer_if_needed(self, call_id: str, state: ConversationState) -> None:
         manage_trigger_transfer_if_needed(self, call_id, state)
 
-    def _schedule_auto_hangup(self, call_id: str, delay_sec: float = 60.0) -> None:
+    def schedule_auto_hangup(self, call_id: str, delay_sec: float = 60.0) -> None:
         manage_schedule_auto_hangup(self, call_id, delay_sec=delay_sec)
 
     def on_call_start(self, call_id: str, client_id: str = None, **kwargs) -> None:
         manage_call_start(self, call_id, client_id=client_id, **kwargs)
 
-    def _handle_entry_phase(
+    def handle_entry_phase(
         self,
         call_id: str,
         raw_text: str,
@@ -211,7 +189,7 @@ class AICore:
     ) -> Tuple[str, List[str], bool]:
         return handle_entry_phase(self, call_id, raw_text, normalized_text, state)
 
-    def _handle_qa_phase(
+    def handle_qa_phase(
         self,
         call_id: str,
         raw_text: str,
@@ -219,7 +197,7 @@ class AICore:
     ) -> Tuple[str, List[str], bool]:
         return handle_qa_phase(self, call_id, raw_text, state)
 
-    def _handle_after_085_phase(
+    def handle_after_085_phase(
         self,
         call_id: str,
         raw_text: str,
@@ -228,7 +206,7 @@ class AICore:
     ) -> Tuple[str, List[str], bool]:
         return handle_after_085_phase(self, call_id, raw_text, normalized_text, state)
 
-    def _handle_entry_confirm_phase(
+    def handle_entry_confirm_phase(
         self,
         call_id: str,
         raw_text: str,
@@ -237,7 +215,7 @@ class AICore:
     ) -> Tuple[str, List[str], bool]:
         return handle_entry_confirm_phase(self, call_id, raw_text, normalized_text, state)
     
-    def _handle_waiting_phase(
+    def handle_waiting_phase(
         self,
         call_id: str,
         raw_text: str,
@@ -246,7 +224,7 @@ class AICore:
     ) -> Tuple[str, List[str], bool]:
         return handle_waiting_phase(self, call_id, raw_text, normalized_text, state)
     
-    def _handle_not_heard_phase(
+    def handle_not_heard_phase(
         self,
         call_id: str,
         raw_text: str,
@@ -255,7 +233,7 @@ class AICore:
     ) -> Tuple[str, List[str], bool]:
         return handle_not_heard_phase(self, call_id, raw_text, normalized_text, state)
 
-    def _handle_closing_phase(
+    def handle_closing_phase(
         self,
         call_id: str,
         raw_text: str,
@@ -264,7 +242,7 @@ class AICore:
     ) -> Tuple[str, List[str], bool]:
         return handle_closing_phase(self, call_id, raw_text, normalized_text, state)
 
-    def _handle_handoff_confirm(
+    def handle_handoff_confirm(
         self,
         call_id: str,
         raw_text: str,
@@ -273,7 +251,7 @@ class AICore:
     ) -> Tuple[str, List[str], str, bool]:
         return handle_handoff_confirm(self, call_id, raw_text, intent, state)
 
-    def _handle_handoff_phase(
+    def handle_handoff_phase(
         self,
         call_id: str,
         raw_text: str,
@@ -282,14 +260,14 @@ class AICore:
     ) -> Tuple[str, List[str], bool]:
         return handle_handoff_phase(self, call_id, raw_text, normalized_text, state)
 
-    def _run_conversation_flow(
+    def run_conversation_flow(
         self,
         call_id: str,
         raw_text: str,
     ) -> Tuple[List[str], str, bool]:
         return run_conversation_flow(self, call_id, raw_text)
 
-    def _generate_reply(
+    def generate_reply(
         self,
         call_id: str,
         raw_text: str,
