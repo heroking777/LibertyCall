@@ -3,17 +3,12 @@
 import asyncio
 import logging
 import signal
-import struct
 import sys
-import json
 import os
-import wave
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Dict
-import yaml
-import audioop
 import time
 import uvicorn
 try:
@@ -21,11 +16,6 @@ try:
     SCAPY_AVAILABLE = True
 except ImportError:
     SCAPY_AVAILABLE = False
-try:
-    import aiohttp
-    AIOHTTP_AVAILABLE = True
-except ImportError:
-    AIOHTTP_AVAILABLE = False
 try:
     from webrtc_audio_processing import AudioProcessing, NsLevel
     WEBRTC_NS_AVAILABLE = True
@@ -45,15 +35,17 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 # --- モジュール読み込み ---
 from libertycall.gateway.ai_core import AICore
-from libertycall.gateway.text_utils import normalize_text
-from libertycall.gateway.transcript_normalizer import normalize_transcript
 from libertycall.gateway.asr_manager import GatewayASRManager
 from libertycall.gateway.playback_manager import GatewayPlaybackManager
 from libertycall.gateway.call_session_handler import GatewayCallSessionHandler
 from libertycall.gateway.network_manager import GatewayNetworkManager
 from libertycall.gateway.monitor_manager import GatewayMonitorManager, ESLAudioReceiver
 from libertycall.gateway.audio_processor import GatewayAudioProcessor
-from libertycall.gateway.gateway_utils import GatewayUtils, IGNORE_RTP_IPS
+from libertycall.gateway.gateway_utils import GatewayUtils
+from libertycall.gateway.gateway_event_router import GatewayEventRouter
+from libertycall.gateway.gateway_config_manager import GatewayConfigManager
+from libertycall.gateway.gateway_activity_monitor import GatewayActivityMonitor
+from libertycall.gateway.gateway_rtp_protocol import RTPPacketBuilder, RTPProtocol
 from libertycall.console_bridge import console_bridge
 from gateway.asr_controller import app as asr_app, set_gateway_instance
 
@@ -76,137 +68,9 @@ try:
 except ImportError:  # 実行形式(py gateway/realtime_gateway.py)との両立
     from audio_manager import AudioManager  # type: ignore
 
-class RTPPacketBuilder:
-    RTP_VERSION = 2
-    def __init__(self, payload_type: int, sample_rate: int, ssrc: Optional[int] = None):
-        self.payload_type = payload_type
-        self.sample_rate = sample_rate
-        self.ssrc = ssrc or self._generate_ssrc()
-        self.sequence_number = 0
-        self.timestamp = 0
+def load_config(config_path: str | Path) -> dict:
+    return GatewayConfigManager.load_config(Path(config_path))
 
-    def _generate_ssrc(self) -> int:
-        import random
-        return random.randint(0, 0xFFFFFFFF)
-
-    def build_packet(self, payload: bytes) -> bytes:
-        header = bytearray(12)
-        header[0] = (self.RTP_VERSION << 6)
-        header[1] = self.payload_type & 0x7F
-        struct.pack_into('>H', header, 2, self.sequence_number)
-        struct.pack_into('>I', header, 4, self.timestamp)
-        struct.pack_into('>I', header, 8, self.ssrc)
-        self.sequence_number = (self.sequence_number + 1) & 0xFFFF
-        samples = len(payload) // 2 
-        self.timestamp = (self.timestamp + samples) & 0xFFFFFFFF
-        return bytes(header) + payload
-
-class RTPProtocol(asyncio.DatagramProtocol):
-    def __init__(self, gateway: 'RealtimeGateway'):
-        self.gateway = gateway
-        # 受信元アドレスをロックするためのフィールド（最初のパケット送信元を固定）
-        self.remote_addr: Optional[Tuple[str, int]] = None
-        # 受信元SSRCをロックするためのフィールド（RTPヘッダのbytes 8-11）
-        self.remote_ssrc: Optional[int] = None
-    def connection_made(self, transport):
-        self.transport = transport
-        # 【デバッグ強化】実際にバインドされたアドレスとポートを確認
-        try:
-            sock = transport.get_extra_info('socket')
-            if sock:
-                bound_addr = sock.getsockname()
-                self.gateway.logger.debug(f"DEBUG_TRACE: [RTP_SOCKET] Bound successfully to: {bound_addr}")
-            else:
-                self.gateway.logger.debug("DEBUG_TRACE: [RTP_SOCKET] Transport created (no socket info available)")
-        except Exception as e:
-            self.gateway.logger.debug(f"DEBUG_TRACE: [RTP_SOCKET] connection_made error: {e}")
-
-    def datagram_received(self, data: bytes, addr: Tuple[str, int]):
-        # 【最優先デバッグ】フィルタリング前の「生」の到達を記録（全パケット）
-        if not hasattr(self, '_raw_packet_count'):
-            self._raw_packet_count = 0
-        self._raw_packet_count += 1
-        if self._raw_packet_count % 50 == 1:
-            print(f"DEBUG_TRACE: [RTP_RECV_RAW] Received {len(data)} bytes from {addr} (count={self._raw_packet_count})", flush=True)
-        
-        # FreeSWITCH/localhostからのループバックは除外
-        if addr[0] in IGNORE_RTP_IPS:
-            # FreeSWITCH自身からのパケット（システム音声の逆流）を無視
-            if self._raw_packet_count % 100 == 1:
-                print(f"DEBUG_TRACE: [RTP_FILTER] Ignored packet from local IP: {addr[0]} (count={self._raw_packet_count})", flush=True)
-            return
-        
-        # デバッグ: ユーザーからのパケットのみ処理されることを確認（50回に1回出力）
-        if not hasattr(self, '_packet_count'):
-            self._packet_count = 0
-        self._packet_count += 1
-        if self._packet_count % 50 == 1:
-            print(f"DEBUG_TRACE: RTPProtocol packet from user IP={addr[0]} port={addr[1]} len={len(data)} count={self._packet_count}", flush=True)
-        
-        # 【追加】SSRCフィルタリング（優先）および送信元IP/Portの検証（混線防止）
-        try:
-            # ヘッダサイズチェック
-            if len(data) >= 12:
-                try:
-                    ssrc = struct.unpack('!I', data[8:12])[0]
-                except Exception:
-                    ssrc = None
-            else:
-                ssrc = None
-
-            # SSRCによるロック（存在すれば優先的にチェック）
-            if ssrc is not None:
-                if self.remote_ssrc is None:
-                    self.remote_ssrc = ssrc
-                    # IPも記録しておく
-                    self.remote_addr = addr
-                    self.gateway.logger.info(f"[RTP_FILTER] Locked SSRC={ssrc} from {addr}")
-                elif self.remote_ssrc != ssrc:
-                    # 異なるSSRCは混入と見なし破棄
-                    self.gateway.logger.debug(f"[RTP_FILTER] Ignored packet with SSRC={ssrc} (expected {self.remote_ssrc}) from {addr}")
-                    return
-            else:
-                # SSRC取得できなかった場合はIP/Portで保護（後方互換）
-                if self.remote_addr is None:
-                    self.remote_addr = addr
-                    self.gateway.logger.info(f"[RTP_FILTER] Locked remote address to {addr}")
-                elif self.remote_addr != addr:
-                    self.gateway.logger.debug(f"[RTP_FILTER] Ignored packet from {addr} (expected {self.remote_addr})")
-                    return
-        except Exception:
-            # フィルタ処理は安全に失敗させない（ログ出力のみ）
-            try:
-                self.gateway.logger.exception("[RTP_FILTER] Exception while filtering packet")
-            except Exception:
-                pass
-
-        # 受信確認ログ（UDPパケットが実際に届いているか確認用）
-        self.gateway.logger.debug(f"[RTP_RECV] Received {len(data)} bytes from {addr}")
-        # RTP受信ログ（軽量版：fromとlenのみ）
-        self.gateway.logger.info(f"[RTP_RECV_RAW] from={addr}, len={len(data)}")
-        
-        # RakutenのRTP監視対策：受信したパケットをそのまま送り返す（エコー）
-        # これによりRakuten側は「RTP到達OK」と判断し、通話が切れなくなる
-        try:
-            if self.transport:
-                self.transport.sendto(data, addr)
-                self.gateway.logger.debug(f"[RTP_ECHO] sent echo packet to {addr}, len={len(data)}")
-        except Exception as e:
-            self.gateway.logger.warning(f"[RTP_ECHO] failed to send echo: {e}")
-        
-        try:
-            task = asyncio.create_task(self.gateway.handle_rtp_packet(data, addr))
-            def log_exception(task: asyncio.Task) -> None:
-                exc = task.exception()
-                if exc is not None:
-                    self.gateway.logger.error(
-                        "handle_rtp_packet failed: %r", exc, exc_info=exc
-                    )
-            task.add_done_callback(log_exception)
-        except Exception as e:
-            self.gateway.logger.error(
-                "Failed to create task for handle_rtp_packet: %r", e, exc_info=True
-            )
 
 class RealtimeGateway:
     def __init__(self, config: dict, rtp_port_override: Optional[int] = None):
@@ -214,27 +78,12 @@ class RealtimeGateway:
         self.logger = logging.getLogger(__name__)
         # 起動確認用ログ（修正版が起動したことを示す）
         self.logger.warning("[DEBUG_VERSION] RealtimeGateway initialized with UPDATED LOGGING logic.")
+        self.config_manager = GatewayConfigManager(self.logger)
         self.rtp_host = config["rtp"]["listen_host"]
         # ポート番号の優先順位: コマンドライン引数 > LC_RTP_PORT > LC_GATEWAY_PORT > gateway.yaml > 固定値 7100
-        if rtp_port_override is not None:
-            # コマンドライン引数が最優先
-            self.rtp_port = rtp_port_override
-            self.logger.info(f"[INIT] RTP port overridden by CLI argument: {self.rtp_port}")
-        else:
-            # 環境変数をチェック
-            env_port = os.getenv("LC_RTP_PORT") or os.getenv("LC_GATEWAY_PORT")
-            if env_port:
-                try:
-                    self.rtp_port = int(env_port)
-                    env_name = "LC_RTP_PORT" if os.getenv("LC_RTP_PORT") else "LC_GATEWAY_PORT"
-                    self.logger.debug(f"{env_name} override detected: {self.rtp_port}")
-                except ValueError:
-                    self.logger.warning("LC_RTP_PORT/LC_GATEWAY_PORT is invalid (%s). Falling back to config file.", env_port)
-                    # 環境変数が無効な場合は config ファイルの値を試す
-                    self.rtp_port = config["rtp"].get("listen_port", 7100)
-            else:
-                # 環境変数が無い場合は config ファイルの値を使用
-                self.rtp_port = config["rtp"].get("listen_port", 7100)
+        self.rtp_port = self.config_manager.resolve_rtp_port(
+            config, rtp_port_override=rtp_port_override
+        )
         self.payload_type = config["rtp"]["payload_type"]
         self.sample_rate = config["rtp"]["sample_rate"]
         self.ws_url = config["ws"]["url"]
@@ -249,6 +98,8 @@ class RealtimeGateway:
         self.network_manager = GatewayNetworkManager(self)
         self.audio_processor = GatewayAudioProcessor(self)
         self.utils = GatewayUtils(self, RTPPacketBuilder, RTPProtocol)
+        self.router = GatewayEventRouter(self)
+        self.activity_monitor = GatewayActivityMonitor(self)
         self.monitor_manager = GatewayMonitorManager(
             self,
             RTPProtocol,
@@ -619,49 +470,12 @@ class RealtimeGateway:
 
     def _generate_silence_ulaw(self, duration_sec: float) -> bytes:
         return self.playback_manager._generate_silence_ulaw(duration_sec)
-    
+
     def _start_recording(self) -> None:
-        """録音を開始する"""
-        if not self.recording_enabled or self.recording_file is not None:
-            return
-        
-        try:
-            recordings_dir = Path("/opt/libertycall/recordings")
-            recordings_dir.mkdir(parents=True, exist_ok=True)
-            
-            # ファイル名を生成（call_id またはタイムスタンプ）
-            call_id_str = self.call_id or "unknown"
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"call_{call_id_str}_{timestamp}.wav"
-            self.recording_path = recordings_dir / filename
-            
-            # WAVファイルを開く（8kHz, 16bit, モノラル）
-            self.recording_file = wave.open(str(self.recording_path), 'wb')
-            self.recording_file.setnchannels(1)  # モノラル
-            self.recording_file.setsampwidth(2)   # 16bit = 2 bytes
-            self.recording_file.setframerate(8000)  # 8kHz
-            
-            self.logger.info(
-                f"録音開始: call_id={call_id_str} path={self.recording_path}"
-            )
-        except Exception as e:
-            self.logger.error(f"録音開始エラー: {e}", exc_info=True)
-            self.recording_file = None
-            self.recording_path = None
-    
+        self.activity_monitor._start_recording()
+
     def _stop_recording(self) -> None:
-        """録音を停止する"""
-        if self.recording_file is not None:
-            try:
-                self.recording_file.close()
-                self.logger.info(
-                    f"録音停止: path={self.recording_path}"
-                )
-            except Exception as e:
-                self.logger.error(f"録音停止エラー: {e}", exc_info=True)
-            finally:
-                self.recording_file = None
-                self.recording_path = None
+        self.activity_monitor._stop_recording()
 
     def _reset_call_state(self) -> None:
         self.utils.reset_call_state()
@@ -674,43 +488,7 @@ class RealtimeGateway:
         )
 
     async def _start_no_input_timer(self, call_id: str) -> None:
-        """
-        無音検知タイマーを起動する（async対応版、既存タスクがあればキャンセルして再起動）
-        """
-        try:
-            existing = self._no_input_timers.pop(call_id, None)
-            if existing and not existing.done():
-                existing.cancel()
-                self.logger.debug(f"[DEBUG_INIT] Cancelled existing no_input_timer for call_id={call_id}")
-
-            now = time.monotonic()
-            self._last_user_input_time[call_id] = now
-            self._last_tts_end_time[call_id] = now
-            self._no_input_elapsed[call_id] = 0.0
-
-            async def _timer():
-                try:
-                    await asyncio.sleep(self.NO_INPUT_TIMEOUT)
-                    if not self.running:
-                        return
-                    await self._handle_no_input_timeout(call_id)
-                except asyncio.CancelledError:
-                    self.logger.debug(f"[DEBUG_INIT] no_input_timer cancelled for call_id={call_id}")
-                finally:
-                    self._no_input_timers.pop(call_id, None)
-
-            task = asyncio.create_task(_timer())
-            self._no_input_timers[call_id] = task
-            self.logger.debug(
-                f"[DEBUG_INIT] no_input_timer started for call_id={call_id} "
-                f"(timeout={self.NO_INPUT_TIMEOUT}s, task={task}, done={task.done()}, cancelled={task.cancelled()})"
-            )
-            self.logger.info(
-                f"[DEBUG_INIT] no_input_timer started for call_id={call_id} "
-                f"(timeout={self.NO_INPUT_TIMEOUT}s, task_done={task.done()}, task_cancelled={task.cancelled()})"
-            )
-        except Exception as e:
-            self.logger.exception(f"[NO_INPUT] Failed to start no_input_timer for call_id={call_id}: {e}")
+        await self.activity_monitor._start_no_input_timer(call_id)
 
     async def _no_input_monitor_loop(self):
         """無音状態を監視し、自動ハングアップを行う"""
@@ -718,85 +496,23 @@ class RealtimeGateway:
     
     async def _play_tts(self, call_id: str, text: str):
         """TTS音声を再生する"""
-        self.logger.info(f"[PLAY_TTS] dispatching text='{text}' to TTS queue for {call_id}")
+        self.logger.info(
+            "[PLAY_TTS] dispatching text='%s' to TTS queue for %s",
+            text,
+            call_id,
+        )
         try:
             self._send_tts(call_id, text, None, False)
         except Exception as e:
-            self.logger.error(f"TTS playback failed for call_id={call_id}: {e}", exc_info=True)
-    
-    async def _play_silence_warning(self, call_id: str, warning_interval: float):
-        """
-        無音時に流すアナウンス（音源ファイルから再生）
-        
-        :param call_id: 通話ID
-        :param warning_interval: 警告間隔（5.0, 15.0, 25.0）
-        """
-        try:
-            # クライアントIDを取得（未設定の場合はデフォルト値を使用）
-            effective_client_id = self.client_id or self.default_client_id or "000"
-            
-            # 警告間隔に応じて音源ファイル名を決定
-            audio_file_map = {
-                5.0: "000-004.wav",
-                15.0: "000-005.wav",
-                25.0: "000-006.wav"
-            }
-            audio_filename = audio_file_map.get(warning_interval)
-            
-            if not audio_filename:
-                self.logger.warning(f"[SILENCE_WARNING] Unknown warning_interval={warning_interval}, skipping")
-                return
-            
-            # クライアントごとの音声ディレクトリパスを構築
-            audio_dir = Path(_PROJECT_ROOT) / "clients" / effective_client_id / "audio"
-            audio_path = audio_dir / audio_filename
-            
-            # ファイル存在確認
-            if not audio_path.exists():
-                self.logger.warning(
-                    f"[SILENCE_WARNING] Audio file not found: {audio_path} "
-                    f"(client_id={effective_client_id}, interval={warning_interval:.0f}s)"
-                )
-                return
-            
-            self.logger.info(
-                f"[SILENCE_WARNING] call_id={call_id} interval={warning_interval:.0f}s "
-                f"audio_file={audio_path} client_id={effective_client_id}"
+            self.logger.error(
+                "TTS playback failed for call_id=%s: %s", call_id, e, exc_info=True
             )
-            
-            # 音源ファイルを読み込んでキューに追加
-            try:
-                ulaw_payload = self._load_wav_as_ulaw8k(audio_path)
-                chunk_size = 160  # 20ms @ 8kHz
-                
-                # TTSキューに追加
-                for i in range(0, len(ulaw_payload), chunk_size):
-                    self.tts_queue.append(ulaw_payload[i : i + chunk_size])
-                
-                # TTS送信フラグを立てる
-                self.is_speaking_tts = True
-                self._tts_sender_wakeup.set()
-                
-                self.logger.debug(
-                    f"[SILENCE_WARNING] Enqueued {len(ulaw_payload) // chunk_size} chunks "
-                    f"from {audio_path}"
-                )
-            except Exception as e:
-                self.logger.error(
-                    f"[SILENCE_WARNING] Failed to load audio file {audio_path}: {e}",
-                    exc_info=True
-                )
-        except Exception as e:
-            self.logger.error(f"Silence warning playback failed for call_id={call_id}: {e}", exc_info=True)
-    
+
+    async def _play_silence_warning(self, call_id: str, warning_interval: float):
+        await self.playback_manager._play_silence_warning(call_id, warning_interval)
+
     async def _wait_for_no_input_reset(self, call_id: str):
-        """
-        無音タイムアウト処理後、次のタイムアウトまで待機する
-        """
-        await asyncio.sleep(self.NO_INPUT_TIMEOUT + 1.0)  # タイムアウト時間 + 1秒待機
-        # タイマーをクリア（次のタイムアウトを許可）
-        if call_id in self._no_input_timers:
-            del self._no_input_timers[call_id]
+        await self.activity_monitor._wait_for_no_input_reset(call_id)
     
     async def _handle_no_input_timeout(self, call_id: str):
         """
@@ -846,9 +562,7 @@ class RealtimeGateway:
 
 if __name__ == '__main__':
     # 環境変数: Google 認証ファイルを明示的に指定（必要に応じて実際のパスに変更してください）
-    import os
-    # 既存の認証ファイル候補
-    os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", "/opt/libertycall/config/google-credentials.json")
+    GatewayConfigManager.setup_environment()
 
     # ログ設定
     import logging
@@ -890,23 +604,7 @@ if __name__ == '__main__':
     
     # Load configuration
     config_path = Path(_PROJECT_ROOT) / "config" / "gateway.yaml"
-    try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-    except FileNotFoundError:
-        # Fallback to default config
-        config = {
-            "rtp": {
-                "listen_host": "0.0.0.0",
-                "listen_port": 7002,
-                "payload_type": 0,
-                "sample_rate": 8000
-            },
-            "ws": {
-                "url": "ws://localhost:8000/ws",
-                "reconnect_delay_sec": 5
-            }
-        }
+    config = GatewayConfigManager.load_config(config_path)
     
     # Create gateway instance
     gateway = RealtimeGateway(config, rtp_port_override=args.rtp_port)
