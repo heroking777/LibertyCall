@@ -10,9 +10,16 @@ import subprocess
 import threading
 import time
 import traceback
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+
+from libertycall.client_loader import load_client_profile
+from libertycall.console_bridge import console_bridge
+from libertycall.gateway.audio_utils import pcm24k_to_ulaw8k
+from libertycall.gateway.text_utils import normalize_text
+from libertycall.gateway.transcript_normalizer import normalize_transcript
 
 from .google_asr import GoogleASR
 import numpy as np
@@ -27,6 +34,21 @@ except ImportError:  # pragma: no cover - optional dependency
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
     from libertycall.gateway.realtime_gateway import RealtimeGateway
+
+
+# Google Streaming ASR統合
+try:
+    from asr_handler import get_or_create_handler, remove_handler, get_handler
+
+    ASR_HANDLER_AVAILABLE = True
+except ImportError:
+    ASR_HANDLER_AVAILABLE = False
+    get_or_create_handler = None
+    remove_handler = None
+    get_handler = None
+
+# ★ 転送先電話番号 (デフォルト)
+OPERATOR_NUMBER = "08024152649"
 
 
 @dataclass
