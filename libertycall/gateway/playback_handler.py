@@ -395,8 +395,7 @@ class PlaybackHandler:
                         )
 
             # 簡易実装: 音声ファイルの長さを推定して、その時間後にis_playingをFalseにする
-            try:
-                manager._schedule_playback_reset(call_id, audio_file)
+            manager._schedule_playback_reset(call_id, audio_file)
 
         except Exception as exc:
             self.logger.exception("[PLAYBACK] Failed to send playback request: %s", exc)
