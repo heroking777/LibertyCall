@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Optional, Tuple, List
 
+from .state_store import get_session_state
+from .prompt_factory import render_templates
+
 
 def process_dialogue(core, pcm16k_bytes: bytes):
     if not core._wav_saved:
@@ -21,7 +24,7 @@ def process_dialogue(core, pcm16k_bytes: bytes):
     core.logger.info(
         "CONV_FLOW_BATCH: call_id=%s phase=%s intent=%s templates=%s",
         state_key,
-        core._get_session_state(state_key).phase,
+        get_session_state(core, state_key).phase,
         intent,
         template_ids,
     )
@@ -51,7 +54,7 @@ def on_asr_error(core, call_id: str, error: Exception) -> None:
         error_type,
         error_msg,
     )
-    state = core._get_session_state(call_id)
+    state = get_session_state(core, call_id)
 
     if state.handoff_state == "done" and state.transfer_requested:
         core.logger.info("ASR_ERROR_HANDLER: handoff already done (call_id=%s)", call_id)
@@ -91,7 +94,7 @@ def on_asr_error(core, call_id: str, error: Exception) -> None:
         try:
             template_ids = ["081", "082"]
             try:
-                core.current_system_text = fallback_text or core._render_templates(template_ids) or ""
+                core.current_system_text = fallback_text or render_templates(template_ids) or ""
             except Exception:
                 try:
                     core.current_system_text = fallback_text or ""

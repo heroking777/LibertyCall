@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import time
 
+from .state_store import get_session_state
+
 
 def start_activity_monitor(core) -> None:
     if core._activity_monitor_running:
@@ -44,7 +46,7 @@ def start_activity_monitor(core) -> None:
                         try:
                             flow_engine = core.flow_engines.get(call_id) or core.flow_engine
                             if flow_engine:
-                                state = core._get_session_state(call_id)
+                                state = get_session_state(core, call_id)
                                 client_id = (
                                     core.call_client_map.get(call_id)
                                     or state.meta.get("client_id")

@@ -451,7 +451,7 @@ def handle_transcript(
                         exc,
                     )
 
-        reply_text = core._render_templates(template_ids)
+        reply_text = render_templates(template_ids)
         intent = "NOT_HEARD"
         transfer_requested = False
         state.last_ai_templates = template_ids

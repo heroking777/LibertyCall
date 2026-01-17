@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
+from .prompt_factory import render_templates
+
 
 def break_playback(core, call_id: str) -> None:
     if not core.esl_connection:
@@ -96,7 +98,7 @@ def play_template_sequence(core, call_id: str, template_ids: List[str], client_i
 
     try:
         try:
-            combined_text = core._render_templates(template_ids) if template_ids else ""
+            combined_text = render_templates(template_ids) if template_ids else ""
         except Exception:
             combined_text = " ".join(template_ids) if template_ids else ""
         core.current_system_text = combined_text or ""

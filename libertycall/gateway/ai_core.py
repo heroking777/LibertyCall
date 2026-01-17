@@ -128,15 +128,6 @@ class AICore:
             client_id,
         )
     
-    def _render_templates_from_ids(self, template_ids: List[str], client_id: Optional[str] = None) -> str:
-        return render_templates_from_ids(
-            self.templates,
-            template_ids,
-            client_id,
-            self.client_id,
-            self.logger,
-        )
-    
     def _play_template_sequence(self, call_id: str, template_ids: List[str], client_id: Optional[str] = None) -> None:
         play_template_sequence(self, call_id, template_ids, client_id=client_id)
     
@@ -150,12 +141,6 @@ class AICore:
     def _is_hallucination(self, text):
         return is_hallucination(text)
 
-    def _get_session_state(self, call_id: str) -> ConversationState:
-        return get_session_state(self, call_id)
-
-    def _reset_session_state(self, call_id: Optional[str]) -> None:
-        reset_session_state(self, call_id)
-    
     def _start_activity_monitor(self) -> None:
         start_activity_monitor(self)
     
@@ -195,14 +180,6 @@ class AICore:
         """
         self.client_id = client_id
         reload_flow_manager(self)
-
-    def _contains_keywords(self, normalized_text: str, keywords: List[str]) -> bool:
-        if not normalized_text:
-            return False
-        return any(k for k in keywords if k and k in normalized_text)
-
-    def _render_templates(self, template_ids: List[str]) -> str:
-        return render_templates(template_ids)
 
     def _synthesize_text_with_gemini(self, text: str, speaking_rate: float = 1.0, pitch: float = 0.0) -> Optional[bytes]:
         return synthesize_text(text, speaking_rate, pitch)
