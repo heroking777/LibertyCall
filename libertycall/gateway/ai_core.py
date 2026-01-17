@@ -39,6 +39,7 @@ from .dialogue_engine import (
 from .dialogue_handler import process_dialogue as handle_process_dialogue, on_asr_error
 from .prompt_factory import render_templates_from_ids, render_templates
 from .intent_classifier import classify_simple_intent
+from .flow_manager import reload_flow as reload_flow_manager
 from .audio_orchestrator import (
     break_playback,
     play_audio_response,
@@ -350,20 +351,7 @@ class AICore:
         save_session_summary_from_core(self, call_id)
     
     def reload_flow(self) -> None:
-        """
-        会話フロー・テンプレート・キーワードを再読み込みする
-        """
-        self.flow = self._load_flow(self.client_id)
-        self.templates = self._load_json(
-            f"/opt/libertycall/config/clients/{self.client_id}/templates.json",
-            default="/opt/libertycall/config/system/default_templates.json"
-        )
-        self.keywords = self._load_json(
-            f"/opt/libertycall/config/clients/{self.client_id}/keywords.json",
-            default="/opt/libertycall/config/system/default_keywords.json"
-        )
-        self._load_keywords_from_config()
-        self.logger.info(f"[FLOW] reloaded for client={self.client_id}")
+        reload_flow_manager(self)
     
     def set_client_id(self, client_id: str) -> None:
         """
