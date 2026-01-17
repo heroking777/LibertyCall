@@ -173,6 +173,12 @@ def normalize_text_for_comparison(t: str) -> str:
     return t
 
 
+def contains_keywords(normalized_text: str, keywords: list[str]) -> bool:
+    if not normalized_text:
+        return False
+    return any(k for k in keywords if k and k in normalized_text)
+
+
 def interpret_handoff_reply(raw_text: str, retry_count: int = 0) -> str:
     """
     ハンドオフ確認時の返答を解釈
