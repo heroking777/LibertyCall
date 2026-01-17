@@ -330,7 +330,7 @@ def run_conversation_flow(core, call_id: str, raw_text: str) -> Tuple[List[str],
 
 
 def generate_reply(core, call_id: str, raw_text: str) -> Tuple[str, List[str], str, bool]:
-    state = core._get_session_state(call_id)
+    state = get_session_state(core, call_id)
     handoff_state = state.handoff_state
     transfer_requested = state.transfer_requested
 
@@ -386,7 +386,7 @@ def generate_reply(core, call_id: str, raw_text: str) -> Tuple[str, List[str], s
     else:
         intent = "UNKNOWN"
         template_ids = ["114"]
-        reply_text = core._render_templates(template_ids)
+        reply_text = render_templates(template_ids)
         state.last_intent = intent
         return reply_text, template_ids, intent, False
 
