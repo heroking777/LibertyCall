@@ -21,6 +21,7 @@ class TranscriptFileManager:
             self.core.partial_transcripts[call_id] = {"text": "", "updated": time.time()}
 
     def update_partial(self, call_id: str, text: str) -> None:
+        self.ensure_partial_entry(call_id)
         prev_text = self.core.partial_transcripts[call_id].get("text", "")
         prev_text_normalized = prev_text.strip() if prev_text else ""
         text_normalized = text.strip() if text else ""
@@ -44,19 +45,32 @@ class TranscriptFileManager:
         self.core.partial_transcripts[call_id]["updated"] = time.time()
 
     def mark_partial_processed(self, call_id: str) -> None:
+        self.ensure_partial_entry(call_id)
         self.core.partial_transcripts[call_id]["processed"] = True
 
     def is_partial_processed(self, call_id: str) -> bool:
-        return bool(self.core.partial_transcripts[call_id].get("processed"))
+        entry = self.core.partial_transcripts.get(call_id)
+        if not entry:
+            return False
+        return bool(entry.get("processed"))
 
     def get_partial_text(self, call_id: str) -> str:
-        return self.core.partial_transcripts[call_id].get("text", "")
+        entry = self.core.partial_transcripts.get(call_id)
+        if not entry:
+            return ""
+        return entry.get("text", "")
 
     def get_partial_normalized(self, call_id: str) -> str:
-        return self.core.partial_transcripts[call_id].get("text_normalized", "")
+        entry = self.core.partial_transcripts.get(call_id)
+        if not entry:
+            return ""
+        return entry.get("text_normalized", "")
 
     def pop_partial(self, call_id: str) -> str:
-        partial_text = self.core.partial_transcripts[call_id].get("text", "")
+        entry = self.core.partial_transcripts.get(call_id)
+        if not entry:
+            return ""
+        partial_text = entry.get("text", "")
         del self.core.partial_transcripts[call_id]
         return partial_text
 

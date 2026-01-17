@@ -81,6 +81,7 @@ def synthesize_to_wav(
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{audio_id}.wav"
     audio_bytes = response.audio_content
+    duration_source_bytes = audio_bytes
 
     if audio_id == "000":
         if SAMPLE_RATE == SILENCE_SAMPLE_RATE:
@@ -102,7 +103,7 @@ def synthesize_to_wav(
         wf.setframerate(SAMPLE_RATE)
         wf.writeframes(audio_bytes)
 
-    duration_sec = len(audio_bytes) / 2 / SAMPLE_RATE
+    duration_sec = len(duration_source_bytes) / 2 / SAMPLE_RATE
 
     return output_path, duration_sec
 

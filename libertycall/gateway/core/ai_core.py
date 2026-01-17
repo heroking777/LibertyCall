@@ -178,6 +178,9 @@ class AICore:
     def _trigger_transfer_if_needed(self, call_id: str, state: ConversationState) -> None:
         self.trigger_transfer_if_needed(call_id, state)
 
+    def _is_hallucination(self, text: str) -> bool:
+        return self.is_hallucination(text)
+
         
     def save_transcript_event(self, call_id: str, text: str, is_final: bool, kwargs: dict) -> None:
         save_transcript_event_from_core(self, call_id, text, is_final, kwargs)

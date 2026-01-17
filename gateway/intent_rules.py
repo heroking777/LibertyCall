@@ -109,7 +109,22 @@ TEMPLATE_CONFIG: dict[str, dict] = {
 GREETING_KEYWORDS = ["もしもし", "こんにちは", "こんばんは", "おはよう", "はじめまして"]
 INQUIRY_KEYWORDS = ["ホームページ", "hp", "lp", "メール", "dm", "導入", "しすてむ", "システム", "サービス", "詳しく", "案内", "相談"]
 PRICE_KEYWORDS = ["金額", "料金", "値段", "月額", "費用", "初期費用", "最低契約", "解約", "返金", "無料", "トライアル", "効果", "コスト", "削減", "人件費", "ストレス"]
-SETUP_KEYWORDS = ["導入したら", "いつから", "どれくらい", "どうやって", "パソコン", "pc", "スマホ", "電話番号", "転送", "環境", "すぐ使える", "セットアップ"]
+SETUP_KEYWORDS = [
+    "導入したら",
+    "いつから",
+    "どれくらい",
+    "どうやって",
+    "設定",
+    "初期設定",
+    "セットアップ",
+    "パソコン",
+    "pc",
+    "スマホ",
+    "電話番号",
+    "転送",
+    "環境",
+    "すぐ使える",
+]
 FUNCTION_KEYWORDS = [
     "aiの声", "声変え", "テンプレ", "語尾", "聞き取れ", "間違ったら", "クレーム",
     "転送", "予約管理", "予約の変更", "キャンセル", "飲食", "美容院", "施術", "席",
@@ -142,13 +157,10 @@ YES_KEYWORDS = [
     "お願いします",
     "お願い",
     "承知",
-    "大丈夫です",
     "はいお願いします",
 ]
 
 NO_KEYWORDS = [
-    "結構",
-    "大丈夫",
     "必要ない",
     "いりません",
     "間に合ってます",
@@ -207,19 +219,19 @@ def classify_intent(text: str) -> str:
     # パターン3: 「担当者」単独でも「お願い」が含まれていればハンドオフリクエスト
     if "担当者" in t and ("お願い" in t or "おねがい" in t):
         return "HANDOFF_REQUEST"
+
+    # 代表的な「担当者と話したい」系
+    if "担当者" in t and "話" in t:
+        return "HANDOFF_REQUEST"
+
+    if ("人間" in t or "オペレーター" in t) and ("話" in t or "繋" in t):
+        return "HANDOFF_REQUEST"
     
     # ===== システムについての問い合わせ判定（ハンドオフより優先） =====
     # 「システムについて」という明確な問い合わせを検出（ハンドオフ判定より先に実行）
     if any(kw in t for kw in ["システムについて", "システムの", "システムを", "システムが", "システムに", "システムは", "システムで"]):
         return "SYSTEM_INQUIRY"
     
-    # 先に YES/NO 判定（YES 優先）
-    # ただし、ハンドオフリクエストでない場合のみ
-    if any(k in t for k in YES_KEYWORDS):
-        return "HANDOFF_YES"
-    if any(k in t for k in NO_KEYWORDS):
-        return "HANDOFF_NO"
-
     # ここから先は元々のロジック（NOT_HEARD や通常 QA etc.）
     # 営業電話の判定
     if any(k in t for k in ["営業", "ご提案", "サービスのご提案", "新しいサービス"]):
@@ -228,6 +240,9 @@ def classify_intent(text: str) -> str:
     # AI電話の件の判定
     if any(k in t for k in ["ai電話", "aiの電話", "aiの件", "ai電話の件"]):
         return "AI_CALL_TOPIC"
+
+    if any(k in t for k in ["あなたはai", "aiですか", "自己紹介", "あなたは誰"]):
+        return "AI_IDENTITY"
     
     # 設定難易度の判定（より広範囲の表現に対応）
     setup_difficulty_keywords = [
@@ -309,11 +324,9 @@ def select_template_ids(intent: str, text: str) -> list[str]:
     
     # HANDOFF関連の意図判定
     if intent == "HANDOFF_YES":
-        # YESの場合は空リストを返す（ai_core側で081+082を返す）
-        return []
+        return ["081", "082"]
     if intent == "HANDOFF_NO":
-        # NOの場合は空リストを返す（ai_core側で086+087を返す）
-        return []
+        return ["086", "087"]
     
     # 営業電話
     if intent == "SALES_CALL":
@@ -325,13 +338,16 @@ def select_template_ids(intent: str, text: str) -> list[str]:
     if intent == "AI_CALL_TOPIC":
         return ["0600"]
 
+    if intent == "AI_IDENTITY":
+        return ["023_AI_IDENTITY"]
+
     # システム説明
     if intent == "SYSTEM_EXPLAIN":
-        return ["020", "023", "021", "085"]
+        return ["020"]
 
     # 混雑
     if intent == "BUSY":
-        return ["090", "098"]
+        return ["090"]
 
     # 折り返しリクエスト
     if intent == "CALLBACK_REQUEST":
@@ -343,30 +359,22 @@ def select_template_ids(intent: str, text: str) -> list[str]:
 
     # 方言
     if intent == "DIALECT":
-        return ["066", "085"]
+        return ["066"]
 
     # 割り込み
     if intent == "INTERRUPT":
-        return ["065", "085"]
+        return ["065"]
 
     # 予約機能
     if intent == "RESERVATION":
-        if contains("ダブルブッキング"):
-            return ["071", "085"]
-        if contains("席", "何席", "席数"):
-            return ["072", "085"]
-        if contains("スタッフ別", "スタッフ"):
-            return ["072", "085"]
-        if contains("予約", "変更", "キャンセル", "取れる"):
-            return ["070", "085"]
-        return ["070", "085"]
+        return ["070"]
 
     # 複数店舗
     if intent == "MULTI_STORE":
-        return ["069", "085"]
+        return ["069"]
 
     if intent == "GREETING":
-        return ["004", "005"]
+        return ["004"]
 
     # システムについての問い合わせ（優先度高い）
     if intent == "SYSTEM_INQUIRY":
@@ -375,60 +383,16 @@ def select_template_ids(intent: str, text: str) -> list[str]:
         return ["006_SYS"]
 
     if intent == "INQUIRY":
-        if contains("ホームページ", "hp", "lp", "dm", "メール", "メッセージ"):
-            return ["006"]
-        if contains("システム導入したいねんけど", "入れたいねんけど"):
-            return ["006"]
-        if contains("導入", "入れたい", "導入したい", "いれたい"):
-            return ["006", "010"]
-        if contains("飲食", "美容", "医療", "クリニック", "小規模", "小さい店", "他の店", "導入実績"):
-            return ["0280", "0281", "0283"]
-        return ["006", "010"]
+        return ["006"]
 
     if intent == "PRICE":
-        if contains("初期費用"):
-            return ["042"]
-        if contains("最低契約", "最低期間"):
-            return ["045"]
-        if contains("解約"):
-            return ["046"]
-        if contains("トライアル", "初月無料", "無料", "返金"):
-            return ["029"]
-        if contains("人件費", "コスト", "削減", "効果"):
-            return ["049", "048", "047"]
-        if contains("ストレス"):
-            return ["048"]
-        if contains("金額", "料金", "月額", "値段", "費用"):
-            return ["040"]
         return ["040"]
 
     if intent == "SETUP":
-        if contains("すぐ使える", "いつから", "どれくらい", "導入したら"):
-            return ["060"]
-        if contains("転送先番号"):
-            return ["061"]
-        if contains("どうやって", "パソコン", "スマホ", "電話番号", "番号変える", "環境"):
-            return ["061"]
-        return ["061"]
+        return ["060"]
 
     if intent == "FUNCTION":
-        if contains("セキュリティ", "個人情報") or ("情報" in t and "保存" in t):
-            return ["063"]
-        if contains("間違", "クレーム"):
-            return ["021"]
-        if "転送" in t and "番号" not in t:
-            return ["023"]
-        if contains("転送", "引き継ぎ", "ダブルブッキング"):
-            return ["023"]
-        if contains("個人情報", "セキュリティ", "録音", "情報"):
-            return ["063"]
-        if contains("他の店", "他店", "他の店舗"):
-            return ["0280", "0283"]
-        if contains("飲食", "美容", "医療", "店舗", "導入実績", "小規模"):
-            return ["0280", "0281", "0283"]
-        if contains("サポート", "不具合"):
-            return ["0284"]
-        return ["026"]
+        return ["023"]
 
     if intent == "SUPPORT":
         if contains("不具合", "故障", "エラー", "障害"):
@@ -436,15 +400,15 @@ def select_template_ids(intent: str, text: str) -> list[str]:
         return ["0284"]
 
     if intent == "END_CALL":
-        return ["086", "087", "088"]
+        return ["086"]
     
     # HANDOFF_REQUEST の場合、0604を返す
     if intent == "HANDOFF_REQUEST":
         return ["0604"]
     
-    # UNKNOWN intent の場合、空リストを返す（ai_core側で0604を出す）
+    # UNKNOWN intent の場合
     if intent == "UNKNOWN":
-        return []
+        return ["114"]
 
     return ["110"]
 
