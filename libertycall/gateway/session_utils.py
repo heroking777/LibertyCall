@@ -105,6 +105,7 @@ def save_session_summary(call_id: str, summary_data: Dict[str, Any], client_id: 
         ensure_session_dir(session_dir)
         
         summary_file = session_dir / "summary.json"
+        summary_file.parent.mkdir(parents=True, exist_ok=True)
         
         # サマリーデータにタイムスタンプを追加
         summary_data["ended_at"] = datetime.now().isoformat()
