@@ -2,14 +2,11 @@
 """RealtimeGateway entrypoint (set LC_GATEWAY_PORT for dev runs)."""
 import asyncio
 import logging
-import signal
 import sys
 import os
-import threading
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 import time
-import uvicorn
 try:
     from scapy.all import sniff, IP, UDP
     SCAPY_AVAILABLE = True
@@ -48,7 +45,6 @@ from libertycall.gateway.gateway_console_manager import GatewayConsoleManager
 from libertycall.gateway.gateway_esl_manager import GatewayESLManager
 from libertycall.gateway.gateway_rtp_protocol import RTPPacketBuilder, RTPProtocol
 from libertycall.console_bridge import console_bridge
-from gateway.asr_controller import app as asr_app, set_gateway_instance
 
 # Google Streaming ASR統合
 try:
@@ -221,98 +217,12 @@ class RealtimeGateway:
         self._handle_transfer(call_id)
 
 
-# ========================================
-# Main Entry Point
-# ========================================
-
-if __name__ == '__main__':
-    # 環境変数: Google 認証ファイルを明示的に指定（必要に応じて実際のパスに変更してください）
-    GatewayConfigManager.setup_environment()
-
-    # ログ設定
-    import logging
-    # ログディレクトリを作成
-    log_dir = Path("/opt/libertycall/logs")
-    log_dir.mkdir(parents=True, exist_ok=True)
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler('/opt/libertycall/logs/realtime_gateway.log', encoding='utf-8')
-        ]
-    )
-    
-    print("[MAIN_DEBUG] main function started", flush=True)
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Liberty Call Realtime Gateway")
-    parser.add_argument(
-        '--rtp_port',
-        type=int,
-        default=None,
-        help='Override RTP listen port (default: from config or env LC_RTP_PORT)'
-    )
-    parser.add_argument(
-        '--uuid',
-        type=str,
-        required=False,
-        default=None,
-        help='Unique identifier for this gateway instance (passed from event listener)'
-    )
-    args = parser.parse_args()
-    
-    # UUID引数のログ出力
-    if args.uuid:
-        print(f"[GATEWAY_INIT] Starting with UUID: {args.uuid}", flush=True)
-    
-    # Load configuration
-    config_path = Path(_PROJECT_ROOT) / "config" / "gateway.yaml"
-    config = GatewayConfigManager.load_config(config_path)
-    
-    # Create gateway instance
-    gateway = RealtimeGateway(config, rtp_port_override=args.rtp_port)
-    print(f"[MAIN_DEBUG] RealtimeGateway created, uuid={args.uuid}", flush=True)
-    gateway.uuid = args.uuid  # ESL受信のためのUUID保持
-    set_gateway_instance(gateway)
-
-    def _run_asr_controller():
-        logger = logging.getLogger(__name__)
-        try:
-            logger.info("[ASR_CONTROLLER] Starting FastAPI server on 127.0.0.1:8000")
-            config = uvicorn.Config(
-                asr_app,
-                host="127.0.0.1",
-                port=8000,
-                log_level="info",
-                access_log=True,
-            )
-            server = uvicorn.Server(config)
-            server.run()
-        except Exception:
-            logger.exception("[ASR_CONTROLLER] FastAPI server terminated due to error")
-
-    asr_thread = threading.Thread(
-        target=_run_asr_controller, name="ASRControllerThread", daemon=True
-    )
-    asr_thread.start()
-    
-    # Setup signal handlers for graceful shutdown
-    def signal_handler(sig, frame):
-        logger = logging.getLogger(__name__)
-        logger.info(f"[SIGNAL] Received signal {sig}, initiating shutdown...")
-        asyncio.create_task(gateway.shutdown())
-    
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    
-    # Run the gateway
+if __name__ == "__main__":
     try:
-        asyncio.run(gateway.start())
-    except KeyboardInterrupt:
-        pass
-    finally:
-        logger = logging.getLogger(__name__)
-        logger.info("[EXIT] Gateway stopped")
+        from .gateway_main import main
+    except ImportError:
+        from gateway_main import main
+
+    raise SystemExit(main())
+
 
