@@ -167,6 +167,11 @@ class GatewayUtils:
 
         if hasattr(gateway.ai_core, "set_call_id"):
             gateway.ai_core.set_call_id(None)
+
+    def _reset_call_state(self) -> None:
+        gateway = self.gateway
+        old_call_id = gateway.call_id
+        self.reset_call_state()
         if hasattr(gateway.ai_core, "call_id"):
             gateway.ai_core.call_id = None
         if hasattr(gateway.ai_core, "log_session_id"):
@@ -177,7 +182,8 @@ class GatewayUtils:
                 "[RESET_CALL_STATE] call_id reset: %s -> None", old_call_id
             )
 
-        gateway._stop_recording()
+        if hasattr(gateway, "_stop_recording"):
+            gateway._stop_recording()
 
     def _free_port(self, port: int):
         self.resources._free_port(port)
