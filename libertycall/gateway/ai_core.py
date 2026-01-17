@@ -43,6 +43,12 @@ from .dialogue_engine import (
     handle_handoff_confirm,
 )
 from .prompt_factory import render_templates_from_ids, render_templates
+from .audio_orchestrator import (
+    break_playback,
+    play_audio_response,
+    play_template_sequence,
+    send_playback_request_http,
+)
 from .tts_utils import (
     synthesize_text_with_gemini,
     synthesize_template_audio,
@@ -349,90 +355,10 @@ class AICore:
         return None
     
     def _break_playback(self, call_id: str) -> None:
-        """
-        FreeSWITCHで再生中の音声を中断する（uuid_break）
-        
-        非同期実行で応答速度を最適化
-        
-        :param call_id: 通話UUID
-        """
-        if not self.esl_connection:
-            self.logger.warning(f"[BREAK_PLAYBACK] ESL not available: call_id={call_id}")
-            return
-        
-        if not self.esl_connection.connected():
-            self.logger.warning(f"[BREAK_PLAYBACK] ESL not connected: call_id={call_id}")
-            return
-        
-        # 非同期実行で応答速度を最適化（bgapiを使用）
-        def _break_playback_async():
-            try:
-                # bgapiを使って非同期実行（応答を待たない）
-                result = self.esl_connection.bgapi("uuid_break", call_id)
-                
-                if result:
-                    reply_text = result.getHeader('Reply-Text') if hasattr(result, 'getHeader') else None
-                    if reply_text and '+OK' in reply_text:
-                        self.logger.info(f"[BREAK_PLAYBACK] Playback interrupted: call_id={call_id}")
-                    else:
-                        self.logger.debug(
-                            f"[BREAK_PLAYBACK] Break command sent (async): call_id={call_id} "
-                            f"reply={reply_text}"
-                        )
-                else:
-                    self.logger.debug(f"[BREAK_PLAYBACK] Break command sent (async): call_id={call_id}")
-            except Exception as e:
-                self.logger.exception(f"[BREAK_PLAYBACK] Failed to break playback: call_id={call_id} error={e}")
-        
-        # スレッドで非同期実行（メイン処理をブロックしない）
-        import threading
-        thread = threading.Thread(target=_break_playback_async, daemon=True)
-        thread.start()
-        self.logger.debug(f"[BREAK_PLAYBACK] Break command queued (async): call_id={call_id}")
+        break_playback(self, call_id)
     
     def _play_audio_response(self, call_id: str, intent: str) -> None:
-        """
-        FreeSWITCHに音声再生リクエストを送信
-        
-        :param call_id: 通話UUID
-        :param intent: 簡易Intent（"YES", "NO", "OTHER"）
-        """
-        # Intentに応じて音声ファイルを決定
-        audio_files = {
-            "YES": "/opt/libertycall/clients/000/audio/yes_8k.wav",
-            "NO": "/opt/libertycall/clients/000/audio/no_8k.wav",
-            "OTHER": "/opt/libertycall/clients/000/audio/repeat_8k.wav",
-        }
-        
-        audio_file = audio_files.get(intent)
-        if not audio_file:
-            self.logger.warning(f"_play_audio_response: Unknown intent {intent}")
-            return
-        
-        # 音声ファイルの存在確認
-        if not Path(audio_file).exists():
-            self.logger.warning(f"_play_audio_response: Audio file not found: {audio_file}")
-            # フォールバック: 既存のファイルを使用
-            if intent == "YES":
-                audio_file = "/opt/libertycall/clients/000/audio/110_8k.wav"  # 既存のファイル
-            elif intent == "NO":
-                audio_file = "/opt/libertycall/clients/000/audio/111_8k.wav"  # 既存のファイル
-            else:
-                audio_file = "/opt/libertycall/clients/000/audio/110_8k.wav"  # デフォルト
-        
-        # FreeSWITCHへの音声再生リクエストを送信
-        # 方法1: transferを使ってplay_audio_dynamicエクステンションに転送
-        # 方法2: HTTP API経由でFreeSWITCHにリクエスト（実装が必要）
-        # ここでは、playback_callbackが設定されている場合はそれを使用、なければHTTP APIを試行
-        if hasattr(self, 'playback_callback') and self.playback_callback:
-            try:
-                self.playback_callback(call_id, audio_file)
-                self.logger.info(f"[PLAYBACK] Sent audio playback request: call_id={call_id} file={audio_file}")
-            except Exception as e:
-                self.logger.exception(f"[PLAYBACK] Failed to send playback request: {e}")
-        else:
-            # HTTP API経由でFreeSWITCHにリクエスト
-            self._send_playback_request_http(call_id, audio_file)
+        play_audio_response(self, call_id, intent)
     
     def _handle_flow_engine_transition(
         self,
@@ -527,186 +453,10 @@ class AICore:
         )
     
     def _play_template_sequence(self, call_id: str, template_ids: List[str], client_id: Optional[str] = None) -> None:
-        """
-        テンプレートIDのシーケンスをFreeSWITCHで再生
-        
-        応答速度最適化: 再生完了を待たずに即座にすべてのテンプレートを再生開始
-        FreeSWITCHは自動的に順番に再生するため、待機は不要
-        
-        :param call_id: 通話UUID
-        :param template_ids: テンプレートIDのリスト（例: ["006", "085"]）
-        :param client_id: クライアントID（指定されない場合はself.client_idを使用）
-        """
-        if not template_ids:
-            return
-        
-        # クライアントIDの決定
-        effective_client_id = client_id or self.call_client_map.get(call_id) or self.client_id or "000"
-        
-        # テンプレート再生履歴の初期化
-        if call_id not in self.last_template_play:
-            self.last_template_play[call_id] = {}
-        
-        current_time = time.time()
-        # 重複防止: 同じテンプレートを10秒以内に連続再生しない
-        DUPLICATE_PREVENTION_SEC = 10.0
-        
-        # 【修正2】再生キューの即時処理: 最初のテンプレートでUUID更新を確実に実行
-        # 最初のテンプレート再生前にUUIDを更新し、失敗したテンプレートも含めて確実に順番通り再生
-        failed_templates = []  # 失敗したテンプレートを記録
-        
-        # 応答速度最適化: すべてのテンプレートを即座に再生開始（待機なし）
-        # 【追加】再生前に再生予定のテキストを記録しておく（ASR側でエコー除去に使用）
-        try:
-            try:
-                combined_text = self._render_templates(template_ids) if template_ids else ""
-            except Exception:
-                combined_text = " ".join(template_ids) if template_ids else ""
-            self.current_system_text = combined_text or ""
-        except Exception:
-            pass
-        # FreeSWITCHは自動的に順番に再生するため、各再生の完了を待つ必要はない
-        for template_id in template_ids:
-            # 【修正2改善】重複防止: 同じテンプレートを10秒以内に連続再生しない
-            if call_id not in self.last_template_play:
-                self.last_template_play[call_id] = {}
-            
-            last_play_time = self.last_template_play[call_id].get(template_id, 0)
-            time_since_last_play = current_time - last_play_time
-            
-            if time_since_last_play < DUPLICATE_PREVENTION_SEC and last_play_time > 0:
-                self.logger.info(
-                    f"[PLAY_TEMPLATE] Skipping recently played template: call_id={call_id} "
-                    f"template_id={template_id} time_since_last={time_since_last_play:.2f}s"
-                )
-                continue
-            
-            # 【修正1】テンプレートIDから音声ファイルパスを生成（絶対パス、クライアント別ディレクトリ）
-            # 絶対パスで固定（ディレクトリ階層の問題を回避）
-            audio_dir = Path(f"/opt/libertycall/clients/{effective_client_id}/audio")
-            
-            # ファイル名の候補（優先順位: .wav → _8k.wav → _8k_norm.wav）
-            audio_file_plain = audio_dir / f"{template_id}.wav"
-            audio_file_regular = audio_dir / f"{template_id}_8k.wav"
-            audio_file_norm = audio_dir / f"{template_id}_8k_norm.wav"
-            
-            # ファイル存在確認（優先順位順）
-            audio_file = None
-            checked_paths = []
-            for candidate in [audio_file_plain, audio_file_regular, audio_file_norm]:
-                checked_paths.append(str(candidate))
-                if candidate.exists():
-                    audio_file = str(candidate)
-                    self.logger.debug(
-                        f"[PLAY_TEMPLATE] Found audio file: template_id={template_id} file={audio_file}"
-                    )
-                    break
-            
-            if not audio_file:
-                # 音声ファイルが存在しない場合は警告を出力し、デフォルトテンプレート（001）にフォールバック
-                self.logger.warning(
-                    f"[PLAY_TEMPLATE] Audio file not found: template_id={template_id} "
-                    f"checked_paths={checked_paths} audio_dir={audio_dir}"
-                )
-                # runtime.logにも警告を出力
-                runtime_logger = logging.getLogger("runtime")
-                runtime_logger.warning(f"[FLOW] Missing template audio: call_id={call_id} template_id={template_id}")
-                
-                # フォールバック: デフォルトテンプレート（001）を試す
-                fallback_template_id = "001"
-                fallback_file = audio_dir / f"{fallback_template_id}.wav"
-                if fallback_file.exists():
-                    audio_file = str(fallback_file)
-                    self.logger.info(
-                        f"[PLAY_TEMPLATE] Using fallback template: template_id={template_id} -> fallback={fallback_template_id} file={audio_file}"
-                    )
-                else:
-                    self.logger.error(
-                        f"[PLAY_TEMPLATE] Fallback template also not found: {fallback_file}"
-                    )
-                    continue
-            
-            # FreeSWITCHへの音声再生リクエストを送信（即時発火、待機なし）
-            if hasattr(self, 'playback_callback') and self.playback_callback:
-                try:
-                    self.playback_callback(call_id, audio_file)
-                    # 再生履歴を更新
-                    self.last_template_play[call_id][template_id] = current_time
-                    self.logger.info(
-                        f"[PLAY_TEMPLATE] Sent playback request (immediate): "
-                        f"call_id={call_id} template_id={template_id} file={audio_file}"
-                    )
-                except Exception as e:
-                    self.logger.exception(
-                        f"[PLAY_TEMPLATE] Failed to send playback request: call_id={call_id} template_id={template_id} error={e}"
-                    )
-                    # 失敗したテンプレートを記録（後でリトライ）
-                    failed_templates.append((template_id, audio_file))
-            else:
-                # フォールバック: HTTP API経由
-                try:
-                    self._send_playback_request_http(call_id, audio_file)
-                except Exception as e:
-                    self.logger.exception(
-                        f"[PLAY_TEMPLATE] HTTP playback request failed: call_id={call_id} template_id={template_id} error={e}"
-                    )
-                    failed_templates.append((template_id, audio_file))
-        
-        # 【修正2】失敗したテンプレートのリトライ（UUID更新後に再試行）
-        if failed_templates:
-            self.logger.info(
-                f"[PLAY_TEMPLATE] Retrying {len(failed_templates)} failed templates after UUID update: call_id={call_id}"
-            )
-            # 短い待機時間後にリトライ（UUID更新の完了を待つ）
-            # 注意: timeモジュールはファイル先頭で既にインポート済み
-            time.sleep(0.1)  # 100ms待機
-            
-            for template_id, audio_file in failed_templates:
-                if hasattr(self, 'playback_callback') and self.playback_callback:
-                    try:
-                        self.playback_callback(call_id, audio_file)
-                        self.last_template_play[call_id][template_id] = time.time()
-                        self.logger.info(
-                            f"[PLAY_TEMPLATE] Retry successful: call_id={call_id} template_id={template_id} file={audio_file}"
-                        )
-                    except Exception as e:
-                        self.logger.error(
-                            f"[PLAY_TEMPLATE] Retry failed: call_id={call_id} template_id={template_id} error={e}"
-                        )
+        play_template_sequence(self, call_id, template_ids, client_id=client_id)
     
     def _send_playback_request_http(self, call_id: str, audio_file: str) -> None:
-        """
-        FreeSWITCHにHTTP API経由で音声再生リクエストを送信
-        
-        :param call_id: 通話UUID
-        :param audio_file: 音声ファイルのパス
-        """
-        try:
-            import requests
-            
-            # FreeSWITCHのHTTP APIエンドポイント（mod_curl経由）
-            # 注意: FreeSWITCHの標準的なHTTP APIはEvent Socket Interface (ESL) 経由
-            # ここでは、transferを使ってplay_audio_dynamicエクステンションに転送する方法を使用
-            # 実際の実装では、FreeSWITCHのEvent Socket Interface (ESL) を使う方が確実
-            
-            # 方法1: transferを使ってplay_audio_dynamicエクステンションに転送
-            # FreeSWITCHのEvent Socket Interface (ESL) を使ってuuid_transferを実行
-            # ただし、ここでは簡易的にHTTPリクエストを試行（実装が必要な場合はESLを使用）
-            
-            # 注意: この実装は簡易版。本番環境ではFreeSWITCHのEvent Socket Interface (ESL) を使用することを推奨
-            self.logger.warning(
-                f"[PLAYBACK] HTTP API not implemented yet. "
-                f"Please use playback_callback or implement ESL connection. "
-                f"call_id={call_id} file={audio_file}"
-            )
-            
-            # TODO: FreeSWITCHのEvent Socket Interface (ESL) を使ってuuid_transferを実行
-            # または、FreeSWITCHのHTTP APIエンドポイントを実装
-            
-        except ImportError:
-            self.logger.error("[PLAYBACK] requests module not available")
-        except Exception as e:
-            self.logger.exception(f"[PLAYBACK] Failed to send HTTP request: {e}")
+        send_playback_request_http(self, call_id, audio_file)
     
     def _save_debug_wav(self, pcm16k_bytes: bytes):
         """Whisperに渡す直前のPCM音声をWAVファイルとして保存"""
