@@ -20,6 +20,7 @@ class FreeswitchRTPMonitor:
         sniff_func=None,
         ip_cls=None,
         udp_cls=None,
+        esl_receiver_cls=None,
     ):
         self.gateway = gateway
         self.logger = gateway.logger
@@ -35,6 +36,7 @@ class FreeswitchRTPMonitor:
         self.sniff_func = sniff_func
         self.ip_cls = ip_cls
         self.udp_cls = udp_cls
+        self.esl_receiver_cls = esl_receiver_cls
 
     def get_rtp_port_from_freeswitch(self) -> Optional[int]:
         """FreeSWITCHから現在の送信RTPポートを取得（RTP情報ファイル優先、uuid_dumpはフォールバック）"""
@@ -63,7 +65,9 @@ class FreeswitchRTPMonitor:
             uuid,
         )
 
-        esl_receiver = self.gateway.ESLAudioReceiver(call_id, uuid, self.gateway, self.logger)
+        if not self.esl_receiver_cls:
+            raise RuntimeError("ESLAudioReceiver class not provided")
+        esl_receiver = self.esl_receiver_cls(call_id, uuid, self.gateway, self.logger)
         esl_receiver.start()
 
         self.active_receivers[call_id] = esl_receiver
@@ -510,6 +514,7 @@ class GatewayMonitorManager:
         sniff_func=None,
         ip_cls=None,
         udp_cls=None,
+        esl_receiver_cls=None,
     ):
         self.gateway = gateway
         self.logger = gateway.logger
@@ -520,6 +525,7 @@ class GatewayMonitorManager:
             sniff_func=sniff_func,
             ip_cls=ip_cls,
             udp_cls=udp_cls,
+            esl_receiver_cls=esl_receiver_cls,
         )
 
     def start_no_input_monitoring(self) -> None:
