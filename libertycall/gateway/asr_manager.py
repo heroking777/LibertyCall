@@ -1,13 +1,28 @@
-"""ASR streaming handlers extracted from AICore."""
+"""ASR handlers shared between AICore and realtime gateway."""
 
 from __future__ import annotations
 
+import asyncio
 import os
+import socket
+import subprocess
 import threading
 import time
 import traceback
+from pathlib import Path
+from typing import Callable, Dict, Optional, Tuple, TYPE_CHECKING
 
 from .google_asr import GoogleASR
+
+try:  # pragma: no cover - optional dependency
+    from scapy.all import IP, UDP, sniff
+
+    SCAPY_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency
+    SCAPY_AVAILABLE = False
+
+if TYPE_CHECKING:  # pragma: no cover - typing helpers only
+    from libertycall.gateway.realtime_gateway import RealtimeGateway
 
 
 def init_asr(core) -> None:
@@ -227,3 +242,823 @@ def on_new_audio(core, call_id: str, pcm16k_bytes: bytes) -> None:
                 )
     else:
         core.asr_model.feed(call_id, pcm16k_bytes)  # type: ignore[union-attr]
+
+
+class ESLAudioReceiver:
+    """Receive decoded audio frames from FreeSWITCH via ESL."""
+
+    def __init__(self, call_id: str, uuid: str, gateway: "RealtimeGateway", logger):
+        self.call_id = call_id
+        self.uuid = uuid
+        self.gateway = gateway
+        self.logger = logger
+        self.running = False
+        self.thread: Optional[threading.Thread] = None
+        self.conn = None
+
+    def start(self) -> None:
+        """Begin ESL event consumption in a background thread."""
+
+        self.running = True
+        self.thread = threading.Thread(target=self._receive_loop, daemon=True)
+        self.thread.start()
+        self.logger.info(
+            "[ESL_AUDIO] Started for call_id=%s, uuid=%s", self.call_id, self.uuid
+        )
+
+    def _receive_loop(self) -> None:
+        try:
+            from libs.esl.ESL import ESLconnection
+
+            self.conn = ESLconnection("127.0.0.1", "8021", "ClueCon")
+
+            if not self.conn.connected():
+                self.logger.error("[ESL_AUDIO] Failed to connect to FreeSWITCH ESL")
+                return
+
+            self.conn.events("plain", "CHANNEL_AUDIO")
+            self.conn.filter("Unique-ID", self.uuid)
+
+            self.logger.info("[ESL_AUDIO] Connected and subscribed to UUID=%s", self.uuid)
+
+            while self.running:
+                event = self.conn.recvEventTimed(100)
+
+                if not event:
+                    continue
+
+                if event.getHeader("Event-Name") == "CHANNEL_AUDIO":
+                    audio_data = event.getBody()
+                    if audio_data:
+                        self.gateway.handle_rtp_packet(self.call_id, audio_data)
+
+        except Exception as exc:  # pragma: no cover - relies on FreeSWITCH runtime
+            self.logger.error("[ESL_AUDIO] Exception: %s", exc)
+            traceback.print_exc()
+
+    def stop(self) -> None:
+        """Stop ESL consumption and tear down resources."""
+
+        self.running = False
+        if self.conn:
+            self.conn.disconnect()
+        self.logger.info("[ESL_AUDIO] Stopped for call_id=%s", self.call_id)
+
+
+class FreeswitchRTPMonitor:
+    """Monitor FreeSWITCH outbound RTP and feed ASR once 002.wav ends."""
+
+    def __init__(
+        self,
+        gateway: "RealtimeGateway",
+        rtp_protocol_factory: Optional[Callable[[], asyncio.DatagramProtocol]] = None,
+    ):
+        self.gateway = gateway
+        self.logger = gateway.logger
+        self.freeswitch_rtp_port: Optional[int] = None
+        self.monitor_sock: Optional[socket.socket] = None
+        self.monitor_transport: Optional[asyncio.BaseTransport] = None
+        self.asr_active = False
+        self.capture_thread: Optional[threading.Thread] = None
+        self.capture_running = False
+        self.active_receivers: Dict[str, ESLAudioReceiver] = {}
+        self._rtp_protocol_factory = rtp_protocol_factory
+
+    # --- ESL monitoring helpers -------------------------------------------------
+    def get_rtp_port_from_freeswitch(self) -> Optional[int]:
+        """Return the current FreeSWITCH RTP port via info files or uuid_dump."""
+
+        import re
+
+        try:
+            rtp_info_files = list(Path("/tmp").glob("rtp_info_*.txt"))
+            if rtp_info_files:
+                candidate_port = None
+                candidate_uuid = None
+                candidate_mtime = 0.0
+                for filepath in rtp_info_files:
+                    try:
+                        mtime = filepath.stat().st_mtime
+                        with open(filepath, "r") as file_obj:
+                            content = file_obj.read()
+                        port = None
+                        uuid = None
+                        for line in content.splitlines():
+                            if line.startswith("local="):
+                                local_rtp = line.split("=", 1)[1].strip()
+                                if ":" in local_rtp:
+                                    port_str = local_rtp.split(":")[-1]
+                                    try:
+                                        port = int(port_str)
+                                    except ValueError:
+                                        self.logger.debug(
+                                            "[FS_RTP_MONITOR] Failed to parse port in %s: %s",
+                                            filepath,
+                                            local_rtp,
+                                        )
+                                        port = None
+                            elif line.startswith("uuid="):
+                                uuid = line.split("=", 1)[1].strip()
+
+                        if port and mtime >= candidate_mtime:
+                            candidate_mtime = mtime
+                            candidate_port = port
+                            candidate_uuid = uuid
+                            self.logger.info(
+                                "[FS_RTP_MONITOR] Candidate RTP info: file=%s port=%s uuid=%s mtime=%s",
+                                filepath,
+                                port,
+                                uuid,
+                                mtime,
+                            )
+                    except Exception as exc:  # pragma: no cover - debug logging only
+                        self.logger.debug(
+                            "[FS_RTP_MONITOR] Error reading RTP info file %s: %s",
+                            filepath,
+                            exc,
+                        )
+
+                if candidate_port:
+                    self.logger.info(
+                        "[FS_RTP_MONITOR] Selected RTP port %s (from RTP info files, latest matched)",
+                        candidate_port,
+                    )
+                    if candidate_uuid and hasattr(self.gateway, "call_uuid_map"):
+                        if hasattr(self.gateway, "ai_core") and hasattr(
+                            self.gateway.ai_core, "call_id"
+                        ):
+                            latest_call_id = self.gateway.ai_core.call_id
+                            if latest_call_id:
+                                try:
+                                    pre_map = dict(self.gateway.call_uuid_map)
+                                except Exception:
+                                    pre_map = {}
+                                self.logger.warning(
+                                    "[DEBUG_UUID_REGISTER] Registering uuid=%s for call_id=%s current_map=%s",
+                                    candidate_uuid,
+                                    latest_call_id,
+                                    pre_map,
+                                )
+                                self.gateway.call_uuid_map[latest_call_id] = candidate_uuid
+                                self.logger.warning(
+                                    "[DEBUG_UUID_REGISTERED] Updated map=%s",
+                                    self.gateway.call_uuid_map,
+                                )
+                                self.logger.info(
+                                    "[FS_RTP_MONITOR] Mapped call_id=%s -> uuid=%s",
+                                    latest_call_id,
+                                    candidate_uuid,
+                                )
+                    return candidate_port
+        except Exception as exc:  # pragma: no cover - diagnostics only
+            self.logger.debug(
+                "[FS_RTP_MONITOR] Error reading RTP info files (non-fatal): %s", exc
+            )
+
+        try:
+            result = subprocess.run(
+                ["fs_cli", "-x", "show", "channels"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                self.logger.warning(
+                    "[FS_RTP_MONITOR] fs_cli failed: %s", result.stderr
+                )
+                return None
+
+            lines = result.stdout.strip().split("\n")
+            if len(lines) < 2 or lines[0].startswith("0 total"):
+                return None
+
+            uuid = None
+            for line in lines[1:]:
+                if line.strip() and not line.startswith("uuid,"):
+                    parts = line.split(",")
+                    if parts and parts[0].strip():
+                        uuid = parts[0].strip()
+                        break
+
+            if not uuid:
+                return None
+
+            dump_result = subprocess.run(
+                ["fs_cli", "-x", f"uuid_dump {uuid}"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if dump_result.returncode != 0:
+                self.logger.warning(
+                    "[FS_RTP_MONITOR] uuid_dump failed for %s (non-fatal): %s",
+                    uuid,
+                    dump_result.stderr,
+                )
+                return None
+
+            for line in dump_result.stdout.splitlines():
+                if "variable_rtp_local_port" in line:
+                    try:
+                        port = int(line.split("=")[-1].strip())
+                        self.logger.info(
+                            "[FS_RTP_MONITOR] Found FreeSWITCH RTP port: %s (from uuid_dump of %s)",
+                            port,
+                            uuid,
+                        )
+                        return port
+                    except (ValueError, IndexError):
+                        self.logger.warning(
+                            "[FS_RTP_MONITOR] Failed to parse variable_rtp_local_port from line: %s",
+                            line,
+                        )
+
+            import re
+
+            port_matches = re.findall(
+                r"(?:local_media_port|rtp_local_media_port)[:=]\s*(\d+)",
+                dump_result.stdout,
+            )
+            if port_matches:
+                port = int(port_matches[0])
+                self.logger.info(
+                    "[FS_RTP_MONITOR] Found FreeSWITCH RTP port: %s (from uuid_dump of %s, fallback format)",
+                    port,
+                    uuid,
+                )
+                return port
+
+            self.logger.warning(
+                "[FS_RTP_MONITOR] RTP port not found in uuid_dump output for %s",
+                uuid,
+            )
+            self.logger.debug(
+                "[FS_RTP_MONITOR] uuid_dump output: %s", dump_result.stdout[:500]
+            )
+            return None
+        except Exception as exc:  # pragma: no cover - runtime diagnostics
+            self.logger.warning(
+                "[FS_RTP_MONITOR] Error getting RTP port (non-fatal): %s", exc
+            )
+            return None
+
+    def update_uuid_mapping_for_call(self, call_id: str) -> Optional[str]:
+        """Resolve FreeSWITCH UUID for a call_id and update the shared map."""
+
+        import re
+
+        uuid = None
+
+        try:
+            port_candidates = []
+            try:
+                if (
+                    hasattr(self, "fs_rtp_monitor")
+                    and getattr(self.fs_rtp_monitor, "freeswitch_rtp_port", None)
+                ):
+                    port_candidates.append(self.fs_rtp_monitor.freeswitch_rtp_port)
+            except Exception:
+                pass
+            try:
+                if hasattr(self, "rtp_port") and self.rtp_port:
+                    port_candidates.append(self.rtp_port)
+            except Exception:
+                pass
+
+            for port in port_candidates:
+                try:
+                    found_uuid = self._find_rtp_info_by_port(port)
+                    if found_uuid:
+                        uuid = found_uuid
+                        self.logger.info(
+                            "[UUID_UPDATE] Found UUID from RTP info file by port: uuid=%s call_id=%s port=%s",
+                            uuid,
+                            call_id,
+                            port,
+                        )
+                        break
+                except Exception as exc:  # pragma: no cover - diagnostics only
+                    self.logger.debug(
+                        "[UUID_UPDATE] Error during port-based RTP info search for port=%s: %s",
+                        port,
+                        exc,
+                    )
+
+            if not uuid:
+                rtp_info_files = list(Path("/tmp").glob("rtp_info_*.txt"))
+                if rtp_info_files:
+                    latest_file = max(rtp_info_files, key=lambda p: p.stat().st_mtime)
+                    with open(latest_file, "r") as file_obj:
+                        lines = file_obj.readlines()
+                        for line in lines:
+                            if line.startswith("uuid="):
+                                uuid = line.split("=", 1)[1].strip()
+                                self.logger.info(
+                                    "[UUID_UPDATE] Found UUID from RTP info file: uuid=%s call_id=%s",
+                                    uuid,
+                                    call_id,
+                                )
+                                break
+        except Exception as exc:  # pragma: no cover - diagnostics only
+            self.logger.debug("[UUID_UPDATE] Error reading RTP info file: %s", exc)
+
+        if not uuid:
+            try:
+                result = subprocess.run(
+                    ["fs_cli", "-x", "show", "channels"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split("\n")
+                    if len(lines) >= 2 and not lines[0].startswith("0 total"):
+                        header_line = lines[0] if lines[0].startswith("uuid,") else None
+                        headers = header_line.split(",") if header_line else []
+                        uuid_pattern = re.compile(
+                            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                            re.IGNORECASE,
+                        )
+                        for line in lines[1:]:
+                            if not line.strip() or line.startswith("uuid,"):
+                                continue
+                            parts = line.split(",")
+                            if not parts or not parts[0].strip():
+                                continue
+                            candidate_uuid = parts[0].strip()
+                            if not uuid_pattern.match(candidate_uuid):
+                                continue
+                            if call_id in line:
+                                uuid = candidate_uuid
+                                self.logger.info(
+                                    "[UUID_UPDATE] Found UUID from show channels (matched call_id): uuid=%s call_id=%s",
+                                    uuid,
+                                    call_id,
+                                )
+                                break
+
+                        if not uuid:
+                            for line in lines[1:]:
+                                if not line.strip() or line.startswith("uuid,"):
+                                    continue
+                                parts = line.split(",")
+                                if parts and parts[0].strip():
+                                    candidate_uuid = parts[0].strip()
+                                    if uuid_pattern.match(candidate_uuid):
+                                        uuid = candidate_uuid
+                                        self.logger.warning(
+                                            "[UUID_UPDATE] Using first available UUID (call_id match failed): uuid=%s call_id=%s",
+                                            uuid,
+                                            call_id,
+                                        )
+                                        break
+            except Exception as exc:  # pragma: no cover - diagnostic path
+                self.logger.warning(
+                    "[UUID_UPDATE] Error getting UUID from show channels: %s", exc
+                )
+
+        if uuid and hasattr(self.gateway, "call_uuid_map"):
+            old_uuid = self.gateway.call_uuid_map.get(call_id)
+            self.gateway.call_uuid_map[call_id] = uuid
+            if old_uuid != uuid:
+                self.logger.info(
+                    "[UUID_UPDATE] Updated mapping: call_id=%s old_uuid=%s -> new_uuid=%s",
+                    call_id,
+                    old_uuid,
+                    uuid,
+                )
+            else:
+                self.logger.debug(
+                    "[UUID_UPDATE] Mapping unchanged: call_id=%s uuid=%s", call_id, uuid
+                )
+            return uuid
+
+        return None
+
+    async def start_monitoring(self) -> None:
+        uuid = getattr(self.gateway, "uuid", None)
+        if not uuid:
+            self.logger.error("[ESL_MONITOR] UUID not found in gateway")
+            return
+
+        call_id = f"in-{datetime.now().strftime('%Y%m%d%H%M%S%f')[:-4]}"
+        self.logger.info(
+            "[ESL_MONITOR] Starting ESL audio monitoring for call_id=%s, uuid=%s",
+            call_id,
+            uuid,
+        )
+
+        esl_receiver = ESLAudioReceiver(call_id, uuid, self.gateway, self.logger)
+        esl_receiver.start()
+        self.active_receivers[call_id] = esl_receiver
+
+        if hasattr(self.gateway, "call_uuid_map"):
+            self.gateway.call_uuid_map[call_id] = uuid
+
+        self.logger.info("[ESL_MONITOR] ESL monitoring started for call_id=%s", call_id)
+
+    async def _check_asr_enable_flag(self) -> None:
+        check_count = 0
+        while self.gateway.running:
+            try:
+                check_count += 1
+                flag_files = list(Path("/tmp").glob("asr_enable_*.flag"))
+                if check_count % 20 == 0 or flag_files:
+                    self.logger.debug(
+                        "[FS_RTP_MONITOR] Checking ASR enable flag (check #%s, found %s flag file(s), asr_active=%s)",
+                        check_count,
+                        len(flag_files),
+                        self.asr_active,
+                    )
+
+                if flag_files:
+                    flag_file = flag_files[0]
+                    if not self.asr_active:
+                        self.logger.info(
+                            "[SAFE_DELAY] 初回アナウンス完了検知、ASR起動を3秒遅延させます"
+                        )
+                        self._schedule_asr_enable_after_initial_sequence()
+                    try:
+                        flag_file.unlink()
+                        self.logger.info(
+                            "[FS_RTP_MONITOR] Removed ASR enable flag: %s", flag_file
+                        )
+                    except Exception as exc:
+                        self.logger.warning(
+                            "[FS_RTP_MONITOR] Failed to remove flag file: %s", exc
+                        )
+            except Exception as exc:
+                self.logger.error(
+                    "[FS_RTP_MONITOR] Error checking ASR enable flag: %s",
+                    exc,
+                    exc_info=True,
+                )
+
+            await asyncio.sleep(0.5)
+
+    async def _monitor_rtp_info_files(self) -> None:
+        while self.gateway.running:
+            try:
+                if self.freeswitch_rtp_port and self.monitor_sock:
+                    await asyncio.sleep(5.0)
+                    continue
+
+                rtp_info_files = list(Path("/tmp").glob("rtp_info_*.txt"))
+                if rtp_info_files:
+                    candidate_port = None
+                    candidate_mtime = 0.0
+                    for filepath in rtp_info_files:
+                        try:
+                            mtime = filepath.stat().st_mtime
+                            with open(filepath, "r") as file_obj:
+                                for line in file_obj:
+                                    if line.startswith("local="):
+                                        local_rtp = line.split("=", 1)[1].strip()
+                                        if ":" in local_rtp:
+                                            try:
+                                                port_str = local_rtp.split(":")[-1]
+                                                port = int(port_str)
+                                            except ValueError:
+                                                continue
+                                            if mtime >= candidate_mtime:
+                                                candidate_mtime = mtime
+                                                candidate_port = port
+                        except Exception as exc:
+                            self.logger.debug(
+                                "[FS_RTP_MONITOR] Error reading RTP info file %s: %s",
+                                filepath,
+                                exc,
+                            )
+
+                    port = candidate_port
+                    if not port:
+                        await asyncio.sleep(2.0)
+                        continue
+
+                    if port and port != self.freeswitch_rtp_port:
+                        self.logger.info(
+                            "[FS_RTP_MONITOR] Found RTP port %s from RTP info files, starting monitoring...",
+                            port,
+                        )
+                        self.freeswitch_rtp_port = port
+                        try:
+                            if SCAPY_AVAILABLE:
+                                self.capture_running = True
+                                self.capture_thread = threading.Thread(
+                                    target=self._pcap_capture_loop,
+                                    args=(self.freeswitch_rtp_port,),
+                                    daemon=True,
+                                )
+                                self.capture_thread.start()
+                                self.logger.info(
+                                    "[FS_RTP_MONITOR] Started pcap monitoring for FreeSWITCH RTP port %s (from RTP info file)",
+                                    self.freeswitch_rtp_port,
+                                )
+                            else:
+                                loop = asyncio.get_running_loop()
+                                self.monitor_sock = socket.socket(
+                                    socket.AF_INET, socket.SOCK_DGRAM
+                                )
+                                self.monitor_sock.setsockopt(
+                                    socket.SOL_SOCKET, socket.SO_REUSEADDR, 1
+                                )
+                                self.monitor_sock.setsockopt(
+                                    socket.SOL_SOCKET, socket.SO_REUSEPORT, 1
+                                )
+                                self.monitor_sock.bind(("0.0.0.0", self.freeswitch_rtp_port))
+                                self.monitor_sock.setblocking(False)
+
+                                if not self._rtp_protocol_factory:
+                                    raise RuntimeError(
+                                        "RTP protocol factory not provided for monitor socket"
+                                    )
+
+                                self.monitor_transport, _ = await loop.create_datagram_endpoint(
+                                    self._rtp_protocol_factory,
+                                    sock=self.monitor_sock,
+                                )
+                                self.logger.info(
+                                    "[FS_RTP_MONITOR] Started UDP socket monitoring for FreeSWITCH RTP port %s (from RTP info file)",
+                                    self.freeswitch_rtp_port,
+                                )
+                        except Exception as exc:
+                            self.logger.error(
+                                "[FS_RTP_MONITOR] Failed to start monitoring port %s: %s",
+                                port,
+                                exc,
+                                exc_info=True,
+                            )
+                            self.freeswitch_rtp_port = None
+
+                await asyncio.sleep(2.0)
+            except Exception as exc:
+                self.logger.error(
+                    "[FS_RTP_MONITOR] Error in _monitor_rtp_info_files: %s",
+                    exc,
+                    exc_info=True,
+                )
+                await asyncio.sleep(2.0)
+
+    def enable_asr(self) -> None:
+        if not self.asr_active:
+            self.asr_active = True
+            self.logger.info(
+                "[FS_RTP_MONITOR] ASR enabled after 002.wav playback completion"
+            )
+
+            if self.gateway and hasattr(self.gateway, "ai_core") and self.gateway.ai_core:
+                call_id = getattr(self.gateway, "call_id", None)
+                try:
+                    current_map = getattr(self.gateway, "call_uuid_map", {})
+                except Exception:
+                    current_map = {}
+                self.logger.warning(
+                    "[DEBUG_ENABLE_ASR_ENTRY] call_id=%s call_uuid_map=%s",
+                    call_id,
+                    current_map,
+                )
+
+                if not call_id and hasattr(self.gateway, "_get_effective_call_id"):
+                    call_id = self.gateway._get_effective_call_id()
+                    self.logger.warning(
+                        "[DEBUG_ENABLE_ASR_EFFECTIVE] effective_call_id=%s", call_id
+                    )
+
+                if not call_id:
+                    self.logger.error(
+                        "[ENABLE_ASR_FAILED] Cannot enable ASR: call_id is None. This indicates RTP monitoring has not started yet."
+                    )
+                    return
+
+                uuid = None
+                if call_id and hasattr(self.gateway, "call_uuid_map"):
+                    uuid = self.gateway.call_uuid_map.get(call_id)
+
+                if call_id and not uuid:
+                    self.logger.warning(
+                        "[ENABLE_ASR_UUID_MISSING] call_id=%s not in map, attempting update_uuid_mapping",
+                        call_id,
+                    )
+                    uuid = self.update_uuid_mapping_for_call(call_id)
+
+                client_id = getattr(self.gateway, "client_id", "000") or "000"
+                self.logger.warning(
+                    "[DEBUG_ENABLE_ASR_UUID] call_id=%s uuid=%s", call_id, uuid
+                )
+
+                if not uuid:
+                    self.logger.error(
+                        "[ENABLE_ASR_FAILED] Cannot enable ASR: uuid not found for call_id=%s. RTP info file may not exist yet.",
+                        call_id,
+                    )
+                    return
+
+                try:
+                    self.gateway.ai_core.enable_asr(uuid, client_id=client_id)
+                    self.logger.info(
+                        "[ENABLE_ASR_SUCCESS] ASR enabled: uuid=%s call_id=%s client_id=%s",
+                        uuid,
+                        call_id,
+                        client_id,
+                    )
+                except Exception as exc:
+                    self.logger.error(
+                        "[FS_RTP_MONITOR] Failed to call AICore.enable_asr(): %s",
+                        exc,
+                        exc_info=True,
+                    )
+            else:
+                self.logger.warning(
+                    "[FS_RTP_MONITOR] Cannot call AICore.enable_asr(): gateway or ai_core not available"
+                )
+
+    def _schedule_asr_enable_after_initial_sequence(
+        self, base_delay: float = 3.0, max_wait: float = 10.0
+    ) -> None:
+        if self.asr_active:
+            return
+
+        gateway_timer = getattr(self.gateway, "_asr_enable_timer", None)
+        if gateway_timer:
+            try:
+                gateway_timer.cancel()
+            except Exception:
+                pass
+
+        def _runner() -> None:
+            waited = 0.0
+            initial_done = getattr(self.gateway, "initial_sequence_completed", False)
+            if not initial_done:
+                self.logger.info(
+                    "[SAFE_DELAY] 初回アナウンス完了待ちでASR起動を遅延 (max_wait=%ss, base_delay=%ss)",
+                    max_wait,
+                    base_delay,
+                )
+            while (
+                not getattr(self.gateway, "initial_sequence_completed", False)
+                and waited < max_wait
+            ):
+                time.sleep(0.5)
+                waited += 0.5
+            if base_delay > 0:
+                time.sleep(base_delay)
+                waited += base_delay
+            try:
+                self.enable_asr()
+                self.logger.info(
+                    "[SAFE_DELAY] ASR enabled (waited=%.1fs, initial_sequence_completed=%s)",
+                    waited,
+                    getattr(self.gateway, "initial_sequence_completed", False),
+                )
+            except Exception as exc:
+                self.logger.error(
+                    "[SAFE_DELAY] Failed to enable ASR: %s", exc, exc_info=True
+                )
+
+        timer = threading.Timer(0.0, _runner)
+        timer.daemon = True
+        timer.start()
+        self.gateway._asr_enable_timer = timer
+
+    def _pcap_capture_loop(self, port: int) -> None:
+        print(f"DEBUG_TRACE: _pcap_capture_loop ENTERED port={port}", flush=True)
+        try:
+            self.logger.info("[FS_RTP_MONITOR] Starting pcap capture for port %s", port)
+            filter_str = f"udp dst port {port}"
+            try:
+                self.logger.info("[PCAP_CONFIG] Starting capture with filter: '%s'", filter_str)
+            except Exception:
+                pass
+            try:
+                print(
+                    f"DEBUG_PRINT: Starting pcap with filter='{filter_str}'",
+                    flush=True,
+                )
+            except Exception:
+                pass
+            sniff(
+                filter=filter_str,
+                prn=self._process_captured_packet,
+                stop_filter=lambda _: not self.capture_running,
+                store=False,
+            )
+        except Exception as exc:  # pragma: no cover - requires scapy & network
+            self.logger.error(
+                "[FS_RTP_MONITOR] Error in pcap capture loop: %s",
+                exc,
+                exc_info=True,
+            )
+        finally:
+            self.logger.info(
+                "[FS_RTP_MONITOR] pcap capture loop ended for port %s", port
+            )
+
+    def _process_captured_packet(self, packet) -> None:
+        if not hasattr(self, "_packet_debug_count"):
+            self._packet_debug_count = 0
+        self._packet_debug_count += 1
+        if self._packet_debug_count % 50 == 1:
+            print(
+                f"DEBUG_TRACE: _process_captured_packet called count={self._packet_debug_count}",
+                flush=True,
+            )
+        try:
+            if IP in packet and UDP in packet:
+                ip_layer = packet[IP]
+                udp_layer = packet[UDP]
+                src_ip = ip_layer.src
+                src_port = udp_layer.sport
+                rtp_data = bytes(udp_layer.payload)
+
+                if len(rtp_data) > 0:
+                    addr = (src_ip, src_port)
+                    self.logger.debug(
+                        "[RTP_RECV] Captured %s bytes from %s (pcap)",
+                        len(rtp_data),
+                        addr,
+                    )
+                    self.logger.info(
+                        "[RTP_RECV_RAW] from=%s, len=%s (pcap)", addr, len(rtp_data)
+                    )
+                    if len(rtp_data) > 12:
+                        audio_payload_size = len(rtp_data) - 12
+                        self.logger.debug(
+                            "[RTP_AUDIO] RTP packet: total=%s bytes, header=12 bytes, audio_payload=%s bytes (pcap)",
+                            len(rtp_data),
+                            audio_payload_size,
+                        )
+                    try:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(
+                            self.gateway.handle_rtp_packet(rtp_data, addr)
+                        )
+                        loop.close()
+                    except Exception as exc:
+                        self.logger.error(
+                            "[FS_RTP_MONITOR] Error processing captured packet: %s",
+                            exc,
+                            exc_info=True,
+                        )
+        except Exception as exc:  # pragma: no cover - diagnostic path
+            self.logger.error(
+                "[FS_RTP_MONITOR] Error in _process_captured_packet: %s",
+                exc,
+                exc_info=True,
+            )
+
+    async def stop_monitoring(self) -> None:
+        self.capture_running = False
+        if self.capture_thread and self.capture_thread.is_alive():
+            self.capture_thread.join(timeout=5.0)
+        if self.monitor_transport:
+            self.monitor_transport.close()
+        if self.monitor_sock:
+            self.monitor_sock.close()
+        self.logger.info("[FS_RTP_MONITOR] Stopped monitoring FreeSWITCH RTP port")
+
+    # ------------------------------------------------------------------
+    def _find_rtp_info_by_port(self, rtp_port: int) -> Optional[str]:
+        try:
+            rtp_info_files = glob.glob("/tmp/rtp_info_*.txt")
+            self.logger.debug(
+                "[RTP_INFO_SEARCH] port=%s total_files=%s",
+                rtp_port,
+                len(rtp_info_files),
+            )
+            for filepath in rtp_info_files:
+                try:
+                    with open(filepath, "r") as file_obj:
+                        content = file_obj.read()
+                        if f":{rtp_port}" in content:
+                            for line in content.split("\n"):
+                                if line.startswith("uuid="):
+                                    uuid = line.split("=", 1)[1].strip()
+                                    self.logger.info(
+                                        "[RTP_INFO_FOUND] port=%s file=%s uuid=%s",
+                                        rtp_port,
+                                        filepath,
+                                        uuid,
+                                    )
+                                    return uuid
+                except Exception as exc:
+                    self.logger.debug(
+                        "[RTP_INFO_READ_ERROR] file=%s error=%s",
+                        filepath,
+                        exc,
+                    )
+                    continue
+
+            self.logger.warning(
+                "[RTP_INFO_NOT_FOUND] No file found for port=%s searched_files=%s",
+                rtp_port,
+                len(rtp_info_files),
+            )
+            return None
+        except Exception as exc:  # pragma: no cover - diagnostic path
+            self.logger.exception(
+                "[RTP_INFO_SEARCH_ERROR] port=%s error=%s",
+                rtp_port,
+                exc,
+            )
+            return None

@@ -506,7 +506,7 @@ def generate_reply(core, call_id: str, raw_text: str) -> Tuple[str, List[str], s
             state.phase,
         )
 
-    reply_text = core._render_templates(template_ids)
+    reply_text = render_templates(template_ids)
 
     key = call_id or "GLOBAL_CALL"
     if "086" in template_ids and "087" in template_ids:
