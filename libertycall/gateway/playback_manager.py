@@ -890,49 +890,69 @@ class GatewayPlaybackManager:
             f"[NO_INPUT] TTS completion recorded: call_id={call_id} time={now:.2f}"
         )
 
+    async def _tts_sender_loop(self):
+        self.logger.debug("TTS Sender loop started.")
+        consecutive_skips = 0
+        while self.running:
+            # ChatGPT音声風: wakeupイベントがセットされていたら即flush
+            if self._tts_sender_wakeup.is_set():
+                await self._flush_tts_queue()
+                self._tts_sender_wakeup.clear()
+
+            if self.tts_queue and self.rtp_transport:
+                # FreeSWITCH双方向化: 受信元アドレス（rtp_peer）に送信
+                # rtp_peerが設定されていない場合は警告を出してスキップ
+                # （rtp_peerは最初のRTPパケット受信時に自動設定される）
+                if self.rtp_peer:
+                    rtp_dest = self.rtp_peer
+                else:
+                    # rtp_peerが未設定の場合は送信をスキップ（最初のRTPパケット受信待ち）
+                    if consecutive_skips == 0:
+                        self.logger.warning(
+                            "[TTS_SENDER] rtp_peer not set yet, waiting for first RTP packet..."
+                        )
+                    consecutive_skips += 1
+                    await asyncio.sleep(0.02)
+                    continue
+                try:
+                    payload = self.tts_queue.popleft()
+                    packet = self.rtp_builder.build_packet(payload)
+                    self.rtp_transport.sendto(packet, rtp_dest)
+                    # 実際に送信したタイミングでログ出力（運用ログ整備）
+                    payload_type = packet[1] & 0x7F
+                    self.logger.debug(
+                        "[TTS_QUEUE_SEND] sent RTP packet to %s, queue_len=%s, payload_type=%s",
+                        rtp_dest,
+                        len(self.tts_queue),
+                        payload_type,
+                    )
+                    # デバッグログ拡張: RTP_SENT（最初のパケットのみ）
+                    if not hasattr(self, "_rtp_sent_logged"):
+                        self.logger.info("[RTP_SENT] %s", rtp_dest)
+                        self._rtp_sent_logged = True
+                    consecutive_skips = 0  # リセット
+                except Exception as e:
+                    self.logger.error("TTS sender failed: %s", e, exc_info=True)
+            else:
+                # キューが空 or 停止状態
+                if not self.tts_queue:
+                    self.is_speaking_tts = False
+                    consecutive_skips = 0
+                    # 初回シーケンス再生が完了したらフラグをリセット
+                    if self.initial_sequence_playing:
+                        # スレッドスイッチを確保してからフラグを変更（非同期ループの確実な実行のため）
+                        await asyncio.sleep(0.01)
+                        self.initial_sequence_playing = False
+                        self.initial_sequence_completed = True
+                        self.initial_sequence_completed_time = time.time()
+                        self.logger.info(
+                            "[INITIAL_SEQUENCE] OFF: initial_sequence_playing=False -> completed=True (ASR enable allowed)"
+                        )
+
+            await asyncio.sleep(0.02)  # CPU負荷を軽減（送信間隔を20ms空ける）
+
     async def _wait_for_tts_and_transfer(self, call_id: str, timeout: float = 10.0) -> None:
-        """
-        TTS送信完了を待ってから転送処理を開始する
-
-        :param call_id: 通話ID
-        :param timeout: タイムアウト時間（秒）
-        """
-        self.logger.info(f"WAIT_FOR_TTS_START: call_id={call_id} timeout={timeout}s")
-        start_time = time.time()
-
-        # TTS送信完了を待つ（is_speaking_tts が False になるまで）
-        while self.running and self.is_speaking_tts:
-            if time.time() - start_time > timeout:
-                self.logger.warning(
-                    f"WAIT_FOR_TTS_TIMEOUT: call_id={call_id} timeout={timeout}s. Proceeding with transfer anyway."
-                )
-                break
-            await asyncio.sleep(0.1)  # 100ms間隔でチェック
-
-        # 追加の待機: キューが完全に空になるまで待つ（念のため）
-        queue_wait_start = time.time()
-        while self.running and len(self.tts_queue) > 0:
-            if time.time() - queue_wait_start > 2.0:  # 最大2秒待つ
-                self.logger.warning(
-                    f"WAIT_FOR_TTS_QUEUE_TIMEOUT: call_id={call_id} queue not empty. Proceeding with transfer anyway."
-                )
-                break
-            await asyncio.sleep(0.05)  # 50ms間隔でチェック
-
-        elapsed = time.time() - start_time
-        self.logger.info(
-            f"WAIT_FOR_TTS_COMPLETE: call_id={call_id} elapsed={elapsed:.2f}s is_speaking_tts={self.is_speaking_tts} queue_len={len(self.tts_queue)}"
-        )
-
-        # 転送処理を開始
-        if self._pending_transfer_call_id == call_id:
-            self._pending_transfer_call_id = None
-            self.logger.info(f"TRANSFER_AFTER_TTS: call_id={call_id} starting transfer")
-            self._handle_transfer(call_id)
-        else:
-            self.logger.warning(
-                f"TRANSFER_AFTER_TTS_SKIP: call_id={call_id} pending_transfer_call_id={self._pending_transfer_call_id} (mismatch)"
-            )
+        await self.playback_manager._wait_for_tts_and_transfer(call_id, timeout=timeout)
 
     async def _queue_initial_audio_sequence(self, client_id: Optional[str]) -> None:
         # ★関数の最初でログ★
