@@ -6,6 +6,14 @@ import threading
 import time
 from typing import Optional
 
+from .call_cleanup_helper import clear_auto_hangup_timer, run_call_end_cleanup
+from .call_session_store import (
+    get_call_metadata,
+    mark_call_started,
+    mark_intro_played,
+    remove_call_tracking,
+    set_call_client_meta,
+)
 from .state_logic import ConversationState
 from .state_store import get_session_state
 from .prompt_factory import render_templates
@@ -15,34 +23,10 @@ def on_call_end(core, call_id: Optional[str], source: str = "unknown") -> None:
     if not call_id:
         return
 
-    try:
-        state = get_session_state(core, call_id)
-        phase_at_end = state.phase
-        client_id_from_state = state.meta.get("client_id") if hasattr(state, "meta") and state.meta else None
-    except Exception:
-        phase_at_end = "unknown"
-        client_id_from_state = None
+    phase_at_end, client_id_from_state = get_call_metadata(core, call_id)
     effective_client_id = client_id_from_state or core.client_id or "000"
 
-    was_started = call_id in core._call_started_calls
-    was_intro_played = call_id in core._intro_played_calls
-
-    core._call_started_calls.discard(call_id)
-    core._intro_played_calls.discard(call_id)
-
-    core.last_activity.pop(call_id, None)
-
-    cleanup_items = [
-        ("last_activity", core.last_activity),
-        ("is_playing", core.is_playing),
-        ("partial_transcripts", core.partial_transcripts),
-        ("last_template_play", core.last_template_play),
-    ]
-
-    for name, data_dict in cleanup_items:
-        if call_id in data_dict:
-            del data_dict[call_id]
-            core.logger.info("[CLEANUP] Removed %s for call_id=%s", name, call_id)
+    was_started, was_intro_played = remove_call_tracking(core, call_id)
 
     core.logger.info(
         "[AICORE] on_call_end() call_id=%s source=%s client_id=%s phase=%s "
@@ -55,24 +39,7 @@ def on_call_end(core, call_id: Optional[str], source: str = "unknown") -> None:
         was_intro_played,
     )
 
-    core._save_session_summary(call_id)
-
-    try:
-        core.reset_call(call_id)
-        core.logger.info("[CLEANUP] reset_call() executed for call_id=%s", call_id)
-    except Exception as exc:
-        core.logger.error(
-            "[CLEANUP] Failed to reset_call(): call_id=%s error=%s",
-            call_id,
-            exc,
-            exc_info=True,
-        )
-
-    try:
-        core.cleanup_call(call_id)
-        core.logger.info("[CLEANUP] cleanup_call() executed for call_id=%s", call_id)
-    except Exception as exc:
-        core.logger.debug("[CLEANUP] cleanup_call() failed for call_id=%s: %s", call_id, exc)
+    run_call_end_cleanup(core, call_id)
 
 
 def trigger_transfer(core, call_id: str) -> None:
@@ -246,12 +213,9 @@ def on_call_start(core, call_id: str, client_id: str = None, **kwargs) -> None:
         call_id,
         effective_client_id,
     )
-    core._call_started_calls.add(call_id)
+    mark_call_started(core, call_id)
 
-    state = get_session_state(core, call_id)
-    if not hasattr(state, "meta") or state.meta is None:
-        state.meta = {}
-    state.meta["client_id"] = effective_client_id
+    set_call_client_meta(core, call_id, effective_client_id)
 
     if effective_client_id == "001":
         print("[DEBUG_PRINT] client_id=001 detected, proceeding with intro template", flush=True)
@@ -280,7 +244,7 @@ def on_call_start(core, call_id: str, client_id: str = None, **kwargs) -> None:
                 except Exception:
                     pass
                 core.tts_callback(call_id, None, ["000-002"], False)  # type: ignore[misc, attr-defined]
-                core._intro_played_calls.add(call_id)
+                mark_intro_played(core, call_id)
                 print(
                     f"[DEBUG_PRINT] intro=sent template_id=000-002 call_id={call_id}",
                     flush=True,
@@ -350,15 +314,4 @@ def reset_call(core, call_id: str) -> None:
     if call_id in core.partial_transcripts:
         del core.partial_transcripts[call_id]
 
-    key = call_id or "GLOBAL_CALL"
-    timer = core._auto_hangup_timers.pop(key, None)
-    if timer is not None:
-        try:
-            timer.cancel()
-            core.logger.info("AUTO_HANGUP_TIMER_CANCELED: call_id=%s", key)
-        except Exception as exc:
-            core.logger.warning(
-                "AUTO_HANGUP_TIMER_CANCEL_ERROR: call_id=%s error=%r",
-                key,
-                exc,
-            )
+    clear_auto_hangup_timer(core, call_id)
