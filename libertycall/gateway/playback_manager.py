@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import sys
 import time
 import traceback
 from datetime import datetime
@@ -21,7 +20,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing helpers only
 
 
 _CURRENT_DIR = Path(__file__).resolve().parent
-_PROJECT_ROOT = _CURRENT_DIR.parent
+_PROJECT_ROOT = _CURRENT_DIR.parent.parent
 
 
 class GatewayPlaybackManager:
