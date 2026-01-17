@@ -343,10 +343,10 @@ def handle_transcript(
             merged_text[:50],
         )
 
-        simple_intent = core._classify_simple_intent(merged_text, normalized)
+        simple_intent = classify_simple_intent(merged_text, normalized)
         if simple_intent:
             logger.info("[SIMPLE_INTENT] %s (text=%r)", simple_intent, merged_text)
-            core._play_audio_response(call_id, simple_intent)
+            play_audio_response(core, call_id, simple_intent)
             return None
 
     flow_engine = core.flow_engines.get(call_id) or core.flow_engine
