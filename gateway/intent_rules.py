@@ -224,7 +224,10 @@ def classify_intent(text: str) -> str:
     if "担当者" in t and "話" in t:
         return "HANDOFF_REQUEST"
 
-    if ("人間" in t or "オペレーター" in t) and ("話" in t or "繋" in t):
+    if ("人間" in t or "オペレーター" in t) and ("話" in t or "繋" in t or "代" in t):
+        return "HANDOFF_REQUEST"
+
+    if "人間" in t and "話" in t:
         return "HANDOFF_REQUEST"
     
     # ===== システムについての問い合わせ判定（ハンドオフより優先） =====
@@ -241,7 +244,7 @@ def classify_intent(text: str) -> str:
     if any(k in t for k in ["ai電話", "aiの電話", "aiの件", "ai電話の件"]):
         return "AI_CALL_TOPIC"
 
-    if any(k in t for k in ["あなたはai", "aiですか", "自己紹介", "あなたは誰"]):
+    if any(k in t for k in ["あなたはai", "aiですか", "自己紹介", "あなたは誰", "aiがやってる"]):
         return "AI_IDENTITY"
     
     # 設定難易度の判定（より広範囲の表現に対応）
@@ -252,13 +255,12 @@ def classify_intent(text: str) -> str:
         "難しい", "むずい", "むずかしい", "難しそう", "むずかしそう",
         "設定", "セットアップ", "導入", "初期設定"
     ]
-    # 「設定」「難しい」などのキーワードが含まれ、かつ「システム」や「この」などの文脈がある場合
-    if any(k in t for k in setup_difficulty_keywords):
-        # 「システムの設定」「この設定」などの文脈がある場合のみ SETUP_DIFFICULTY を返す
-        if any(ctx in t for ctx in ["システム", "この", "その", "導入", "初期"]):
-            return "SETUP_DIFFICULTY"
-        # 単独で「難しい」と言った場合は、より具体的な文脈が必要
-        if "設定" in t or "セットアップ" in t or "導入" in t:
+    difficulty_terms = ["難", "むず"]
+    # 「難しい」系の語がある場合のみ SETUP_DIFFICULTY 判定を行う
+    if any(term in t for term in difficulty_terms) and any(
+        k in t for k in setup_difficulty_keywords
+    ):
+        if any(ctx in t for ctx in ["システム", "この", "その", "導入", "初期", "設定"]):
             return "SETUP_DIFFICULTY"
     
     # システム説明の判定

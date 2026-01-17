@@ -21,7 +21,7 @@ from .flow_transition_rules import (
     is_not_heard,
     is_silence,
 )
-from .dialogue_orchestrator import run_conversation_flow as get_response
+from .dialogue_orchestrator import run_conversation_flow
 
 __all__ = [
     "check_clear_price_question",
@@ -40,4 +40,9 @@ __all__ = [
     "is_silence",
     "get_response",
 ]
+
+
+def get_response(text: str, phase: str, state: dict | None = None):
+    """Legacy wrapper matching the old dialogue_flow.get_response signature."""
+    return run_conversation_flow(text, phase, state or {})
 

@@ -181,6 +181,11 @@ class AICore:
     def _is_hallucination(self, text: str) -> bool:
         return self.is_hallucination(text)
 
+    def _generate_reply(
+        self, call_id: str, raw_text: str
+    ) -> Tuple[str, List[str], str, bool]:
+        return self.generate_reply(call_id, raw_text)
+
         
     def save_transcript_event(self, call_id: str, text: str, is_final: bool, kwargs: dict) -> None:
         save_transcript_event_from_core(self, call_id, text, is_final, kwargs)
