@@ -2,6 +2,7 @@
 """Call session handling for FreeSWITCH/Asterisk events."""
 import asyncio
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -416,9 +417,10 @@ class GatewayCallSessionHandler:
                     lines = result.stdout.strip().split("\n")
                     if len(lines) >= 2 and not lines[0].startswith("0 total"):
                         # UUID形式の正規表現（8-4-4-4-12形式）
-                        uuid_pattern = (
+                        uuid_pattern = re.compile(
                             r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
-                            r"[0-9a-f]{4}-[0-9a-f]{12}$"
+                            r"[0-9a-f]{4}-[0-9a-f]{12}$",
+                            re.IGNORECASE,
                         )
                         # 各行を解析してcall_idに一致するUUIDを探す
                         for line in lines[1:]:
@@ -431,9 +433,7 @@ class GatewayCallSessionHandler:
 
                             # 先頭のUUIDを取得
                             candidate_uuid = parts[0].strip()
-                            if not __import__("re").compile(uuid_pattern, __import__("re").IGNORECASE).match(
-                                candidate_uuid
-                            ):
+                            if not uuid_pattern.match(candidate_uuid):
                                 continue
 
                             # call_idが行内に含まれているか確認（cid_name, name, presence_id等に含まれる可能性）
@@ -456,9 +456,7 @@ class GatewayCallSessionHandler:
                                 parts = line.split(",")
                                 if parts and parts[0].strip():
                                     candidate_uuid = parts[0].strip()
-                                    if __import__("re").compile(uuid_pattern, __import__("re").IGNORECASE).match(
-                                        candidate_uuid
-                                    ):
+                                    if uuid_pattern.match(candidate_uuid):
                                         uuid = candidate_uuid
                                         self.logger.warning(
                                             "[UUID_UPDATE] Using first available UUID (call_id match failed): "
@@ -569,10 +567,10 @@ class GatewayCallSessionHandler:
                     lines = result.stdout.strip().split("\n")
                     if len(lines) >= 2 and not lines[0].startswith("0 total"):
                         # UUID形式の正規表現（8-4-4-4-12形式）
-                        uuid_pattern = __import__("re").compile(
+                        uuid_pattern = re.compile(
                             r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
                             r"[0-9a-f]{4}-[0-9a-f]{12}$",
-                            __import__("re").IGNORECASE,
+                            re.IGNORECASE,
                         )
 
                         # 各行を解析してcall_idに一致するUUIDを探す
