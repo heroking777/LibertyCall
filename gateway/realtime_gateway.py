@@ -147,6 +147,80 @@ class RealtimeGateway:
     async def start(self):
         await self.utils.start()
 
+    def _send_tts(
+        self,
+        call_id: str,
+        reply_text: str,
+        template_ids: list[str] | None = None,
+        transfer_requested: bool = False,
+    ) -> None:
+        try:
+            playback_manager = object.__getattribute__(self, "playback_manager")
+        except AttributeError:
+            return
+        playback_manager._send_tts(
+            call_id,
+            reply_text,
+            template_ids=template_ids,
+            transfer_requested=transfer_requested,
+        )
+
+    async def _send_tts_async(
+        self,
+        call_id: str,
+        reply_text: str | None = None,
+        template_ids: list[str] | None = None,
+        transfer_requested: bool = False,
+    ) -> None:
+        try:
+            playback_manager = object.__getattribute__(self, "playback_manager")
+        except AttributeError:
+            return
+        await playback_manager._send_tts_async(
+            call_id,
+            reply_text=reply_text,
+            template_ids=template_ids,
+            transfer_requested=transfer_requested,
+        )
+
+    def _handle_playback(self, call_id: str, audio_file: str) -> None:
+        try:
+            playback_manager = object.__getattribute__(self, "playback_manager")
+        except AttributeError:
+            return
+        playback_manager._handle_playback(call_id, audio_file)
+
+    def _queue_initial_audio_sequence(self, client_id: Optional[str]) -> None:
+        try:
+            playback_manager = object.__getattribute__(self, "playback_manager")
+        except AttributeError:
+            return
+        coro = playback_manager._queue_initial_audio_sequence(client_id)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            loop.create_task(coro)
+            return
+        temp_loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(temp_loop)
+            temp_loop.run_until_complete(coro)
+        finally:
+            temp_loop.close()
+            asyncio.set_event_loop(None)
+
+    def _stop_recording(self) -> None:
+        try:
+            activity_monitor = object.__getattribute__(self, "activity_monitor")
+        except AttributeError:
+            return
+        try:
+            activity_monitor._stop_recording()
+        except Exception:
+            self.logger.exception("_stop_recording failed")
+
     def __getattr__(self, name: str):
         alias_map = {
             "_ensure_console_session": self.console_manager.ensure_console_session,
@@ -159,18 +233,24 @@ class RealtimeGateway:
         if name in alias_map:
             return alias_map[name]
 
-        delegates = (
-            self.playback_manager,
-            self.network_manager,
-            self.utils,
-            self.activity_monitor,
-            self.console_manager,
-            self.esl_manager,
-            self.session_handler,
-            self.audio_processor,
-            self.monitor_manager,
-            self.asr_manager,
+        delegate_names = (
+            "playback_manager",
+            "network_manager",
+            "utils",
+            "activity_monitor",
+            "console_manager",
+            "esl_manager",
+            "session_handler",
+            "audio_processor",
+            "monitor_manager",
+            "asr_manager",
         )
+        delegates = []
+        for delegate_name in delegate_names:
+            try:
+                delegates.append(object.__getattribute__(self, delegate_name))
+            except AttributeError:
+                continue
         for delegate in delegates:
             attr = getattr(type(delegate), name, None)
             if attr is not None:

@@ -6,12 +6,16 @@ from datetime import datetime, UTC
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from console_backend.service_client import start_call, append_call_log, complete_call
-from console_backend.database import SessionLocal
+from console_backend.database import SessionLocal, Base, engine
 from console_backend.models import Call, CallLog
 
 
 class TestProductionPerformance:
     """本番環境でのパフォーマンステスト."""
+
+    @classmethod
+    def setup_class(cls) -> None:
+        Base.metadata.create_all(bind=engine)
     
     def test_concurrent_calls(self):
         """並行通話のパフォーマンステスト."""
