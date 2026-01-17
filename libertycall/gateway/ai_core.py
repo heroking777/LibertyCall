@@ -2411,70 +2411,7 @@ class AICore:
             f"AFTER_085_NEGATIVE={len(self.AFTER_085_NEGATIVE_KEYWORDS)}"
         )
     
-    def _get_session_dir(self, call_id: str, client_id: Optional[str] = None) -> Path:
-        """
-        セッションディレクトリのパスを取得
         
-        :param call_id: 通話UUID
-        :param client_id: クライアントID（指定されない場合は自動取得）
-        :return: セッションディレクトリのPath
-        """
-        # クライアントIDの決定
-        if not client_id:
-            client_id = self.call_client_map.get(call_id) or self.client_id or "000"
-        
-        # セッション情報を取得（開始時刻からディレクトリ名を生成）
-        session_info = self.session_info.get(call_id, {})
-        start_time = session_info.get("start_time", datetime.now())
-        
-        if isinstance(start_time, str):
-            start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-        elif not isinstance(start_time, datetime):
-            start_time = datetime.now()
-        
-        # ディレクトリ名を生成: session_{YYYYMMDD_HHMMSS}
-        session_dir_name = start_time.strftime("session_%Y%m%d_%H%M%S")
-        date_dir = start_time.strftime("%Y-%m-%d")
-        
-        # パス: /var/lib/libertycall/sessions/{YYYY-MM-DD}/{client_id}/session_{YYYYMMDD_HHMMSS}/
-        session_dir = Path(f"/var/lib/libertycall/sessions/{date_dir}/{client_id}/{session_dir_name}")
-        
-        return session_dir
-    
-    def _ensure_session_dir(self, session_dir: Path) -> None:
-        """
-        セッションディレクトリを作成し、適切な権限を設定
-        
-        :param session_dir: セッションディレクトリのPath
-        """
-        try:
-            # ディレクトリを作成（親ディレクトリも含めて）
-            session_dir.mkdir(parents=True, exist_ok=True)
-            audio_dir = session_dir / "audio"
-            audio_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 権限設定: freeswitch:freeswitch 750
-            # freeswitchユーザーとグループが存在するか確認
-            try:
-                import pwd
-                import grp
-                freeswitch_uid = pwd.getpwnam("freeswitch").pw_uid
-                freeswitch_gid = grp.getgrnam("freeswitch").gr_gid
-                
-                # ディレクトリの所有者を変更
-                os.chown(session_dir, freeswitch_uid, freeswitch_gid)
-                os.chown(audio_dir, freeswitch_uid, freeswitch_gid)
-                
-                # 権限を750に設定
-                os.chmod(session_dir, 0o750)
-                os.chmod(audio_dir, 0o750)
-            except (KeyError, OSError, ImportError) as e:
-                # freeswitchユーザーが存在しない場合やpwd/grpが利用できない場合は警告のみ（開発環境など）
-                self.logger.warning(f"[SESSION_DIR] Failed to set permissions: {e}")
-        except Exception as e:
-            self.logger.exception(f"[SESSION_DIR] Failed to create session directory: {e}")
-            raise
-    
     def _save_transcript_event(self, call_id: str, text: str, is_final: bool, kwargs: dict) -> None:
         """
         on_transcriptイベントをtranscript.jsonlに保存（JSONL形式で逐次追記）
@@ -2486,25 +2423,8 @@ class AICore:
         :param kwargs: 追加パラメータ
         """
         try:
-            # セッションディレクトリを取得
-            session_dir = self._get_session_dir(call_id)
-            self._ensure_session_dir(session_dir)
-            
-            # transcript.jsonlファイルのパス
-            transcript_file = session_dir / "transcript.jsonl"
-            
-            # イベントをJSONL形式で追記
-            event = {
-                "timestamp": datetime.now().isoformat(),
-                "type": "on_transcript",
-                "text": text,
-                "is_final": is_final,
-                "kwargs": kwargs,
-            }
-            
-            # JSONL形式で追記（1行1イベント）
-            with open(transcript_file, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(event, ensure_ascii=False) + '\n')
+            client_id = getattr(self, "client_id", "000")
+            save_transcript_event(call_id, text, is_final, kwargs, client_id)
             
             # セッション情報を更新（intent追跡用）
             if call_id not in self.session_info:
@@ -2533,9 +2453,6 @@ class AICore:
         :param call_id: 通話UUID
         """
         try:
-            # セッションディレクトリを取得
-            session_dir = self._get_session_dir(call_id)
-            
             # セッション情報を取得
             session_info = self.session_info.get(call_id, {})
             state = self._get_session_state(call_id)
@@ -2578,16 +2495,8 @@ class AICore:
                 "final_phase": state.phase or "UNKNOWN",
             }
             
-            # summary.jsonを保存
-            try:
-                self.logger.error(f"!!! FORCE_MKDIR_AND_SAVE_SUMMARY_TO: {session_dir} !!!")
-                self._ensure_session_dir(session_dir)
-            except Exception as mkdir_exc:
-                self.logger.exception(f"[SESSION_SUMMARY] Failed while ensuring directory: {mkdir_exc}")
-                raise
-            summary_file = session_dir / "summary.json"
-            with open(summary_file, 'w', encoding='utf-8') as f:
-                json.dump(summary, f, ensure_ascii=False, indent=2)
+            # summary.jsonを保存（モジュール関数を使用）
+            save_session_summary(call_id, summary, client_id)
             
             self.logger.info(f"[SESSION_SUMMARY] Saved session summary: call_id={call_id} client_id={client_id}")
             
@@ -2691,51 +2600,24 @@ class AICore:
         通話ログを 1行追記する。
         形式: [YYYY-mm-dd HH:MM:SS] [caller] ROLE (tpl=XXX) text
         """
-        # call_id / log_session_id はここで例外を投げないように注意する
         try:
+            call_id = getattr(self, "call_id", None)
             client_id = getattr(self, "client_id", "000")
             if not client_id:
                 client_id = "000"
-            caller = getattr(self, "caller_number", None) or "-"
-        except Exception:
-            client_id = "000"
-            caller = "-"
-        
-        # ログディレクトリの作成
-        try:
-            base_dir = os.path.join("/opt", "libertycall", "logs", "calls", client_id)
-            os.makedirs(base_dir, exist_ok=True)
-        except OSError:
-            # ディレクトリ作成に失敗したら諦める（会話は止めない）
-            self.logger.exception("CALL_LOGGING_ERROR: failed to create log directory")
-            return
-        
-        # ファイル名を決定
-        call_id_str = getattr(self, "call_id", None)
-        # TEMP_CALLやunknownは無効なcall_idとして扱う
-        if call_id_str and str(call_id_str).strip() and str(call_id_str).lower() not in ("unknown", "temp_call"):
-            filename = f"{call_id_str}.log"
-        else:
-            # セッションIDベースの一時ID（TEMP_CALLの場合は正式なcall_idを生成）
-            if not getattr(self, "log_session_id", None):
-                now = datetime.now()
-                self.log_session_id = now.strftime("CALL_%Y%m%d_%H%M%S%f")
-            filename = f"{self.log_session_id}.log"
-        
-        log_path = os.path.join(base_dir, filename)
-        
-        # 実際の書き込み
-        try:
-            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            tpl_suffix = f" (tpl={template_id})" if template_id else ""
-            line = f"[{now_str}] [{caller}] {role}{tpl_suffix} {text}\n"
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(line)
-        except OSError:
-            self.logger.exception("CALL_LOGGING_ERROR: failed to write log file")
-        except Exception:
+            
+            # TMP_CALLやunknownの場合はログセッションIDを使用
+            if not call_id or str(call_id).lower() in ("unknown", "temp_call"):
+                if not getattr(self, "log_session_id", None):
+                    now = datetime.now()
+                    self.log_session_id = now.strftime("CALL_%Y%m%d_%H%M%S%f")
+                call_id = self.log_session_id
+            
+            append_call_log(str(call_id), role, text, template_id, client_id)
+            
+        except Exception as e:
             # 予期せぬ例外もログには残すが、会話は止めない
-            self.logger.exception("CALL_LOGGING_ERROR in _append_call_log")
+            self.logger.exception(f"CALL_LOGGING_ERROR in _append_call_log: {e}")
 
     def _trigger_transfer(self, call_id: str) -> None:
         """
