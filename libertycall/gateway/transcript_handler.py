@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 from .text_utils import normalize_text, normalize_text_for_comparison
+from .state_store import get_session_state
 
 
 def handle_transcript(
@@ -302,7 +303,7 @@ def handle_transcript(
         except Exception as exc:
             logger.exception("CALL_LOGGING_ERROR (USER): %s", exc)
 
-        state = core._get_session_state(call_id)
+        state = get_session_state(core, call_id)
         if state.no_input_streak > 0:
             logger.info(
                 "[NO_INPUT] call_id=%s streak reset (user input: %r)",
@@ -324,7 +325,7 @@ def handle_transcript(
         merged_text,
     )
 
-    state = core._get_session_state(call_id)
+    state = get_session_state(core, call_id)
     phase_before = state.phase
 
     intent = None
