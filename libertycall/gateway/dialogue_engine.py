@@ -405,14 +405,14 @@ def generate_reply(core, call_id: str, raw_text: str) -> Tuple[str, List[str], s
         template_ids = ["0605"]
         state.meta["handoff_unavailable"] = True
         state.meta["handoff_alternative_offered"] = True
-        reply_text = core._render_templates(template_ids)
+        reply_text = render_templates(template_ids)
         state.last_intent = "INQUIRY"
         return reply_text, template_ids, "HANDOFF_UNAVAILABLE", False
 
     if handoff_state == "done" and not state.transfer_requested:
         template_ids, base_intent, transfer_requested = run_conversation_flow(core, call_id, raw_text)
         template_ids = [tid for tid in template_ids if tid not in ("0604", "104")]
-        reply_text = core._render_templates(template_ids)
+        reply_text = render_templates(template_ids)
         core.logger.debug(
             "[NLG_DEBUG] call_id=%s intent=%s base_intent=%s tpl=%s phase=%s handoff_state=%s not_heard_streak=%s",
             call_id or "GLOBAL_CALL",
