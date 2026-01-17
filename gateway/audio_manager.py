@@ -1,3 +1,4 @@
+import logging
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -26,6 +27,8 @@ class AudioManager:
     """音声再生を管理するクラス"""
     
     def __init__(self, project_root: Optional[Path] = None):
+        self.logger = logging.getLogger(__name__)
+        self.logger.error("!!! AUDIO_MANAGER_INITIALIZED_AT_PATH: {} !!!".format(__file__))
         """
         初期化
         
