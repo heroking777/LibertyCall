@@ -34,6 +34,19 @@ from .text_utils import (
 )
 from .flow_engine import FlowEngine
 from .dialogue_flow import get_response as dialogue_get_response
+from .dialogue_engine import (
+    generate_reply,
+    run_conversation_flow,
+    handle_entry_phase,
+    handle_qa_phase,
+    handle_after_085_phase,
+    handle_entry_confirm_phase,
+    handle_waiting_phase,
+    handle_not_heard_phase,
+    handle_closing_phase,
+    handle_handoff_phase,
+    handle_handoff_confirm,
+)
 from .tts_utils import (
     synthesize_text_with_gemini,
     synthesize_template_audio,
@@ -1795,24 +1808,7 @@ class AICore:
         normalized_text: str,
         state: ConversationState,
     ) -> Tuple[str, List[str], bool]:
-        # Intent方式は廃止されました。dialogue_flow方式を使用
-        # ノイズ・聞き取れないケースの処理（最優先）
-        if "ゴニョゴニョ" in raw_text or len(raw_text.strip()) == 0:
-            state.phase = "QA"
-            state.last_intent = "NOT_HEARD"
-            template_ids = ["0602"]  # 聞き取れない場合のテンプレート
-            return "NOT_HEARD", template_ids, False
-        # 挨拶判定
-        if any(kw in raw_text.lower() for kw in ["もしもし", "こんにちは", "おはよう"]):
-            state.phase = "QA"
-            state.last_intent = "GREETING"
-            return "GREETING", ["004"], False
-        if self._contains_keywords(normalized_text, self.ENTRY_TRIGGER_KEYWORDS):
-            state.phase = "ENTRY_CONFIRM"
-            state.last_intent = "INQUIRY"
-            return "INQUIRY", ["006"], False
-        state.phase = "QA"
-        return self._handle_qa_phase(call_id, raw_text, state)
+        return handle_entry_phase(self, call_id, raw_text, normalized_text, state)
 
     def _handle_qa_phase(
         self,
@@ -1820,60 +1816,7 @@ class AICore:
         raw_text: str,
         state: ConversationState,
     ) -> Tuple[str, List[str], bool]:
-        """
-        通常QAフェーズ + HANDOFF導入フェーズ。
-        戻り値: (intent, template_ids, transfer_requested)
-        """
-        # Intent方式は廃止されました。dialogue_flow方式を使用
-        intent = "UNKNOWN"
-        handoff_state = state.handoff_state
-        transfer_requested = state.transfer_requested
-        
-        # --------------------------------------------------
-        # すでに handoff 完了済み → 0604/104 は二度と出さない
-        # --------------------------------------------------
-        if handoff_state == "done":
-            # Intent方式は廃止されました。デフォルト応答
-            template_ids = ["114"]  # デフォルト応答
-            # 念のため 0604/104 を強制フィルタ
-            template_ids = [tid for tid in template_ids if tid not in ("0604", "104")]
-            if intent == "SALES_CALL":
-                last_intent = state.last_intent
-                if last_intent == "SALES_CALL":
-                    state.phase = "END"
-                else:
-                    state.phase = "AFTER_085"
-            elif intent == "END_CALL":
-                state.phase = "END"
-            else:
-                state.phase = "AFTER_085"
-            state.last_intent = intent
-            return intent, template_ids, transfer_requested
-        
-        # --------------------------------------------------
-        # handoff_state == "confirming" の処理は別関数で扱う想定
-        # （_generate_reply から _handle_handoff_confirm を呼ぶ）
-        # --------------------------------------------------
-        
-        # --------------------------------------------------
-        # 通常QA: intent_rules に任せるが、0604/104 はこのフェーズでは使わない想定
-        # --------------------------------------------------
-        # Intent方式は廃止されました。dialogue_flow方式を使用
-        # 温度の低いリード（INQUIRY_PASSIVE）の処理は削除
-        # デフォルト応答
-        template_ids = ["114"]  # デフォルト応答
-        if intent == "SALES_CALL":
-            last_intent = state.last_intent
-            if last_intent == "SALES_CALL":
-                state.phase = "END"
-            else:
-                state.phase = "AFTER_085"
-        elif intent == "END_CALL":
-            state.phase = "END"
-        else:
-            state.phase = "AFTER_085"
-        state.last_intent = intent
-        return intent, template_ids, transfer_requested
+        return handle_qa_phase(self, call_id, raw_text, state)
 
     def _handle_after_085_phase(
         self,
@@ -1882,45 +1825,7 @@ class AICore:
         normalized_text: str,
         state: ConversationState,
     ) -> Tuple[str, List[str], bool]:
-        # Intent方式は廃止されました。dialogue_flow方式を使用
-        intent = "UNKNOWN"
-        
-        # 【修正】HANDOFF_REQUEST は phase に関係なく、常に 0604 を返す
-        # handoff_state == "done" の状態でも「担当者お願いします」と言われたら、再度確認文を返す
-        # handoff_state が idle または done の場合のみ処理（confirming 中は既存のハンドオフ確認フローに任せる）
-        # 念のため、handoff_state が未設定の場合は "idle" をデフォルト値として使用
-        # ハンドオフ要求の簡易判定
-        handoff_keywords = ["担当者", "人間", "代わって", "つないで", "オペレーター"]
-        if any(kw in raw_text for kw in handoff_keywords) and state.handoff_state in ("idle", "done"):
-            intent = "HANDOFF_REQUEST"
-            state.handoff_state = "confirming"
-            state.handoff_retry_count = 0
-            state.handoff_prompt_sent = True
-            state.transfer_requested = False
-            state.transfer_executed = False
-            template_ids = ["0604"]
-            state.last_intent = intent
-            return intent, template_ids, False
-        
-        # 営業電話判定（簡易版）
-        if "営業" in raw_text:
-            intent = "SALES_CALL"
-            last_intent = state.last_intent
-            if last_intent == "SALES_CALL":
-                # 2回目の営業電話発話（「はい営業です」など）の場合は END に移行
-                state.phase = "END"
-                template_ids = ["094", "088"]  # 営業電話用テンプレート
-                # handoff_state == "done" の場合は 0604/104 を出さない
-                if state.handoff_state == "done":
-                    template_ids = [tid for tid in template_ids if tid not in ["0604", "104"]]
-                state.last_intent = intent
-                return intent, template_ids, False
-        
-        if self._contains_keywords(normalized_text, self.AFTER_085_NEGATIVE_KEYWORDS):
-            state.phase = "CLOSING"
-            return "END_CALL", ["013"], False
-        state.phase = "QA"
-        return self._handle_qa_phase(call_id, raw_text, state)
+        return handle_after_085_phase(self, call_id, raw_text, normalized_text, state)
 
     def _handle_entry_confirm_phase(
         self,
@@ -1929,19 +1834,7 @@ class AICore:
         normalized_text: str,
         state: ConversationState,
     ) -> Tuple[str, List[str], bool]:
-        if self._contains_keywords(normalized_text, self.CLOSING_YES_KEYWORDS):
-            state.phase = "QA"
-            state.last_intent = "INQUIRY"
-            return "INQUIRY", ["010"], False
-        if self._contains_keywords(normalized_text, self.CLOSING_NO_KEYWORDS):
-            state.phase = "END"
-            state.last_intent = "END_CALL"
-            return "END_CALL", ["087", "088"], False
-        # ユーザー返答がある場合はQAへ、ない場合はWAITINGへ
-        # 注意: 実際のWAITING処理はrealtime_gateway.py側でTTS送信後の待機として実装
-        # ここでは、テンプレート006にwait_time_afterが設定されていることを前提にQAへ遷移
-        state.phase = "QA"
-        return self._handle_qa_phase(call_id, raw_text, state)
+        return handle_entry_confirm_phase(self, call_id, raw_text, normalized_text, state)
     
     def _handle_waiting_phase(
         self,
@@ -1950,17 +1843,7 @@ class AICore:
         normalized_text: str,
         state: ConversationState,
     ) -> Tuple[str, List[str], bool]:
-        """
-        WAITINGフェーズ: ユーザー返答待ち（1.5〜2.0秒待機）
-        実際の待機処理はrealtime_gateway.py側で実装
-        """
-        # ユーザー音声が検知された場合はQAへ
-        if raw_text and len(raw_text.strip()) > 0:
-            state.phase = "QA"
-            return self._handle_qa_phase(call_id, raw_text, state)
-        # 返答なしの場合はNOT_HEARDへ
-        state.phase = "NOT_HEARD"
-        return "NOT_HEARD", ["110"], False
+        return handle_waiting_phase(self, call_id, raw_text, normalized_text, state)
     
     def _handle_not_heard_phase(
         self,
@@ -1969,11 +1852,7 @@ class AICore:
         normalized_text: str,
         state: ConversationState,
     ) -> Tuple[str, List[str], bool]:
-        """
-        NOT_HEARDフェーズ: 聞き取れなかった場合
-        """
-        state.phase = "QA"
-        return self._handle_qa_phase(call_id, raw_text, state)
+        return handle_not_heard_phase(self, call_id, raw_text, normalized_text, state)
 
     def _handle_closing_phase(
         self,
@@ -1982,16 +1861,7 @@ class AICore:
         normalized_text: str,
         state: ConversationState,
     ) -> Tuple[str, List[str], bool]:
-        if self._contains_keywords(normalized_text, self.CLOSING_YES_KEYWORDS):
-            state.phase = "HANDOFF"
-            state.last_intent = "SETUP"
-            return "SETUP", ["060", "061", "062", "104"], False
-        if self._contains_keywords(normalized_text, self.CLOSING_NO_KEYWORDS):
-            state.phase = "END"
-            state.last_intent = "END_CALL"
-            return "END_CALL", ["087", "088"], False
-        state.phase = "QA"
-        return self._handle_qa_phase(call_id, raw_text, state)
+        return handle_closing_phase(self, call_id, raw_text, normalized_text, state)
 
     def _handle_handoff_confirm(
         self,
@@ -2000,69 +1870,7 @@ class AICore:
         intent: str,
         state: ConversationState,
     ) -> Tuple[str, List[str], str, bool]:
-        """
-        HANDOFF 確認時のラッパー。
-        実際の判定ロジックは HandoffStateMachine に委譲する。
-        """
-        from .text_utils import normalize_text
-        
-        # Intent方式は削除されました。intent が UNKNOWN の場合はそのまま使用
-        # HandoffStateMachine 内で適切に処理されます
-        
-        normalized = normalize_text(raw_text)
-        
-        def contains_no_keywords(text: str) -> bool:
-            # 既存の self._contains_keywords(normalized, self.CLOSING_NO_KEYWORDS) を包むヘルパ
-            return self._contains_keywords(text, self.CLOSING_NO_KEYWORDS)
-        
-        template_ids, result_intent, transfer_requested, updated_raw = (
-            self._handoff_sm.handle_confirm(
-                call_id=call_id,
-                raw_text=raw_text,
-                intent=intent,
-                state=state.raw,
-                contains_no_keywords=lambda text=normalized: contains_no_keywords(text),
-            )
-        )
-        
-        # updated_raw は state.raw と同じ参照なので、state をそのまま使う
-        updated_state = state
-        
-        # テンプレートレンダリング
-        reply_text = self._render_templates(template_ids)
-        
-        # 転送コールバックの実行は on_transcript 内で TTS 送信後に実行される
-        # （transfer_requested フラグを on_transcript に渡し、_send_tts 内でTTS送信完了後に転送処理を開始）
-        # transfer_requested は HandoffStateMachine で既に設定されている
-        if result_intent in ("HANDOFF_YES", "HANDOFF_FALLBACK_YES"):
-            # handoff_state が done に遷移したときに unclear_streak をリセット
-            self._mis_guard.reset_unclear_streak_on_handoff_done(call_id, updated_state)
-            # _trigger_transfer_if_needed は on_transcript 内で TTS 送信後に実行されるため、ここでは呼ばない
-        
-        # 自動切断予約（HANDOFF_NO の場合）
-        if result_intent == "HANDOFF_NO":
-            key = call_id or "GLOBAL_CALL"
-            if self.hangup_callback:
-                self.logger.info(
-                    "AUTO_HANGUP_DIRECT_SCHEDULE: call_id=%s delay=60.0",
-                    key,
-                )
-                try:
-                    self._schedule_auto_hangup(key, delay_sec=60.0)
-                except Exception as e:
-                    self.logger.exception(
-                        "AUTO_HANGUP_DIRECT_SCHEDULE_ERROR: call_id=%s error=%r",
-                        key, e
-                    )
-            else:
-                self.logger.warning(
-                    "AUTO_HANGUP_DIRECT_SKIP: call_id=%s reason=no_hangup_callback",
-                    key,
-                )
-        
-        # state.raw は既に self.session_states[key] を参照しているため、明示的な代入は不要
-        
-        return reply_text, template_ids, result_intent, transfer_requested
+        return handle_handoff_confirm(self, call_id, raw_text, intent, state)
 
     def _handle_handoff_phase(
         self,
@@ -2071,382 +1879,21 @@ class AICore:
         normalized_text: str,
         state: ConversationState,
     ) -> Tuple[str, List[str], bool]:
-        """
-        Wrapper while confirming handoff (HANDOFF_CONFIRM_WAIT phase).
-        Actual decision logic is delegated to _handle_handoff_confirm.
-        """
-        # Intent方式は削除されました。UNKNOWNとして処理
-        intent = "UNKNOWN"
-        reply_text, template_ids, result_intent, transfer_requested = self._handle_handoff_confirm(
-            call_id, raw_text, intent, state
-        )
-        
-        if result_intent == "HANDOFF_YES":
-            state.phase = "HANDOFF_DONE"
-            state.last_intent = "HANDOFF_YES"
-            state.handoff_completed = True
-            state.transfer_requested = True
-            # handoff_state が done に遷移したときに unclear_streak をリセット
-            self._mis_guard.reset_unclear_streak_on_handoff_done(call_id, state)
-            # _trigger_transfer_if_needed は on_transcript 内で TTS 送信後に実行されるため、ここでは呼ばない
-        elif result_intent == "HANDOFF_FALLBACK_YES":
-            # 【追加】安全側に倒して有人へ繋ぐ場合
-            state.phase = "HANDOFF_DONE"
-            state.last_intent = "HANDOFF_YES"
-            state.handoff_completed = True
-            state.transfer_requested = True
-            # handoff_state が done に遷移したときに unclear_streak をリセット
-            self._mis_guard.reset_unclear_streak_on_handoff_done(call_id, state)
-            # _trigger_transfer_if_needed は on_transcript 内で TTS 送信後に実行されるため、ここでは呼ばない
-        elif result_intent in ("HANDOFF_NO", "HANDOFF_FALLBACK_NO"):
-            state.phase = "END"
-            state.last_intent = "END_CALL"
-            state.handoff_completed = True
-        else:
-            state.phase = "HANDOFF_CONFIRM_WAIT"
-            state.last_intent = "HANDOFF_REQUEST"
-        
-        # state.raw は既に self.session_states[key] を参照しているため、明示的な代入は不要
-        return result_intent, template_ids, transfer_requested
+        return handle_handoff_phase(self, call_id, raw_text, normalized_text, state)
 
     def _run_conversation_flow(
         self,
         call_id: str,
         raw_text: str,
     ) -> Tuple[List[str], str, bool]:
-        state = self._get_session_state(call_id)
-        normalized = normalize_text(raw_text)
-        phase = state.phase
-        intent = "UNKNOWN"
-        template_ids: List[str] = []
-        transfer_requested = False
-
-        if phase == "END":
-            return [], "END_CALL", False
-        if phase == "INTRO":
-            # INTROフェーズ中は何も返さない（intro再生中）
-            self.logger.debug(f"[AICORE] Phase=INTRO, skipping response (intro playing) call_id={call_id}")
-            return [], "UNKNOWN", False
-        if phase == "ENTRY":
-            intent, template_ids, transfer_requested = self._handle_entry_phase(call_id, raw_text, normalized, state)
-        elif phase == "ENTRY_CONFIRM":
-            intent, template_ids, transfer_requested = self._handle_entry_confirm_phase(call_id, raw_text, normalized, state)
-        elif phase == "WAITING":
-            intent, template_ids, transfer_requested = self._handle_waiting_phase(call_id, raw_text, normalized, state)
-        elif phase == "NOT_HEARD":
-            intent, template_ids, transfer_requested = self._handle_not_heard_phase(call_id, raw_text, normalized, state)
-        elif phase == "QA":
-            intent, template_ids, transfer_requested = self._handle_qa_phase(call_id, raw_text, state)
-        elif phase == "AFTER_085":
-            intent, template_ids, transfer_requested = self._handle_after_085_phase(call_id, raw_text, normalized, state)
-        elif phase == "CLOSING":
-            intent, template_ids, transfer_requested = self._handle_closing_phase(call_id, raw_text, normalized, state)
-        elif phase == "HANDOFF" or phase == "HANDOFF_CONFIRM_WAIT":
-            intent, template_ids, transfer_requested = self._handle_handoff_phase(call_id, raw_text, normalized, state)
-        else:
-            state.phase = "QA"
-            intent, template_ids, transfer_requested = self._handle_qa_phase(call_id, raw_text, state)
-
-        if not template_ids and state.phase != "END":
-            intent = intent or "UNKNOWN"
-            # 無言を絶対出さないフォールバック
-            template_ids = ["110"]
-        
-        # 直前のAIテンプレートをstateに保存（HANDOFF判定用）
-        state.last_ai_templates = template_ids
-        
-        return template_ids, intent, transfer_requested
+        return run_conversation_flow(self, call_id, raw_text)
 
     def _generate_reply(
         self,
         call_id: str,
         raw_text: str,
     ) -> Tuple[str, List[str], str, bool]:
-        """
-        Core conversation flow entry point.
-        - dialogue_flow方式で応答を生成
-        - HANDOFF state (idle / confirming / done)
-        - normal template selection
-        """
-        state = self._get_session_state(call_id)
-        handoff_state = state.handoff_state
-        transfer_requested = state.transfer_requested
-        
-        # ========================================
-        # 対話フロー方式を試す（フェーズ1: 料金のみ）
-        # ========================================
-        dialogue_templates = None
-        try:
-            # handoff_stateが"confirming"の場合はdialogue_flowをスキップ
-            # （ハンドオフ確認中の応答はIntent方式で処理）
-            if handoff_state != "confirming":
-                dialogue_templates, dialogue_phase, dialogue_state = dialogue_get_response(
-                    user_text=raw_text,
-                    current_phase=state.phase,
-                    state={
-                        "silence_count": getattr(state, "silence_count", 0),
-                        "waiting_retry_count": getattr(state, "waiting_retry_count", 0),
-                    }
-                )
-                
-                if dialogue_templates and len(dialogue_templates) > 0:
-                    # 対話フロー方式で応答が見つかった
-                    self.logger.info(
-                        f"DIALOGUE_FLOW使用: call_id={call_id}, "
-                        f"templates={dialogue_templates}, "
-                        f"phase={state.phase}->{dialogue_phase}"
-                    )
-                    
-                    # Phase更新
-                    state.phase = dialogue_phase
-                    
-                    # State更新
-                    for key, value in dialogue_state.items():
-                        setattr(state, key, value)
-                    
-                    # template_idsを設定
-                    template_ids = dialogue_templates
-                    intent = "DIALOGUE_FLOW"  # ログ用
-                    
-                    # テンプレートレンダリング
-                    reply_text = self._render_templates(template_ids)
-                    state.last_intent = intent
-                    return reply_text, template_ids, intent, False
-                    
-        except Exception as e:
-            self.logger.error(f"DIALOGUE_FLOW エラー: call_id={call_id}, error={e}", exc_info=True)
-            # エラーの場合は、通常のIntent方式にフォールバック
-            dialogue_templates = None
-        
-        # ========================================
-        # 対話フロー方式で応答が見つからなければ、デフォルト応答
-        # ========================================
-        
-        # dialogue_flowで応答が見つからなかった場合のデフォルト処理
-        self.logger.warning(f"DIALOGUE_FLOW未対応: call_id={call_id}, text='{raw_text}', handoff_state={handoff_state}")
-        
-        # handoff_state == "confirming" の場合は、ハンドオフ確認処理に委譲
-        if handoff_state == "confirming":
-            # ハンドオフ確認中の応答は _handle_handoff_confirm で処理
-            # ここでは intent を "UNKNOWN" として設定（後続処理で適切に処理される）
-            intent = "UNKNOWN"
-        else:
-            # 通常の場合はデフォルト応答
-            intent = "UNKNOWN"
-            template_ids = ["114"]  # "ご要件をもう一度お願いできますでしょうか？"
-            reply_text = self._render_templates(template_ids)
-            state.last_intent = intent
-            return reply_text, template_ids, intent, False
-        
-        # 【新規】担当者不在時は 0605 でAI継続を案内
-        if intent == "HANDOFF_REQUEST" and not getattr(self, "transfer_callback", None):
-            self.logger.warning(
-                "[HANDOFF_UNAVAILABLE] call_id=%s intent=%s transfer_callback=missing",
-                call_id or "GLOBAL_CALL",
-                intent,
-            )
-            state.handoff_state = "idle"
-            state.handoff_retry_count = 0
-            state.handoff_prompt_sent = False
-            state.transfer_requested = False
-            state.transfer_executed = False
-            state.phase = "QA"
-            # 0605: 担当者不在→AI継続案内
-            template_ids = ["0605"]
-            # 代替案を提示するためのメタ情報を設定（後続フローで参照可能に）
-            state.meta["handoff_unavailable"] = True
-            state.meta["handoff_alternative_offered"] = True
-            reply_text = self._render_templates(template_ids)
-            state.last_intent = "INQUIRY"
-            return reply_text, template_ids, "HANDOFF_UNAVAILABLE", False
-
-        # HANDOFF already completed → never output 0604/104 again
-        if handoff_state == "done" and not state.transfer_requested:
-            template_ids, base_intent, transfer_requested = self._run_conversation_flow(call_id, raw_text)
-            template_ids = [tid for tid in template_ids if tid not in ("0604", "104")]
-            reply_text = self._render_templates(template_ids)
-            # 【追加】最終決定直前のログ（DEBUGレベルに変更）
-            self.logger.debug(
-                "[NLG_DEBUG] call_id=%s intent=%s base_intent=%s tpl=%s phase=%s handoff_state=%s not_heard_streak=%s",
-                call_id or "GLOBAL_CALL",
-                intent,
-                base_intent,
-                template_ids,
-                state.phase,
-                state.handoff_state,
-                state.not_heard_streak,
-            )
-            return reply_text, template_ids, base_intent, transfer_requested
-        
-        # HANDOFF confirming → delegate to dedicated handler
-        if handoff_state == "confirming":
-            reply_text, template_ids, result_intent, transfer_requested = self._handle_handoff_confirm(
-                call_id, raw_text, intent, state
-            )
-            # 【追加】最終決定直前のログ（DEBUGレベルに変更）
-            self.logger.debug(
-                "[NLG_DEBUG] call_id=%s intent=%s base_intent=%s tpl=%s phase=%s handoff_state=%s not_heard_streak=%s",
-                call_id or "GLOBAL_CALL",
-                intent,
-                result_intent,
-                template_ids,
-                state.phase,
-                state.handoff_state,
-                state.not_heard_streak,
-            )
-            return reply_text, template_ids, result_intent, transfer_requested
-        
-        # Not in HANDOFF yet: first UNKNOWN → propose handoff with 0604 only (once per call)
-        if intent == "UNKNOWN" and handoff_state == "idle" and not state.handoff_prompt_sent:
-            state.handoff_state = "confirming"
-            state.handoff_retry_count = 0
-            state.handoff_prompt_sent = True
-            state.transfer_requested = False
-            template_ids = ["0604"]
-            reply_text = self._render_templates(template_ids)
-            # 【追加】最終決定直前のログ（DEBUGレベルに変更）
-            self.logger.debug(
-                "[NLG_DEBUG] call_id=%s intent=%s base_intent=%s tpl=%s phase=%s handoff_state=%s not_heard_streak=%s",
-                call_id or "GLOBAL_CALL",
-                intent,
-                "UNKNOWN",
-                template_ids,
-                state.phase,
-                state.handoff_state,
-                state.not_heard_streak,
-            )
-            return reply_text, template_ids, "UNKNOWN", False
-        
-        # Normal QA flow
-        template_ids, base_intent, transfer_requested = self._run_conversation_flow(call_id, raw_text)
-        # If both 0604 and 104 are present, keep 0604 and drop 104
-        # (do not speak both in the same turn)
-        if "0604" in template_ids and "104" in template_ids:
-            template_ids = [tid for tid in template_ids if tid != "104"]
-        
-        # 【修正理由】フォールバック処理の前にストリーク処理を実行すると、
-        # フォールバックで ["110"] が設定された場合にストリークが正しく動作しない
-        # そのため、フォールバック処理の後にストリーク処理を実行する必要がある
-        # しかし、_run_conversation_flow 内でフォールバックが実行されるため、
-        # ここでストリーク処理を実行する前に、template_ids が ["110"] かどうかを確認する
-        
-        # 「もう一度お願いします（110）」の連発を監視して、2回目で 0604 に切り替える
-        key = call_id or "GLOBAL_CALL"
-        
-        # not_heard_streak の処理（MisunderstandingGuard に委譲）
-        template_ids, intent, should_return_early = self._mis_guard.handle_not_heard_streak(
-            call_id, state, template_ids, intent, base_intent
-        )
-        if should_return_early:
-            # 0604 に切り替えた場合、reply_text を再生成する必要がある
-            reply_text = self._render_templates(template_ids)
-            return reply_text, template_ids, base_intent, transfer_requested
-        
-        # unclear_streak の処理（MisunderstandingGuard に委譲）
-        self._mis_guard.handle_unclear_streak(call_id, state, template_ids)
-        
-        # --- 修正版: 「質問に答えたあと」に085を追加する ---
-        # ユーザー質問直後ではなく、
-        # AIが質問に回答した後（回答テンプレートが選択された時）に085を追加するよう修正。
-        # これにより、自然なQA対話になる。
-        # 質問intent（ユーザーが質問したintent）
-        question_intents = [
-            "PRICE", "SYSTEM_INQUIRY", "FUNCTION", "SUPPORT",
-            "AI_IDENTITY", "SYSTEM_EXPLAIN", "RESERVATION",
-            "MULTI_STORE", "DIALECT", "CALLBACK_REQUEST",
-            "SETUP_DIFFICULTY", "AI_CALL_TOPIC", "SETUP"
-        ]
-        # 回答テンプレート（質問に対する回答として使われるテンプレートID）
-        answer_templates = [
-            "040", "041", "042", "043", "044", "045", "046", "047", "048", "049",  # 料金関連
-            "020", "021", "022", "023", "023_AI_IDENTITY", "024", "025", "026",  # システム関連
-            "060", "061", "062", "063", "064", "065", "066", "067", "068", "069",  # 機能・設定関連
-            "070", "071", "072",  # 予約関連
-            "0600", "0601", "0603",  # その他回答テンプレート
-            "0280", "0281", "0282", "0283", "0284", "0285",  # 導入実績・サポート関連
-        ]
-        
-        # 質問intentで、回答テンプレートが選択されている場合に085を追加
-        if (base_intent in question_intents
-            and "085" not in template_ids
-            and state.phase != "AFTER_085"
-            and base_intent not in ("HANDOFF_REQUEST", "HANDOFF_YES", "HANDOFF_NO", "END_CALL")
-            and template_ids
-            and any(tid in answer_templates for tid in template_ids)):
-            # 回答テンプレートの直後にフォローアップとして085を出す
-            template_ids.append("085")
-            state.phase = "AFTER_085"
-            self.logger.debug(
-                "[NLG_DEBUG] Added 085 after answer intent: call_id=%s intent=%s tpl=%s phase=%s",
-                call_id or "GLOBAL_CALL",
-                base_intent,
-                template_ids,
-                state.phase,
-            )
-        
-        reply_text = self._render_templates(template_ids)
-        
-        # ★ 086/087 を選んだ時点で必ず自動切断予約（転送しない場合のクローズ用）
-        if "086" in template_ids and "087" in template_ids:
-            if self.hangup_callback:
-                # 強制テスト用: 環境変数で即座に切断をテストできる
-                force_immediate_hangup = os.getenv("LC_FORCE_IMMEDIATE_HANGUP", "0") == "1"
-                if force_immediate_hangup:
-                    # タイマーを使わず、即座に hangup_callback を呼ぶ（デバッグ用）
-                    self.logger.info(
-                        "DEBUG_FORCE_HANGUP: call_id=%s (immediate, no timer)",
-                        key,
-                    )
-                    try:
-                        self.hangup_callback(key)
-                    except Exception as e:
-                        self.logger.exception(
-                            "DEBUG_FORCE_HANGUP_ERROR: call_id=%s error=%r",
-                            key, e
-                        )
-                else:
-                    # 通常モード: 60秒後に自動切断
-                    self.logger.info(
-                        "AUTO_HANGUP_DIRECT_SCHEDULE: call_id=%s delay=60.0",
-                        key,
-                    )
-                    try:
-                        self._schedule_auto_hangup(key, delay_sec=60.0)
-                    except Exception as e:
-                        self.logger.exception(
-                            "AUTO_HANGUP_DIRECT_SCHEDULE_ERROR: call_id=%s error=%r",
-                            key, e
-                        )
-            else:
-                self.logger.warning(
-                    "AUTO_HANGUP_DIRECT_SKIP: call_id=%s reason=no_hangup_callback",
-                    key,
-                )
-        
-        # 【追加】最終決定直前のログ（DEBUGレベルに変更）
-        self.logger.debug(
-            "[NLG_DEBUG] call_id=%s intent=%s base_intent=%s tpl=%s phase=%s handoff_state=%s not_heard_streak=%s",
-            call_id or "GLOBAL_CALL",
-            intent,
-            base_intent,
-            template_ids,
-            state.phase,
-            state.handoff_state,
-            state.not_heard_streak,
-        )
-        
-        # GENERATE_REPLY_EXIT ログ（_generate_reply の出口を確認用）
-        self.logger.info(
-            "GENERATE_REPLY_EXIT: call_id=%s intent=%s base_intent=%s tpl=%s phase=%s has_086_087=%s",
-            call_id or "GLOBAL_CALL",
-            intent,
-            base_intent,
-            template_ids,
-            state.phase,
-            "086" in template_ids and "087" in template_ids,
-        )
-        
-        return reply_text, template_ids, base_intent, transfer_requested
+        return generate_reply(self, call_id, raw_text)
 
     def process_dialogue(self, pcm16k_bytes):
         # 0. WAV保存（デバッグ用、Whisperに渡す直前の音声を保存）
