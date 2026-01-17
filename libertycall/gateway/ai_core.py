@@ -38,6 +38,7 @@ from .dialogue_engine import (
 )
 from .dialogue_handler import process_dialogue as handle_process_dialogue, on_asr_error
 from .prompt_factory import render_templates_from_ids, render_templates
+from .intent_classifier import classify_simple_intent
 from .audio_orchestrator import (
     break_playback,
     play_audio_response,
@@ -253,25 +254,7 @@ class AICore:
             self.logger.error(f"enable_asr: ASR model does not have _start_stream_worker method (uuid={uuid})")
     
     def _classify_simple_intent(self, text: str, normalized: str) -> Optional[str]:
-        """
-        簡易Intent判定（はい/いいえ/その他）
-        
-        :param text: 元のテキスト
-        :param normalized: 正規化されたテキスト
-        :return: "YES", "NO", "OTHER", または None（判定できない場合）
-        """
-        # 「はい」系のキーワード
-        yes_keywords = ["はい", "ええ", "うん", "そうです", "そう", "了解", "りょうかい", "ok", "okです"]
-        if any(kw in normalized for kw in yes_keywords):
-            return "YES"
-        
-        # 「いいえ」系のキーワード
-        no_keywords = ["いいえ", "いえ", "違います", "ちがいます", "違う", "ちがう", "no", "ノー"]
-        if any(kw in normalized for kw in no_keywords):
-            return "NO"
-        
-        # その他の場合はNoneを返す（通常の会話フロー処理に委譲）
-        return None
+        return classify_simple_intent(text, normalized)
     
     def _break_playback(self, call_id: str) -> None:
         break_playback(self, call_id)
