@@ -29,11 +29,16 @@ from .text_utils import (
     get_response_template,
     get_template_config,
     normalize_text,
-    interpret_handoff_reply,
-    normalize_text_for_comparison,
 )
 from .flow_engine import FlowEngine
-from .dialogue_flow import get_response as dialogue_get_response
+from .call_manager import (
+    on_call_start as manage_call_start,
+    on_call_end as manage_call_end,
+    reset_call as manage_reset_call,
+    trigger_transfer as manage_trigger_transfer,
+    trigger_transfer_if_needed as manage_trigger_transfer_if_needed,
+    schedule_auto_hangup as manage_schedule_auto_hangup,
+)
 from .dialogue_engine import (
     generate_reply,
     run_conversation_flow,
@@ -1021,72 +1026,7 @@ class AICore:
         self.logger.info("[ACTIVITY_MONITOR] Activity monitor thread started")
     
     def on_call_end(self, call_id: Optional[str], source: str = "unknown") -> None:
-        """
-        通話終了時の処理（明示的なクリーンアップ）
-        
-        :param call_id: 通話ID
-        :param source: 呼び出し元（デバッグ用: "_complete_console_call" / "_handle_hangup" など）
-        """
-        if not call_id:
-            return
-        
-        # 終了時点の状態を取得（ログ用）
-        try:
-            state = self._get_session_state(call_id)
-            phase_at_end = state.phase
-            # 【修正4】state.meta に client_id があればそれを使う（callごとにclientが変わる構成に対応）
-            client_id_from_state = state.meta.get("client_id") if hasattr(state, 'meta') and state.meta else None
-        except Exception:
-            phase_at_end = "unknown"
-            client_id_from_state = None
-        # client_id の優先順位: state.meta > self.client_id > "000"
-        effective_client_id = client_id_from_state or self.client_id or "000"
-        
-        # 【改善2・3】通話終了時のみフラグをクリア（再接続時の誤クリアを防ぐ）
-        was_started = call_id in self._call_started_calls
-        was_intro_played = call_id in self._intro_played_calls
-        
-        self._call_started_calls.discard(call_id)
-        self._intro_played_calls.discard(call_id)
-        
-        # ACTIVITY_MONITOR用のlast_activityもクリア（タイムアウト処理停止）
-        self.last_activity.pop(call_id, None)
-        
-        # 【緊急修正】古いセッションのデータを即座にクリーンアップ
-        cleanup_items = [
-            ('last_activity', self.last_activity),
-            ('is_playing', self.is_playing),
-            ('partial_transcripts', self.partial_transcripts),
-            ('last_template_play', self.last_template_play),
-        ]
-        
-        for name, data_dict in cleanup_items:
-            if call_id in data_dict:
-                del data_dict[call_id]
-                self.logger.info(f"[CLEANUP] Removed {name} for call_id={call_id}")
-        
-        # ログ出力（デバッグ強化）
-        self.logger.info(
-            f"[AICORE] on_call_end() call_id={call_id} source={source} client_id={effective_client_id} "
-            f"phase={phase_at_end} "
-            f"_call_started_calls={was_started} _intro_played_calls={was_intro_played} -> cleared"
-        )
-        
-        # 【セッションサマリー保存】セッション終了時にsummary.jsonを保存
-        self._save_session_summary(call_id)
-        
-        # 【ASRストリーム停止】通話終了時にASRストリームを完全に停止
-        try:
-            self.reset_call(call_id)
-            self.logger.info(f"[CLEANUP] reset_call() executed for call_id={call_id}")
-        except Exception as e:
-            self.logger.error(f"[CLEANUP] Failed to reset_call(): call_id={call_id} error={e}", exc_info=True)
-        # 明示的に強制クリーンアップを呼び出して、残留データを確実に破棄する
-        try:
-            self.cleanup_call(call_id)
-            self.logger.info(f"[CLEANUP] cleanup_call() executed for call_id={call_id}")
-        except Exception as e:
-            self.logger.debug(f"[CLEANUP] cleanup_call() failed for call_id={call_id}: {e}")
+        manage_call_end(self, call_id, source=source)
 
     def cleanup_asr_instance(self, call_id: str) -> None:
         """
@@ -1548,258 +1488,16 @@ class AICore:
             self.logger.exception(f"CALL_LOGGING_ERROR in _append_call_log: {e}")
 
     def _trigger_transfer(self, call_id: str) -> None:
-        """
-        転送をトリガーする（_generate_reply の末尾などから呼ばれる）
-        
-        注意: このメソッドは後方互換性のため残していますが、
-        新しいコードでは _trigger_transfer_if_needed を使用してください。
-        """
-        self.logger.info("TRANSFER_TRIGGER_START: call_id=%s", call_id)
-        if hasattr(self, "transfer_callback") and self.transfer_callback:
-            try:
-                self.logger.info("TRANSFER_TRIGGER: calling transfer_callback call_id=%s", call_id)
-                self.transfer_callback(call_id)
-                self.logger.info("TRANSFER_TRIGGER_DONE: transfer_callback completed call_id=%s", call_id)
-            except Exception as exc:
-                self.logger.exception("TRANSFER_TRIGGER_ERROR: transfer_callback error call_id=%s error=%r", call_id, exc)
-        else:
-            self.logger.warning("TRANSFER_TRIGGER_SKIP: transfer requested but no callback is set call_id=%s", call_id)
+        manage_trigger_transfer(self, call_id)
 
     def _trigger_transfer_if_needed(self, call_id: str, state: ConversationState) -> None:
-        """
-        transfer_requested / transfer_executed / handoff_state を見て、
-        必要な場合のみ transfer_callback を 1 回だけ呼び出すヘルパー。
-        
-        このメソッドを通してのみ transfer_callback を実行する想定。
-        既存挙動を変えないことを最優先とし、
-        条件は現行コードに合わせて調整する。
-        """
-        if not getattr(self, "transfer_callback", None):
-            return
-        
-        # すでに実行済みなら何もしない
-        if state.transfer_executed:
-            return
-        
-        # 転送要求が立っていないなら何もしない
-        if not state.transfer_requested:
-            return
-        
-        try:
-            self.logger.info(
-                "AICore: TRIGGER_TRANSFER call_id=%s phase=%s handoff_state=%s",
-                call_id,
-                state.phase,
-                state.handoff_state,
-            )
-            self.transfer_callback(call_id)  # type: ignore[misc]
-            state.transfer_executed = True
-        except Exception:
-            self.logger.exception(
-                "AICore: transfer_callback failed call_id=%s", call_id
-            )
+        manage_trigger_transfer_if_needed(self, call_id, state)
 
     def _schedule_auto_hangup(self, call_id: str, delay_sec: float = 60.0) -> None:
-        """
-        END フェーズ遷移後の自動切断タイマーをセットする
-        
-        注意: 既存のタイマーがある場合は自動的にキャンセルしてから新しいタイマーをセットします。
-        これにより、以下のシーケンスでも正しく動作します：
-        1. _schedule_auto_hangup(call_id, 60.0) → timer起動
-        2. 50秒後、ユーザーが「やっぱり話したい」と発話
-        3. _generate_reply が再度 _schedule_auto_hangup を呼ぶ → 既存timerをキャンセル
-        4. 新しいtimerが60秒でセット
-        5. その10秒後、ユーザーが切断 → reset_call が呼ばれる → timerをキャンセル
-        
-        reset_call でも timer.cancel() を実行していますが、これは通話終了時のクリーンアップとして
-        実行されるもので、_schedule_auto_hangup 内のキャンセル処理とは競合しません。
-        """
-        key = call_id or "GLOBAL_CALL"
-
-        # ログ：入口
-        self.logger.info(
-            "AUTO_HANGUP_SCHEDULE_REQUEST: call_id=%s delay=%.1f hangup_cb=%s",
-            key,
-            delay_sec,
-            "set" if self.hangup_callback else "none",
-        )
-
-        # callback 未設定なら何もしない
-        if not self.hangup_callback:
-            self.logger.warning(
-                "AUTO_HANGUP_SKIP: call_id=%s reason=no_hangup_callback", key
-            )
-            return
-
-        # 既存タイマーがあればキャンセル
-        old_timer = self._auto_hangup_timers.get(key)
-        if old_timer is not None:
-            try:
-                old_timer.cancel()
-                self.logger.info(
-                    "AUTO_HANGUP_CANCEL_PREV: call_id=%s", key
-                )
-            except Exception as e:
-                self.logger.warning(
-                    "AUTO_HANGUP_CANCEL_PREV_ERROR: call_id=%s error=%r",
-                    key, e
-                )
-
-        def _do_hangup() -> None:
-            self.logger.info(
-                "AUTO_HANGUP_TRIGGER: call_id=%s", key
-            )
-            try:
-                if self.hangup_callback:
-                    self.hangup_callback(key)  # 実際の切断処理は gateway 側
-            except Exception as e:
-                self.logger.exception(
-                    "AUTO_HANGUP_CALLBACK_ERROR: call_id=%s error=%r",
-                    key, e
-                )
-            finally:
-                # 実行後に辞書から消す
-                try:
-                    self._auto_hangup_timers.pop(key, None)
-                except Exception:
-                    pass
-
-        t = threading.Timer(delay_sec, _do_hangup)
-        t.daemon = True  # 念のため
-        self._auto_hangup_timers[key] = t
-        t.start()
-
-        self.logger.info(
-            "AUTO_HANGUP_SCHEDULED: call_id=%s delay=%.1f",
-            key,
-            delay_sec,
-        )
+        manage_schedule_auto_hangup(self, call_id, delay_sec=delay_sec)
 
     def on_call_start(self, call_id: str, client_id: str = None, **kwargs) -> None:
-        """
-        通話開始時の処理
-        
-        :param call_id: 通話ID
-        :param client_id: クライアントID（省略時は self.client_id を使用）
-        :param kwargs: その他の引数
-        """
-        # 【追加】開始イベントの連打防止（2秒以内の再呼び出しは無視）
-        try:
-            import time
-            current_time = time.time()
-            last_time = getattr(self, "last_start_times", {}).get(call_id, 0)
-            if (current_time - last_time) < 2.0:
-                # logger が存在する前提で警告を出す
-                try:
-                    self.logger.warning(f"[CALL_START] Ignored duplicate start event for {call_id}")
-                except Exception:
-                    print(f"[CALL_START] Ignored duplicate start event for {call_id}", flush=True)
-                return
-            # 時刻を更新して処理続行
-            try:
-                if not hasattr(self, "last_start_times"):
-                    self.last_start_times = {}
-                self.last_start_times[call_id] = current_time
-            except Exception:
-                pass
-        except Exception:
-            # 時刻取得等に失敗しても処理を続行する（保守性優先）
-            pass
-
-        effective_client_id = client_id or self.client_id or "000"
-        
-        # 【追加】既存セッションの強制クリーンアップ（ゾンビセッション対策）
-        try:
-            # Check common active-calls holders
-            active_found = False
-            if hasattr(self, 'active_calls') and call_id in getattr(self, 'active_calls') :
-                active_found = True
-            elif hasattr(self, 'gateway') and hasattr(self.gateway, '_active_calls') and call_id in getattr(self.gateway, '_active_calls'):
-                active_found = True
-            if active_found:
-                self.logger.warning(f"[CLEANUP] Found existing active session for {call_id} at start. Forcing cleanup.")
-                try:
-                    self.cleanup_call(call_id)
-                except Exception as e:
-                    self.logger.exception(f"[CLEANUP] cleanup_call error for {call_id}: {e}")
-        except Exception:
-            # Non-fatal, continue startup
-            pass
-
-        # 【診断用】強制的に可視化（logger設定に依存しない）
-        print(f"[DEBUG_PRINT] on_call_start called call_id={call_id} client_id={effective_client_id} self.client_id={self.client_id}", flush=True)
-        
-        # 【改善1】on_call_start() 自体の重複呼び出し防止（全クライアント共通）
-        if call_id in self._call_started_calls:
-            print(f"[DEBUG_PRINT] on_call_start=skipped call_id={call_id} reason=already_called", flush=True)
-            self.logger.info(f"[AICORE] on_call_start=skipped call_id={call_id} reason=already_called")
-            return
-        
-        print(f"[DEBUG_PRINT] on_call_start proceeding call_id={call_id} effective_client_id={effective_client_id}", flush=True)
-        self.logger.info(f"[AICORE] on_call_start() call_id={call_id} client_id={effective_client_id}")
-        # 呼び出し済みフラグを設定（001以外でも設定）
-        self._call_started_calls.add(call_id)
-        
-        # 【最終チェック1】state.meta["client_id"] をセット（ログ用の一貫性確保）
-        state = self._get_session_state(call_id)
-        if not hasattr(state, 'meta') or state.meta is None:
-            state.meta = {}
-        state.meta["client_id"] = effective_client_id
-        
-        # クライアント001専用：録音告知＋LibertyCall挨拶を再生
-        if effective_client_id == "001":
-            print(f"[DEBUG_PRINT] client_id=001 detected, proceeding with intro template", flush=True)
-            # 【改善1】001の場合だけ、phase を一旦 "INTRO" にしておく
-            state = self._get_session_state(call_id)
-            state.phase = "INTRO"
-            self.logger.debug(f"[AICORE] Phase set to INTRO for call_id={call_id} (client_id=001, will change to ENTRY after intro)")
-            # 【改善3】テンプレート存在チェックを緩和（解決は下層に任せる）
-            # tts_callback が設定されている場合のみ実行
-            if hasattr(self, 'tts_callback') and self.tts_callback:
-                print(f"[DEBUG_PRINT] tts_callback is set, calling with template 000-002", flush=True)
-                try:
-                    print(f"[DEBUG_PRINT] intro=queued template_id=000-002 call_id={call_id}", flush=True)
-                    self.logger.info(f"[AICORE] intro=queued template_id=000-002 call_id={call_id}")
-                    try:
-                        # 再生予定のテンプレテキストを記録（エコーフィルタ用）
-                        try:
-                            self.current_system_text = self._render_templates(["000-002"]) or ""
-                        except Exception:
-                            self.current_system_text = "000-002"
-                    except Exception:
-                        pass
-                    self.tts_callback(call_id, None, ["000-002"], False)  # type: ignore[misc, attr-defined]
-                    # 再生済みフラグを設定
-                    self._intro_played_calls.add(call_id)
-                    print(f"[DEBUG_PRINT] intro=sent template_id=000-002 call_id={call_id}", flush=True)
-                    self.logger.info(f"[AICORE] intro=sent template_id=000-002 call_id={call_id}")
-                    
-                    # 【改善1】intro送信完了後、ENTRYフェーズへ遷移
-                    state = self._get_session_state(call_id)
-                    state.phase = "ENTRY"
-                    self.logger.debug(f"[AICORE] Phase changed from INTRO to ENTRY for call_id={call_id} (after intro sent)")
-                    
-                    # 【改善2】intro送信完了
-                    # 注意: ENTRYテンプレート（004/005）は既存の動作（on_transcript() でユーザー発話を受けた時）に任せる
-                    # これにより、introが再生中にENTRYテンプレートが被ることを防ぐ
-                    self.logger.debug(f"[AICORE] intro_sent entry_templates=deferred (will be sent by on_transcript when user speaks) call_id={call_id}")
-                    
-                except Exception as e:
-                    self.logger.exception(f"[AICORE] intro=error template_id=000-002 call_id={call_id} error={e}")
-                    # エラー時もENTRYフェーズへ遷移
-                    state = self._get_session_state(call_id)
-                    state.phase = "ENTRY"
-            else:
-                print(f"[DEBUG_PRINT] intro=error tts_callback not set call_id={call_id}", flush=True)
-                self.logger.warning("[AICORE] intro=error tts_callback not set, cannot send template 000-002")
-                # tts_callback未設定でもENTRYフェーズへ遷移
-                state = self._get_session_state(call_id)
-                state.phase = "ENTRY"
-        else:
-            # 001以外は即座にENTRYフェーズへ遷移（既存の動作）
-            state = self._get_session_state(call_id)
-            state.phase = "ENTRY"
-            self.logger.debug(f"[AICORE] Phase set to ENTRY for call_id={call_id} (client_id={effective_client_id})")
+        manage_call_start(self, call_id, client_id=client_id, **kwargs)
 
     def _handle_entry_phase(
         self,
@@ -2179,42 +1877,4 @@ class AICore:
         return result
 
     def reset_call(self, call_id: str) -> None:
-        """
-        ストリーミングモード: call_idの状態をリセット（通話終了時など）。
-        
-        :param call_id: 通話ID
-        """
-        # 通話開始フラグをクリア（on_new_audioでのスキップに必要）
-        self._call_started_calls.discard(call_id)
-        self.logger.info(f"[CLEANUP] Removed call_id={call_id} from _call_started_calls")
-        
-        if self.streaming_enabled and self.asr_model is not None:
-            # GoogleASR の場合は end_stream を呼び出す
-            if self.asr_provider == "google":
-                try:
-                    self.logger.info(f"[CLEANUP] Calling end_stream for call_id={call_id}")
-                    self.asr_model.end_stream(call_id)  # type: ignore[union-attr]
-                    self.logger.info(f"[CLEANUP] end_stream completed for call_id={call_id}")
-                except Exception as e:
-                    self.logger.error(f"[CLEANUP] GoogleASR end_stream failed for call_id={call_id}: {e}", exc_info=True)
-            self.asr_model.reset_call(call_id)  # type: ignore[union-attr]
-        self._reset_session_state(call_id)
-        # 【追加】partial_transcripts もクリア
-        if call_id in self.partial_transcripts:
-            del self.partial_transcripts[call_id]
-        # AUTO HANGUP TIMER もクリア
-        # 注意: _schedule_auto_hangup でも既存タイマーをキャンセルしているが、
-        # reset_call では通話終了時のクリーンアップとして実行する
-        key = call_id or "GLOBAL_CALL"
-        timer = self._auto_hangup_timers.pop(key, None)
-        if timer is not None:
-            try:
-                timer.cancel()
-                self.logger.info(
-                    "AUTO_HANGUP_TIMER_CANCELED: call_id=%s", key
-                )
-            except Exception as e:
-                self.logger.warning(
-                    "AUTO_HANGUP_TIMER_CANCEL_ERROR: call_id=%s error=%r",
-                    key, e
-                )
+        manage_reset_call(self, call_id)
