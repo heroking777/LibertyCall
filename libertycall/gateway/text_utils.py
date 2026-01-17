@@ -162,6 +162,17 @@ def normalize_text(text: str) -> str:
     return normalized
 
 
+def normalize_text_for_comparison(t: str) -> str:
+    """テキストを正規化（先頭/末尾スペース除去、句読点・記号除去）"""
+    if not t:
+        return ""
+    import re
+    t = t.strip()
+    t = re.sub(r'[。、？！：；「」『』【】（）()\[\]{}、.?!:;"\'""''・]', '', t)
+    t = re.sub(r'\s+', '', t)
+    return t
+
+
 def interpret_handoff_reply(raw_text: str, retry_count: int = 0) -> str:
     """
     ハンドオフ確認時の返答を解釈

@@ -30,23 +30,9 @@ from .text_utils import (
     get_template_config,
     normalize_text,
     interpret_handoff_reply,
-    normalize_text_for_comparison,
 )
 from .flow_engine import FlowEngine
 from .dialogue_flow import get_response as dialogue_get_response
-from .tts_utils import (
-    synthesize_text_with_gemini,
-    synthesize_template_audio,
-    synthesize_template_sequence,
-)
-from .session_utils import (
-    get_session_dir,
-    ensure_session_dir,
-    save_transcript_event,
-    save_session_summary,
-    append_call_log,
-    cleanup_stale_sessions,
-)
 
 # WhisperLocalASR は whisper プロバイダ使用時のみインポート（google 使用時は絶対にインポートしない）
 
@@ -2643,10 +2629,31 @@ class AICore:
         :param pitch: ピッチ（デフォルト: 0.0）
         :return: 音声データ（bytes）または None
         """
-        if not self.use_gemini_tts:
+        if not self.use_gemini_tts or not GEMINI_AVAILABLE or not genai:
             return None
         
-        return synthesize_text_with_gemini(text, speaking_rate, pitch)
+        try:
+            # 注: Gemini APIの実際の音声合成APIは、提供されている機能によって異なる可能性があります
+            # ここでは一般的な実装パターンを示しますが、実際のAPIに合わせて調整が必要です
+            
+            # Gemini APIを使用した音声合成
+            # 注意: 実際のGemini APIが音声合成をサポートしているかどうかは、最新のドキュメントを確認してください
+            # もしサポートされていない場合は、従来のGoogle Cloud TTS APIにフォールバックします
+            
+            # 日本語音声に最適な設定を適用
+            # テキストを音声に変換（Gemini APIの実際の実装に合わせて調整が必要）
+            # 例: genai.models.generate_content() や genai.models.generate_audio() など
+            
+            # 暫定的な実装: Gemini APIが音声合成を直接サポートしていない場合は、
+            # 従来のGoogle Cloud TTS APIにフォールバック
+            # 日本語音声設定（ja-JP）を適用
+            self.logger.debug(f"[TTS] Gemini API音声合成を試行: text={text[:50]}... speaking_rate={speaking_rate} pitch={pitch}")
+            self.logger.warning("[TTS] Gemini APIの音声合成機能は現在サポートされていません。従来のTTS APIにフォールバックします。")
+            return None
+            
+        except Exception as e:
+            self.logger.exception(f"Gemini TTS synthesis failed: {e}")
+            return None
 
     def _synthesize_template_audio(self, template_id: str) -> Optional[bytes]:
         """
@@ -2655,17 +2662,35 @@ class AICore:
         :param template_id: テンプレID
         :return: 音声データ（bytes）または None
         """
-        if not self.use_gemini_tts:
+        # まず self.templates（クライアント固有）から読み込む
+        cfg = None
+        if self.templates and template_id in self.templates:
+            cfg = self.templates[template_id]
+            self.logger.debug(f"[TEMPLATE] Loaded {template_id} from client templates (client_id={self.client_id})")
+        
+        # クライアント固有にない場合はグローバル TEMPLATE_CONFIG から読み込む
+        if not cfg:
+            cfg = get_template_config(template_id)
+            if cfg:
+                self.logger.debug(f"[TEMPLATE] Loaded {template_id} from global TEMPLATE_CONFIG")
+        
+        if not cfg:
+            self.logger.warning(f"[TEMPLATE] Template {template_id} not found in client templates or global config")
             return None
         
-        def get_template_config_with_client(template_id: str):
-            # まず self.templates（クライアント固有）から読み込む
-            if self.templates and template_id in self.templates:
-                return self.templates[template_id]
-            # クライアント固有にない場合はグローバルから読み込む
-            return get_template_config(template_id)
+        text = cfg.get("text", "")
+        if not text:
+            return None
         
-        return synthesize_template_audio(template_id, get_template_config_with_client)
+        speaking_rate = cfg.get("rate", 1.1)
+        pitch = cfg.get("pitch", 0.0)
+        
+        # Gemini APIを使用して音声を合成
+        if not self.use_gemini_tts:
+            self.logger.warning(f"[TTS] Gemini APIが無効です。template_id={template_id}の音声合成をスキップします。")
+            return None
+        
+        return self._synthesize_text_with_gemini(text, speaking_rate, pitch)
 
     def _synthesize_template_sequence(self, template_ids: List[str]) -> Optional[bytes]:
         """
@@ -2677,14 +2702,21 @@ class AICore:
         if not template_ids:
             return None
         
-        def get_template_config_with_client(template_id: str):
-            # まず self.templates（クライアント固有）から読み込む
-            if self.templates and template_id in self.templates:
-                return self.templates[template_id]
-            # クライアント固有にない場合はグローバルから読み込む
-            return get_template_config(template_id)
+        audio_chunks: List[bytes] = []
+        for template_id in template_ids:
+            audio = self._synthesize_template_audio(template_id)
+            if audio:
+                audio_chunks.append(audio)
         
-        return synthesize_template_sequence(template_ids, get_template_config_with_client)
+        if not audio_chunks:
+            return None
+        
+        # 複数の音声チャンクを結合
+        if len(audio_chunks) == 1:
+            return audio_chunks[0]
+        
+        # 複数チャンクを結合（単純にバイト列を連結）
+        return b"".join(audio_chunks)
 
     def _append_call_log(self, role: str, text: str, template_id: Optional[str] = None) -> None:
         """
@@ -3981,6 +4013,16 @@ class AICore:
                     )
                 # テキストが変わった場合はprocessedフラグをリセット（新しいテキストを処理可能にする）
                 # 【修正3】正規化したテキストで比較（先頭/末尾スペース、句読点・記号の違いを無視）
+                import re
+                def normalize_text_for_comparison(t: str) -> str:
+                    """テキストを正規化（先頭/末尾スペース除去、句読点・記号除去）"""
+                    if not t:
+                        return ""
+                    t = t.strip()
+                    t = re.sub(r'[。、？！：；「」『』【】（）()\[\]{}、.?!:;"\'""''・]', '', t)
+                    t = re.sub(r'\s+', '', t)
+                    return t
+                
                 prev_text_normalized_clean = normalize_text_for_comparison(prev_text_normalized)
                 text_normalized_clean = normalize_text_for_comparison(text_normalized)
                 
@@ -4070,6 +4112,19 @@ class AICore:
         # final処理時にpartial処理済みなら早期return（重複再生防止）
         if is_final:
             # 【修正3】テキスト正規化: 句読点・記号を除去して比較
+            import re
+            def normalize_text_for_comparison(t: str) -> str:
+                """テキストを正規化（先頭/末尾スペース除去、句読点・記号除去）"""
+                if not t:
+                    return ""
+                # 先頭/末尾スペース除去
+                t = t.strip()
+                # 句読点・記号を除去（。、？！：；「」『』【】（）()[]{}、.?!:;""''など）
+                t = re.sub(r'[。、？！：；「」『』【】（）()\[\]{}、.?!:;"\'""''・]', '', t)
+                # 連続するスペースを1つに
+                t = re.sub(r'\s+', '', t)
+                return t
+            
             # テキストを正規化して比較
             text_normalized = normalize_text_for_comparison(text)
             
