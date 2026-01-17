@@ -190,7 +190,15 @@ class PlaybackSequencer:
             queue_labels = []
 
             # 1) 0.5秒の無音を000よりも前に必ず積む（RTP開始時のノイズ防止）
-            silence_payload = self._generate_silence_ulaw(manager.initial_silence_sec)
+            gateway = getattr(manager, "gateway", None)
+            if gateway and hasattr(gateway, "_generate_silence_ulaw"):
+                silence_payload = gateway._generate_silence_ulaw(
+                    manager.initial_silence_sec
+                )
+            else:
+                silence_payload = self._generate_silence_ulaw(
+                    manager.initial_silence_sec
+                )
             silence_samples = len(silence_payload)
             silence_chunks = 0
             for i in range(0, len(silence_payload), chunk_size):
