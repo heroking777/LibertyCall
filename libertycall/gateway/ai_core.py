@@ -92,12 +92,6 @@ class AICore:
         
         init_asr(self)
     
-    def _load_phrase_hints(self) -> List[str]:
-        return load_phrase_hints(self)
-    
-    def _init_tts(self):
-        init_api_clients(self)
-    
     def set_call_id(self, call_id: str):
         set_call_id(self, call_id)
     
@@ -200,7 +194,7 @@ class AICore:
         :param client_id: 新しいクライアントID
         """
         self.client_id = client_id
-        self.reload_flow()
+        reload_flow_manager(self)
 
     def _contains_keywords(self, normalized_text: str, keywords: List[str]) -> bool:
         if not normalized_text:
@@ -211,16 +205,13 @@ class AICore:
         return render_templates(template_ids)
 
     def _synthesize_text_with_gemini(self, text: str, speaking_rate: float = 1.0, pitch: float = 0.0) -> Optional[bytes]:
-        return synthesize_text(self, text, speaking_rate, pitch)
+        return synthesize_text(text, speaking_rate, pitch)
 
     def _synthesize_template_audio(self, template_id: str) -> Optional[bytes]:
         return synthesize_template_audio_for_core(self, template_id)
 
     def _synthesize_template_sequence(self, template_ids: List[str]) -> Optional[bytes]:
         return synthesize_template_sequence_for_core(self, template_ids)
-
-    def _append_call_log(self, role: str, text: str, template_id: Optional[str] = None) -> None:
-        append_call_log_entry(self, role, text, template_id=template_id)
 
     def _trigger_transfer(self, call_id: str) -> None:
         manage_trigger_transfer(self, call_id)
@@ -339,9 +330,6 @@ class AICore:
 
     def on_transcript(self, call_id: str, text: str, is_final: bool = True, **kwargs) -> Optional[str]:
         return handle_transcript(self, call_id, text, is_final=is_final, **kwargs)
-    
-    def _log_ai_templates(self, template_ids: List[str]) -> None:
-        log_ai_templates(self, template_ids)
     
     def _cleanup_stale_partials(self, max_age_sec: float = 30.0) -> None:
         cleanup_stale_partials(self, max_age_sec=max_age_sec)
