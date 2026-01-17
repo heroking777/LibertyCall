@@ -2561,8 +2561,12 @@ class AICore:
             }
             
             # summary.jsonを保存
-            self.logger.warning(f"[SESSION_SUMMARY] Ensuring directory: {session_dir}")
-            session_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                self.logger.error(f"!!! FORCE_MKDIR_AND_SAVE_SUMMARY_TO: {session_dir} !!!")
+                self._ensure_session_dir(session_dir)
+            except Exception as mkdir_exc:
+                self.logger.exception(f"[SESSION_SUMMARY] Failed while ensuring directory: {mkdir_exc}")
+                raise
             summary_file = session_dir / "summary.json"
             with open(summary_file, 'w', encoding='utf-8') as f:
                 json.dump(summary, f, ensure_ascii=False, indent=2)
