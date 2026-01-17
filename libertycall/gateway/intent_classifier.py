@@ -16,3 +16,19 @@ def classify_simple_intent(text: str, normalized: str) -> Optional[str]:
         return "NO"
 
     return None
+
+
+def is_hallucination(text: str) -> bool:
+    """Detect Whisper hallucination patterns."""
+    if not text:
+        return True
+
+    if len(text) > 15 and len(set(text)) < 8:
+        return True
+
+    hallucination_words = ["おかげで", "ご視聴", "字幕", "チャンネル登録", "おやすみなさい"]
+    for hw in hallucination_words:
+        if text.count(hw) > 2:
+            return True
+
+    return False

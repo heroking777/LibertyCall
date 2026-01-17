@@ -7,8 +7,6 @@ import os
 # 明示的に認証ファイルパスを指定（存在する候補ファイルがあればデフォルトで設定）
 # 実稼働では環境変数で設定するのが望ましいが、ここでは一時的にデフォルトを補完する
 os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", "/opt/libertycall/config/google-credentials.json")
-import time
-import threading
 from typing import Optional, Tuple, List, Dict, Any, Callable
 
 from .text_utils import get_template_config, normalize_text
@@ -38,7 +36,7 @@ from .dialogue_engine import (
 )
 from .dialogue_handler import process_dialogue as handle_process_dialogue, on_asr_error
 from .prompt_factory import render_templates_from_ids, render_templates
-from .intent_classifier import classify_simple_intent
+from .intent_classifier import classify_simple_intent, is_hallucination
 from .flow_manager import reload_flow as reload_flow_manager
 from .asr_logic import (
     load_phrase_hints,
@@ -75,7 +73,7 @@ from .session_utils import (
     cleanup_stale_sessions,
 )
 from .resource_manager import cleanup_call, cleanup_asr_instance
-from .state_store import get_session_state, reset_session_state
+from .state_store import get_session_state, reset_session_state, set_call_id
 
 # 定数定義
 MIN_TEXT_LENGTH_FOR_INTENT = 2  # 「はい」「うん」も判定可能に
@@ -178,10 +176,7 @@ class AICore:
         init_api_clients(self)
     
     def set_call_id(self, call_id: str):
-        """call_idを設定し、WAV保存フラグをリセット"""
-        self.call_id = call_id
-        self._wav_saved = False
-        self._wav_chunk_counter = 0
+        set_call_id(self, call_id)
     
     def enable_asr(self, uuid: str, client_id: Optional[str] = None) -> None:
         enable_asr_logic(self, uuid, client_id=client_id)
@@ -236,17 +231,7 @@ class AICore:
     
 
     def _is_hallucination(self, text):
-        """Whisperの幻聴（繰り返しノイズ）を判定"""
-        if not text: return True
-        # 1. 「おかげで、おかげで」のような繰り返しを検知
-        if len(text) > 15 and len(set(text)) < 8:
-            return True
-        # 2. Whisper特有の幻聴ワード
-        hallucination_words = ["おかげで", "ご視聴", "字幕", "チャンネル登録", "おやすみなさい"]
-        for hw in hallucination_words:
-            if text.count(hw) > 2: # 2回以上出てきたらアウト
-                return True
-        return False
+        return is_hallucination(text)
 
     def _get_session_state(self, call_id: str) -> ConversationState:
         return get_session_state(self, call_id)

@@ -33,3 +33,10 @@ def reset_session_state(core, call_id: Optional[str]) -> None:
         return
     core.session_states.pop(call_id, None)
     core.last_activity.pop(call_id, None)
+
+
+def set_call_id(core, call_id: str) -> None:
+    """Set call_id and reset WAV save flags."""
+    core.call_id = call_id
+    core._wav_saved = False
+    core._wav_chunk_counter = 0
