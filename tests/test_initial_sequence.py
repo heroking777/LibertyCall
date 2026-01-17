@@ -37,7 +37,7 @@ class DummyAICore:
 
 @pytest.fixture()
 def gateway_instance(monkeypatch):
-    monkeypatch.setattr(realtime_gateway, "AICore", lambda: DummyAICore())
+    monkeypatch.setattr(realtime_gateway, "AICore", lambda *args, **kwargs: DummyAICore())
     config = realtime_gateway.load_config("/opt/libertycall/config/gateway.yaml")
     gateway = realtime_gateway.RealtimeGateway(config)
 

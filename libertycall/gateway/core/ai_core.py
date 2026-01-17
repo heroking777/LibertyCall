@@ -62,7 +62,7 @@ from .state_logic import ConversationState, MisunderstandingGuard, HandoffStateM
 from ..transcript.transcript_handler import handle_transcript
 from .session_utils import save_session_summary_from_core, save_debug_wav, save_transcript_event_from_core
 from .resource_manager import cleanup_call, cleanup_asr_instance
-from .state_store import set_call_id
+from .state_store import get_session_state, set_call_id
 
 MIN_TEXT_LENGTH_FOR_INTENT = 2  # 「はい」「うん」も判定可能に
 class AICore:
@@ -163,6 +163,9 @@ class AICore:
         if hasattr(self, "init_tts"):
             return self.init_tts()
         return None
+
+    def _get_session_state(self, call_id: str):
+        return get_session_state(self, call_id)
 
         
     def save_transcript_event(self, call_id: str, text: str, is_final: bool, kwargs: dict) -> None:
