@@ -5,11 +5,11 @@ import asyncio
 import time
 from typing import TYPE_CHECKING
 
-from libertycall.gateway.audio_utils import pcm24k_to_ulaw8k
-from libertycall.gateway.text_utils import normalize_text
+from libertycall.gateway.audio.audio_utils import pcm24k_to_ulaw8k
+from libertycall.gateway.common.text_utils import normalize_text
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.asr_manager import GatewayASRManager
+    from libertycall.gateway.asr.asr_manager import GatewayASRManager
 
 
 class ASRBatchHandler:

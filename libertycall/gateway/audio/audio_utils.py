@@ -3,7 +3,7 @@ import logging
 import numpy as np
 from scipy.signal import resample_poly
 
-logger = logging.getLogger("libertycall.gateway.audio_utils")
+logger = logging.getLogger("libertycall.gateway.audio.audio_utils")
 
 def ulaw8k_to_pcm16k(ulaw_bytes):
     """

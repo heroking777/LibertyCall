@@ -10,9 +10,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from libertycall.gateway.audio_utils import pcm24k_to_ulaw8k
-from libertycall.gateway.text_utils import get_response_template, normalize_text
-from libertycall.gateway.transcript_normalizer import normalize_transcript
+from libertycall.gateway.audio.audio_utils import pcm24k_to_ulaw8k
+from libertycall.gateway.common.text_utils import get_response_template, normalize_text
+from libertycall.gateway.transcript.transcript_normalizer import normalize_transcript
 
 from .google_asr import GoogleASR
 
@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - optional dependency
     get_or_create_handler = None
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.asr_manager import GatewayASRManager
+    from libertycall.gateway.asr.asr_manager import GatewayASRManager
 
 
 class ASRStreamHandler:

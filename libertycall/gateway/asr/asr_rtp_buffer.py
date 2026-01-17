@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.asr_manager import GatewayASRManager
+    from libertycall.gateway.asr.asr_manager import GatewayASRManager
 
 
 class ASRRTPBuffer:

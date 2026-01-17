@@ -7,10 +7,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from libertycall.gateway.audio_utils import pcm24k_to_ulaw8k
+from libertycall.gateway.audio.audio_utils import pcm24k_to_ulaw8k
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.playback_manager import GatewayPlaybackManager
+    from libertycall.gateway.audio.playback_manager import GatewayPlaybackManager
 
 
 _CURRENT_DIR = Path(__file__).resolve().parent
@@ -184,7 +184,7 @@ class TTSSender:
         # wait_time_afterの処理: テンプレート006の場合は1.8秒待機
         # 注意: 実際の待機処理は非同期で行うため、ここではフラグを設定
         if template_ids and "006" in template_ids:
-            from libertycall.gateway.text_utils import get_template_config
+            from libertycall.gateway.common.text_utils import get_template_config
 
             template_config = get_template_config("006")
             if template_config and template_config.get("wait_time_after"):

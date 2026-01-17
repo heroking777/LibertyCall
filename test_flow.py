@@ -1,7 +1,7 @@
 import logging
 from libertycall.gateway.core.ai_core import AICore
-from libertycall.gateway import ai_core as ai_module
-from libertycall.gateway import intent_rules as intent_module
+from libertycall.gateway.core import ai_core as ai_module
+from gateway import intent_rules as intent_module
 def setup_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -152,7 +152,7 @@ def patch_intent_rules_for_unclear_test():
     テスト用に classify_intent と select_template_ids を上書きして、
     tpl=110 が選ばれるようにする。
     """
-    from libertycall.gateway import intent_rules as intent_module
+    from gateway import intent_rules as intent_module
     original_classify = intent_module.classify_intent
     original_select = intent_module.select_template_ids
     
@@ -186,7 +186,7 @@ def patch_intent_rules_for_unclear_test():
     return original_classify, original_select
 
 def restore_intent_rules_for_unclear_test(original_classify, original_select):
-    from libertycall.gateway import intent_rules as intent_module
+    from gateway import intent_rules as intent_module
     intent_module.classify_intent = original_classify
     intent_module.select_template_ids = original_select
 

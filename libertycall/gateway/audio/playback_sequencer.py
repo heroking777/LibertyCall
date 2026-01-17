@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.playback_manager import GatewayPlaybackManager
+    from libertycall.gateway.audio.playback_manager import GatewayPlaybackManager
 
 
 _CURRENT_DIR = Path(__file__).resolve().parent

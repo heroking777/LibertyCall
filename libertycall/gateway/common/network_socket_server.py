@@ -6,7 +6,7 @@ import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.network_manager import GatewayNetworkManager
+    from libertycall.gateway.common.network_manager import GatewayNetworkManager
 
 
 class NetworkSocketServer:

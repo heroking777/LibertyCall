@@ -6,7 +6,7 @@ import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.playback_manager import GatewayPlaybackManager
+    from libertycall.gateway.audio.playback_manager import GatewayPlaybackManager
 
 
 class PlaybackHandler:

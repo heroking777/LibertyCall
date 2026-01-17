@@ -4,8 +4,8 @@ import asyncio
 import time
 from typing import Optional
 
-from libertycall.gateway.call_lifecycle_handler import CallLifecycleHandler
-from libertycall.gateway.call_uuid_manager import CallUUIDManager
+from libertycall.gateway.core.call_lifecycle_handler import CallLifecycleHandler
+from libertycall.gateway.core.call_uuid_manager import CallUUIDManager
 
 
 class GatewayCallSessionHandler:

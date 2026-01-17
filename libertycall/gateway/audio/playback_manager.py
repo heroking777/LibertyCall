@@ -7,10 +7,10 @@ import time
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from libertycall.gateway.tts_sender import TTSSender
-from libertycall.gateway.playback_controller import PlaybackController
-from libertycall.gateway.playback_handler import PlaybackHandler
-from libertycall.gateway.playback_sequencer import PlaybackSequencer
+from libertycall.gateway.audio.tts_sender import TTSSender
+from libertycall.gateway.audio.playback_controller import PlaybackController
+from libertycall.gateway.audio.playback_handler import PlaybackHandler
+from libertycall.gateway.audio.playback_sequencer import PlaybackSequencer
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
     from libertycall.gateway.realtime_gateway import RealtimeGateway
