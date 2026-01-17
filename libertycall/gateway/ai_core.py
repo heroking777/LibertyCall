@@ -3,19 +3,15 @@ import logging
 logger = logging.getLogger(__name__)
 logger.error("!!! CRITICAL_LOAD: ai_core.py is LOADED from /opt/libertycall !!!")
 
-import numpy as np
 import os
 # 明示的に認証ファイルパスを指定（存在する候補ファイルがあればデフォルトで設定）
 # 実稼働では環境変数で設定するのが望ましいが、ここでは一時的にデフォルトを補完する
 os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", "/opt/libertycall/config/google-credentials.json")
 import time
 import threading
-import queue
 import json
-from pathlib import Path
 from datetime import datetime
 from typing import Optional, Tuple, List, Dict, Any, Callable
-from dataclasses import dataclass
 
 from .text_utils import get_template_config, normalize_text
 from .flow_engine import FlowEngine
@@ -49,6 +45,7 @@ from .audio_orchestrator import (
     play_template_sequence,
     send_playback_request_http,
 )
+from .activity_monitor import start_activity_monitor
 from .core_initializer import init_core_state
 from .tts_utils import (
     synthesize_text_with_gemini,
@@ -68,6 +65,8 @@ from .session_utils import (
     save_debug_wav,
     cleanup_stale_sessions,
 )
+from .resource_manager import cleanup_call, cleanup_asr_instance
+from .state_store import get_session_state, reset_session_state
 
 # 定数定義
 MIN_TEXT_LENGTH_FOR_INTENT = 2  # 「はい」「うん」も判定可能に
@@ -333,330 +332,22 @@ class AICore:
         return False
 
     def _get_session_state(self, call_id: str) -> ConversationState:
-        key = call_id or "GLOBAL_CALL"
-        if key not in self.session_states:
-            # クライアントIDを取得（既存のマッピングから）
-            client_id = self.call_client_map.get(call_id) or self.client_id or "000"
-            
-            self.session_states[key] = {
-                "phase": "ENTRY",
-                "last_intent": None,
-                "handoff_state": "idle",
-                "handoff_retry_count": 0,
-                "transfer_requested": False,
-                "transfer_executed": False,
-                "handoff_prompt_sent": False,
-                "not_heard_streak": 0,
-                "unclear_streak": 0,  # AI がよくわからない状態で返答した回数
-                "handoff_completed": False,
-                "last_ai_templates": [],
-                "meta": {"client_id": client_id},  # クライアントIDをmetaに保存
-            }
-        return ConversationState(self.session_states[key])
+        return get_session_state(self, call_id)
 
     def _reset_session_state(self, call_id: Optional[str]) -> None:
-        """
-        セッション状態をリセット（通話終了時など）
-        
-        注意: reset_call() から呼ばれるため、基本的には通話終了時のみ呼ばれる。
-        ただし、再接続時に call_id が変わらない場合は、on_call_end() で明示的にクリアすることを推奨。
-        """
-        if not call_id:
-            return
-        self.session_states.pop(call_id, None)
-        # セッション状態のみクリア（フラグは on_call_end() でクリア）
-        # last_activityもクリア
-        self.last_activity.pop(call_id, None)
+        reset_session_state(self, call_id)
     
     def _start_activity_monitor(self) -> None:
-        """
-        無音タイムアウト監視スレッドを開始
-        
-        ASR無音10秒でFlowEngine.transition("NOT_HEARD")を呼び出す
-        """
-        if self._activity_monitor_running:
-            return
-        
-        def _activity_monitor_worker():
-            """無音タイムアウト監視ワーカースレッド"""
-            self._activity_monitor_running = True
-            self.logger.info("[ACTIVITY_MONITOR] Started activity monitor thread")
-            
-            while self._activity_monitor_running:
-                try:
-                    time.sleep(1.0)  # 1秒ごとにチェック
-                    
-                    current_time = time.time()
-                    timeout_sec = 10.0  # 無音タイムアウト: 10秒
-                    
-                    # 【修正3】古いセッションの強制クリーンアップ
-                    # 現在の稼働中のcall_idを取得（_active_callsから）
-                    active_call_ids = set()
-                    if hasattr(self, 'gateway') and hasattr(self.gateway, '_active_calls'):
-                        active_call_ids = set(self.gateway._active_calls) if self.gateway._active_calls else set()
-                    
-                    # 各call_idの最終活動時刻をチェック
-                    for call_id, last_activity_time in list(self.last_activity.items()):
-                        # 【緊急修正】アクティブでない通話はスキップ
-                        if active_call_ids and call_id not in active_call_ids:
-                            self.logger.info(f"[ACTIVITY_MONITOR] Skipping inactive call: call_id={call_id}")
-                            continue
-                        
-                        # 再生中は無音タイムアウトをスキップ
-                        if self.is_playing.get(call_id, False):
-                            continue
-                        
-                        elapsed = current_time - last_activity_time
-                        if elapsed >= timeout_sec:
-                            self.logger.info(
-                                f"[ACTIVITY_MONITOR] Timeout detected: call_id={call_id} "
-                                f"elapsed={elapsed:.1f}s -> calling FlowEngine.transition(NOT_HEARD)"
-                            )
-                            
-                            # FlowEngine.transition("NOT_HEARD")を呼び出す
-                            try:
-                                flow_engine = self.flow_engines.get(call_id) or self.flow_engine
-                                if flow_engine:
-                                    state = self._get_session_state(call_id)
-                                    client_id = self.call_client_map.get(call_id) or state.meta.get("client_id") or self.client_id or "000"
-                                    
-                                    # NOT_HEARDコンテキストで遷移
-                                    context = {
-                                        "intent": "NOT_HEARD",
-                                        "text": "",
-                                        "normalized_text": "",
-                                        "keywords": self.keywords,
-                                        "user_reply_received": False,
-                                        "user_voice_detected": False,
-                                        "timeout": True,
-                                        "is_first_sales_call": getattr(state, "is_first_sales_call", False),
-                                    }
-                                    
-                                    next_phase = flow_engine.transition(state.phase or "ENTRY", context)
-                                    
-                                    if next_phase != state.phase:
-                                        state.phase = next_phase
-                                        self.logger.info(
-                                            f"[ACTIVITY_MONITOR] Phase transition: {state.phase} -> {next_phase} "
-                                            f"(call_id={call_id}, timeout)"
-                                        )
-                                    
-                                    # テンプレートを取得して再生
-                                    template_ids = flow_engine.get_templates(next_phase)
-                                    if template_ids:
-                                        # 注意: last_activityの更新は再生成功時のみ行う（_handle_playback内で処理）
-                                        # 再生失敗時は更新しないため、タイムアウトが継続的に発生しない
-                                        self._play_template_sequence(call_id, template_ids, client_id)
-                                        
-                                        # NOT_HEARD (110) 再提示後、QAフェーズへ復帰を保証
-                                        if next_phase == "NOT_HEARD" and "110" in template_ids:
-                                            # 110再生後、自動的にQAフェーズへ遷移
-                                            state.phase = "QA"
-                                            self.logger.info(
-                                                f"[ACTIVITY_MONITOR] NOT_HEARD (110) played, transitioning to QA: call_id={call_id}"
-                                            )
-                                            # runtime.logに出力
-                                            runtime_logger = logging.getLogger("runtime")
-                                            runtime_logger.info(f"[FLOW] call_id={call_id} phase=NOT_HEARD→QA intent=NOT_HEARD template=110 (timeout recovery)")
-                            except Exception as e:
-                                self.logger.exception(f"[ACTIVITY_MONITOR] Error handling timeout: {e}")
-                except Exception as e:
-                    if self._activity_monitor_running:
-                        self.logger.exception(f"[ACTIVITY_MONITOR] Monitor thread error: {e}")
-                    time.sleep(1.0)
-        
-        import threading
-        self._activity_monitor_thread = threading.Thread(target=_activity_monitor_worker, daemon=True)
-        self._activity_monitor_thread.start()
-        self.logger.info("[ACTIVITY_MONITOR] Activity monitor thread started")
+        start_activity_monitor(self)
     
     def on_call_end(self, call_id: Optional[str], source: str = "unknown") -> None:
         manage_call_end(self, call_id, source=source)
 
     def cleanup_asr_instance(self, call_id: str) -> None:
-        """
-        通話終了時に該当call_idのASRインスタンスをクリーンアップ
-        【追加】通話ごとの独立ASRインスタンス管理用
-        
-        :param call_id: 通話ID
-        """
-        if not hasattr(self, 'asr_instances'):
-            return
-        
-        if call_id in self.asr_instances:
-            print(f"[ASR_CLEANUP_START] call_id={call_id}", flush=True)
-            self.logger.info(f"[ASR_CLEANUP_START] call_id={call_id}")
-            try:
-                asr = self.asr_instances[call_id]
-                # ASRストリームを停止
-                if hasattr(asr, 'end_stream'):
-                    asr.end_stream(call_id)
-                elif hasattr(asr, 'stop'):
-                    asr.stop()
-                # インスタンスを削除
-                del self.asr_instances[call_id]
-                print(f"[ASR_CLEANUP_DONE] call_id={call_id}, remaining={len(self.asr_instances)}", flush=True)
-                self.logger.info(f"[ASR_CLEANUP_DONE] call_id={call_id}, remaining={len(self.asr_instances)}")
-            except Exception as e:
-                self.logger.error(f"[ASR_CLEANUP_ERROR] call_id={call_id}: {e}", exc_info=True)
-                print(f"[ASR_CLEANUP_ERROR] call_id={call_id}: {e}", flush=True)
-        else:
-            self.logger.debug(f"[ASR_CLEANUP_SKIP] No ASR instance for call_id={call_id}")
+        cleanup_asr_instance(self, call_id)
 
     def cleanup_call(self, call_id: str) -> None:
-        """
-        強制クリーンアップ: セッション関連の残留データやキューを明示的に破棄する
-        通話開始時や終了時の冗長処理として呼び出すことを想定
-        """
-        try:
-            # Basic session maps
-            try:
-                self._call_started_calls.discard(call_id)
-            except Exception:
-                pass
-            try:
-                self._intro_played_calls.discard(call_id)
-            except Exception:
-                pass
-
-            # Clear common per-call dicts
-            dict_names = [
-                'last_activity', 'is_playing', 'partial_transcripts',
-                'last_template_play', 'session_info', 'last_ai_templates'
-            ]
-            # 【追加】FreeSWITCH 側で再生中の音声を強制停止（uuid_break / uuid_kill）
-            try:
-                # 複数の候補フィールドをチェックして uuid を取得する（既存フィールド名に合わせて柔軟に取得）
-                uuid = None
-                try:
-                    if hasattr(self, 'call_uuid_map') and isinstance(self.call_uuid_map, dict):
-                        uuid = self.call_uuid_map.get(call_id) or uuid
-                except Exception:
-                    pass
-                try:
-                    if not uuid and hasattr(self, 'call_client_map') and isinstance(self.call_client_map, dict):
-                        # 一部コードでは UUID を別マップで管理している可能性があるため保険的にチェック
-                        uuid = getattr(self, 'call_uuid_by_call_id', {}).get(call_id) or uuid
-                except Exception:
-                    pass
-                try:
-                    if not uuid and hasattr(self, '_call_uuid_map') and isinstance(self._call_uuid_map, dict):
-                        uuid = self._call_uuid_map.get(call_id) or uuid
-                except Exception:
-                    pass
-
-                if uuid:
-                    self.logger.info(f"[CLEANUP] Sending uuid_break/uuid_kill to FreeSWITCH for uuid={uuid} call_id={call_id}")
-                    import subprocess
-                    # Try a couple of common fs_cli paths
-                    fs_cli_paths = ["/usr/local/freeswitch/bin/fs_cli", "/usr/bin/fs_cli", "/usr/local/bin/fs_cli"]
-                    executed = False
-                    for fs_cli in fs_cli_paths:
-                        try:
-                            # uuid_break で再生を停止（all は全チャネルへ影響）
-                            subprocess.run([fs_cli, "-x", f"uuid_break {uuid} all"], timeout=2, capture_output=True)
-                            # 念のため uuid_kill（必要なら通話自体を切断）
-                            subprocess.run([fs_cli, "-x", f"uuid_kill {uuid}"], timeout=2, capture_output=True)
-                            executed = True
-                            self.logger.info(f"[CLEANUP] fs_cli executed at {fs_cli} for uuid={uuid}")
-                            break
-                        except FileNotFoundError:
-                            continue
-                        except Exception as e:
-                            self.logger.warning(f"[CLEANUP] fs_cli call failed ({fs_cli}) for uuid={uuid}: {e}")
-                    if not executed:
-                        # 最後の手段: try generic shell command (may fail on restricted env)
-                        try:
-                            subprocess.run(["fs_cli", "-x", f"uuid_break {uuid} all"], timeout=2, capture_output=True)
-                            subprocess.run(["fs_cli", "-x", f"uuid_kill {uuid}"], timeout=2, capture_output=True)
-                            self.logger.info(f"[CLEANUP] fs_cli executed via PATH for uuid={uuid}")
-                        except Exception as e:
-                            self.logger.error(f"[CLEANUP] Could not execute fs_cli for uuid={uuid}: {e}")
-            except Exception as e:
-                self.logger.debug(f"[CLEANUP] FreeSWITCH stop attempt failed for call_id={call_id}: {e}")
-            for name in dict_names:
-                try:
-                    d = getattr(self, name, None)
-                    if isinstance(d, dict) and call_id in d:
-                        del d[call_id]
-                        self.logger.info(f"[CLEANUP] Removed {name} entry for call_id={call_id}")
-                except Exception as e:
-                    self.logger.debug(f"[CLEANUP] Could not remove {name} for {call_id}: {e}")
-
-            # FlowEngine instances per-call
-            try:
-                if hasattr(self, 'flow_engines') and isinstance(self.flow_engines, dict):
-                    if call_id in self.flow_engines:
-                        del self.flow_engines[call_id]
-                        self.logger.info(f"[CLEANUP] Removed flow_engine instance for call_id={call_id}")
-            except Exception:
-                pass
-
-            # TTS / audio queues
-            try:
-                for qname in ('tts_queue', 'audio_output_queue', 'tts_out_queue'):
-                    q = getattr(self, qname, None)
-                    if q is not None:
-                        try:
-                            while not q.empty():
-                                q.get_nowait()
-                            self.logger.info(f"[CLEANUP] Cleared queue {qname} for call_id={call_id}")
-                        except Exception:
-                            self.logger.debug(f"[CLEANUP] Failed clearing queue {qname} for call_id={call_id}")
-            except Exception:
-                pass
-
-            # ASR instance queues
-            try:
-                if hasattr(self, 'asr_instances') and isinstance(self.asr_instances, dict):
-                    asr = self.asr_instances.get(call_id)
-                    if asr:
-                        if hasattr(asr, '_queue'):
-                            try:
-                                while not asr._queue.empty():
-                                    asr._queue.get_nowait()
-                                self.logger.info(f"[CLEANUP] Flushed ASR queue for {call_id}")
-                            except Exception:
-                                self.logger.debug(f"[CLEANUP] Failed flushing ASR queue for {call_id}")
-                        # Attempt to stop ASR instance if stop/close method exists
-                        try:
-                            if hasattr(asr, 'stop'):
-                                asr.stop()
-                            elif hasattr(asr, 'close'):
-                                asr.close()
-                            self.logger.info(f"[CLEANUP] Stopped ASR instance for {call_id}")
-                        except Exception:
-                            self.logger.debug(f"[CLEANUP] Could not stop ASR instance for {call_id}")
-                        # Finally remove reference
-                        try:
-                            del self.asr_instances[call_id]
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-
-            # Auto hangup timers
-            try:
-                if hasattr(self, '_auto_hangup_timers') and isinstance(self._auto_hangup_timers, dict):
-                    t = self._auto_hangup_timers.pop(call_id, None)
-                    if t is not None:
-                        try:
-                            t.cancel()
-                        except Exception:
-                            pass
-                        self.logger.info(f"[CLEANUP] Cancelled auto_hangup timer for {call_id}")
-            except Exception:
-                pass
-
-            # Reset call state via reset_call if available
-            try:
-                if hasattr(self, 'reset_call'):
-                    self.reset_call(call_id)
-                    self.logger.info(f"[CLEANUP] reset_call() invoked for call_id={call_id}")
-            except Exception as e:
-                self.logger.debug(f"[CLEANUP] reset_call error for {call_id}: {e}")
-        except Exception as e:
-            self.logger.exception(f"[CLEANUP] Unexpected error during cleanup_call for {call_id}: {e}")
+        cleanup_call(self, call_id)
 
     def _load_flow(self, client_id: str) -> dict:
         """
