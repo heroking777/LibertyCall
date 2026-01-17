@@ -8,7 +8,8 @@ from typing import List, Tuple
 from .dialogue_flow import get_response as dialogue_get_response
 from .flow_engine import FlowEngine
 from .text_utils import normalize_text, contains_keywords
-from .prompt_factory import render_templates
+from .prompt_factory import render_templates_from_ids, render_templates
+from .state_store import get_session_state
 
 
 def handle_entry_phase(core, call_id: str, raw_text: str, normalized_text: str, state) -> Tuple[str, List[str], bool]:
@@ -21,7 +22,7 @@ def handle_entry_phase(core, call_id: str, raw_text: str, normalized_text: str, 
         state.phase = "QA"
         state.last_intent = "GREETING"
         return "GREETING", ["004"], False
-    if core._contains_keywords(normalized_text, core.ENTRY_TRIGGER_KEYWORDS):
+    if contains_keywords(normalized_text, core.ENTRY_TRIGGER_KEYWORDS):
         state.phase = "ENTRY_CONFIRM"
         state.last_intent = "INQUIRY"
         return "INQUIRY", ["006"], False
@@ -90,7 +91,7 @@ def handle_after_085_phase(core, call_id: str, raw_text: str, normalized_text: s
             state.last_intent = intent
             return intent, template_ids, False
 
-    if core._contains_keywords(normalized_text, core.AFTER_085_NEGATIVE_KEYWORDS):
+    if contains_keywords(normalized_text, core.AFTER_085_NEGATIVE_KEYWORDS):
         state.phase = "CLOSING"
         return "END_CALL", ["013"], False
     state.phase = "QA"
@@ -98,11 +99,11 @@ def handle_after_085_phase(core, call_id: str, raw_text: str, normalized_text: s
 
 
 def handle_entry_confirm_phase(core, call_id: str, raw_text: str, normalized_text: str, state) -> Tuple[str, List[str], bool]:
-    if core._contains_keywords(normalized_text, core.CLOSING_YES_KEYWORDS):
+    if contains_keywords(normalized_text, core.CLOSING_YES_KEYWORDS):
         state.phase = "QA"
         state.last_intent = "INQUIRY"
         return "INQUIRY", ["010"], False
-    if core._contains_keywords(normalized_text, core.CLOSING_NO_KEYWORDS):
+    if contains_keywords(normalized_text, core.CLOSING_NO_KEYWORDS):
         state.phase = "END"
         state.last_intent = "END_CALL"
         return "END_CALL", ["087", "088"], False
@@ -184,7 +185,17 @@ def handle_flow_engine_transition(
     elif not template_ids:
         template_ids = ["110"]
 
-    reply_text = core._render_templates_from_ids(template_ids, client_id=client_id) if template_ids else ""
+    reply_text = (
+        render_templates_from_ids(
+            core.templates,
+            template_ids,
+            client_id,
+            core.client_id,
+            core.logger,
+        )
+        if template_ids
+        else ""
+    )
 
     transfer_requested = next_phase == "HANDOFF_DONE"
 
@@ -208,7 +219,7 @@ def handle_handoff_confirm(core, call_id: str, raw_text: str, intent: str, state
     normalized = normalize_text(raw_text)
 
     def contains_no_keywords(text: str) -> bool:
-        return core._contains_keywords(text, core.CLOSING_NO_KEYWORDS)
+        return contains_keywords(text, core.CLOSING_NO_KEYWORDS)
 
     template_ids, result_intent, transfer_requested, _ = core._handoff_sm.handle_confirm(
         call_id=call_id,
@@ -218,7 +229,7 @@ def handle_handoff_confirm(core, call_id: str, raw_text: str, intent: str, state
         contains_no_keywords=lambda text=normalized: contains_no_keywords(text),
     )
 
-    reply_text = core._render_templates(template_ids)
+    reply_text = render_templates(template_ids)
 
     if result_intent in ("HANDOFF_YES", "HANDOFF_FALLBACK_YES"):
         core._mis_guard.reset_unclear_streak_on_handoff_done(call_id, state)
@@ -277,7 +288,7 @@ def handle_handoff_phase(core, call_id: str, raw_text: str, normalized_text: str
 
 
 def run_conversation_flow(core, call_id: str, raw_text: str) -> Tuple[List[str], str, bool]:
-    state = core._get_session_state(call_id)
+    state = get_session_state(core, call_id)
     normalized = normalize_text(raw_text)
     phase = state.phase
     intent = "UNKNOWN"
@@ -350,7 +361,7 @@ def generate_reply(core, call_id: str, raw_text: str) -> Tuple[str, List[str], s
 
                 template_ids = dialogue_templates
                 intent = "DIALOGUE_FLOW"
-                reply_text = core._render_templates(template_ids)
+                reply_text = render_templates(template_ids)
                 state.last_intent = intent
                 return reply_text, template_ids, intent, False
 
