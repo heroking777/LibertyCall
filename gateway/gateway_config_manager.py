@@ -1,2 +1,2 @@
-"""Legacy shim for libertycall.gateway.gateway_config_manager."""
-from libertycall.gateway.core.gateway_config_manager import *  # noqa: F401,F403
+"""Legacy shim for gateway.gateway_config_manager."""
+from gateway.core.gateway_config_manager import *  # noqa: F401,F403

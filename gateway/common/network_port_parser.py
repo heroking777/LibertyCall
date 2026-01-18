@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.common.network_manager import GatewayNetworkManager
+    from gateway.common.network_manager import GatewayNetworkManager
 
 
 class NetworkPortParser:

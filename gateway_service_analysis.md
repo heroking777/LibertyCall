@@ -75,14 +75,14 @@ WantedBy=multi-user.target
 ## 4. ⚠️ 重要な発見：重複実行の可能性
 
 ### 問題点
-`gateway.service` と `libertycall.service` の両方が **同じ `realtime_gateway.py` を実行** しています：
+`gateway.service` と `service` の両方が **同じ `realtime_gateway.py` を実行** しています：
 
 #### gateway.service
 ```ini
 ExecStart=/opt/libertycall/venv/bin/python3 /opt/libertycall/gateway/realtime_gateway.py
 ```
 
-#### libertycall.service
+#### service
 ```ini
 ExecStart=/opt/libertycall/.venv/bin/python /opt/libertycall/gateway/realtime_gateway.py
 ```
@@ -93,14 +93,14 @@ ExecStart=/opt/libertycall/.venv/bin/python /opt/libertycall/gateway/realtime_ga
 - **リソースの無駄遣い**
 
 ### 推奨事項
-- `gateway.service` を削除し、`libertycall.service` のみを使用することを推奨
-- または、`libertycall.service` を削除し、`gateway.service` のみを使用することを推奨
+- `gateway.service` を削除し、`service` のみを使用することを推奨
+- または、`service` を削除し、`gateway.service` のみを使用することを推奨
 
 ---
 
 ## 5. 関連サービスとの連携確認
 
-### 5.1 libertycall.service との関係
+### 5.1 service との関係
 - ❌ **直接的な依存関係なし**（Wants, Requires, After, PartOf など）
 - ⚠️ **同じプロセスを実行**（重複実行の可能性）
 
@@ -138,7 +138,7 @@ ExecStart=/opt/libertycall/.venv/bin/python /opt/libertycall/gateway/realtime_ga
 
 #### ⚠️ 要注意な点
 1. **重複実行の可能性**
-   - `libertycall.service` が同じプロセスを実行している
+   - `service` が同じプロセスを実行している
    - 両方が有効な場合、ポート競合やリソース競合の可能性
 
 2. **プロセス状態の確認が必要**
@@ -146,7 +146,7 @@ ExecStart=/opt/libertycall/.venv/bin/python /opt/libertycall/gateway/realtime_ga
    - ポート 7002, 9001 の使用状況を確認が必要
 
 3. **削除前の確認事項**
-   - `libertycall.service` が正常に動作しているか確認
+   - `service` が正常に動作しているか確認
    - ポート競合がないか確認
    - ログファイル（`/opt/libertycall/logs/gateway_*.log`）の確認
 
@@ -159,8 +159,8 @@ ExecStart=/opt/libertycall/.venv/bin/python /opt/libertycall/gateway/realtime_ga
 # gateway.service の状態確認
 systemctl status gateway.service
 
-# libertycall.service の状態確認
-systemctl status libertycall.service
+# service の状態確認
+systemctl status service
 
 # 実行中のプロセス確認
 ps aux | grep realtime_gateway
@@ -175,10 +175,10 @@ sudo systemctl stop gateway.service
 sudo systemctl disable gateway.service
 ```
 
-### ステップ 3: libertycall.service が正常に動作するか確認
+### ステップ 3: service が正常に動作するか確認
 ```bash
-sudo systemctl start libertycall.service
-sudo systemctl status libertycall.service
+sudo systemctl start service
+sudo systemctl status service
 ```
 
 ### ステップ 4: 問題がなければ削除
@@ -196,13 +196,13 @@ sudo systemctl reset-failed
 
 ### 理由
 1. ✅ **他のサービスへの影響なし**: 他の systemd サービスが gateway.service に依存していない
-2. ⚠️ **重複実行の解消**: `libertycall.service` が同じプロセスを実行しているため、gateway.service は不要の可能性が高い
-3. ⚠️ **削除前の確認必須**: 削除前に `libertycall.service` が正常に動作することを確認する必要がある
+2. ⚠️ **重複実行の解消**: `service` が同じプロセスを実行しているため、gateway.service は不要の可能性が高い
+3. ⚠️ **削除前の確認必須**: 削除前に `service` が正常に動作することを確認する必要がある
 
 ### 推奨アクション
-1. **削除前に `libertycall.service` が正常に動作することを確認**
+1. **削除前に `service` が正常に動作することを確認**
 2. **ポート競合がないことを確認**
-3. **削除後も `libertycall.service` が正常に動作することを確認**
+3. **削除後も `service` が正常に動作することを確認**
 
 ---
 
@@ -213,8 +213,8 @@ sudo systemctl reset-failed
 - Gateway は RTP ポート 7002 と WebSocket ポート 9001 を使用
 
 ### 開発スクリプトでの言及
-- `scripts/dev_run_gateway.sh` では `libertycall.service` を停止してから開発用に gateway を起動している
-- これは `libertycall.service` と gateway が同じプロセスを実行していることを示唆
+- `scripts/dev_run_gateway.sh` では `service` を停止してから開発用に gateway を起動している
+- これは `service` と gateway が同じプロセスを実行していることを示唆
 
 ---
 
@@ -222,7 +222,7 @@ sudo systemctl reset-failed
 
 `gateway.service` は削除可能ですが、以下の点に注意が必要です：
 
-1. **削除前に `libertycall.service` が正常に動作することを確認**
+1. **削除前に `service` が正常に動作することを確認**
 2. **ポート競合がないことを確認**
 3. **削除後もシステムが正常に動作することを確認**
 

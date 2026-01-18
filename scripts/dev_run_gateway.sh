@@ -4,8 +4,8 @@ set -e
 
 cd /opt/libertycall
 
-echo "[DEV] Stopping libertycall.service (if running) ..."
-sudo systemctl stop libertycall.service 2>/dev/null || true
+echo "[DEV] Stopping service (if running) ..."
+sudo systemctl stop service 2>/dev/null || true
 
 echo "[DEV] Freeing RTP port 7100 ..."
 ./scripts/free_rtp_7100.sh

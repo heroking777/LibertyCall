@@ -368,7 +368,7 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 │
 ├── [Systemd - サービス管理]
 │   └── /etc/systemd/system/
-│       ├── libertycall.service                  # Gateway Event Listenerサービス（常時稼働）
+│       ├── service                  # Gateway Event Listenerサービス（常時稼働）
 │       ├── check_rtp_alive.service              # RTP監視サービス（oneshot）
 │       └── check_rtp_alive.timer                # RTP監視タイマー（5分ごと）
 │

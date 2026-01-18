@@ -89,8 +89,8 @@ GOOGLE_APPLICATION_CREDENTIALS=
 ### ログ
 
 ```
-2025-12-27 22:23:37,572 [WARNING] libertycall.gateway.ai_core: [ON_NEW_AUDIO_FEED] About to call feed_audio for call_id=in-2025122722230530, chunk_size=640
-2025-12-27 22:23:37,572 [WARNING] libertycall.gateway.ai_core: [ON_NEW_AUDIO_FEED_DONE] feed_audio completed for call_id=in-2025122722230530
+2025-12-27 22:23:37,572 [WARNING] gateway.ai_core: [ON_NEW_AUDIO_FEED] About to call feed_audio for call_id=in-2025122722230530, chunk_size=640
+2025-12-27 22:23:37,572 [WARNING] gateway.ai_core: [ON_NEW_AUDIO_FEED_DONE] feed_audio completed for call_id=in-2025122722230530
 ```
 
 **結果**: `feed_audio` は正常に呼ばれている ✅

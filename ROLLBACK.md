@@ -22,13 +22,13 @@ git reset --hard 8e31b94
 
 ### 2. サービス再起動
 ```bash
-sudo systemctl restart libertycall.service
+sudo systemctl restart service
 sudo systemctl restart freeswitch.service
 ```
 
 ### 3. 動作確認
 ```bash
-sudo journalctl -u libertycall.service -f
+sudo journalctl -u service -f
 ```
 
 ## 注意事項

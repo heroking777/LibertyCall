@@ -14,8 +14,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
-    from libertycall.gateway.core.ai_core import AICore
-    from libertycall.gateway.audio.audio_utils import pcm24k_to_ulaw8k
+    from gateway.core.ai_core import AICore
+    from gateway.audio.audio_utils import pcm24k_to_ulaw8k
     from google.cloud import texttospeech
 except ImportError as e:
     print(f"ERROR: Failed to import required modules: {e}", file=sys.stderr)

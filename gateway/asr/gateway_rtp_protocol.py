@@ -5,10 +5,10 @@ import asyncio
 import struct
 from typing import Optional, Tuple, TYPE_CHECKING
 
-from libertycall.gateway.core.gateway_utils import IGNORE_RTP_IPS
+from gateway.core.gateway_utils import IGNORE_RTP_IPS
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.realtime_gateway import RealtimeGateway
+    from gateway.realtime_gateway import RealtimeGateway
 
 
 class RTPPacketBuilder:

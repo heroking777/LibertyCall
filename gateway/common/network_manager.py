@@ -6,10 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from libertycall.gateway.common.network_ws_handler import NetworkWSHandler
-from libertycall.gateway.common.network_socket_server import NetworkSocketServer
-from libertycall.gateway.common.network_log_monitor import NetworkLogMonitor
-from libertycall.gateway.common.network_port_parser import NetworkPortParser
+from gateway.common.network_ws_handler import NetworkWSHandler
+from gateway.common.network_socket_server import NetworkSocketServer
+from gateway.common.network_log_monitor import NetworkLogMonitor
+from gateway.common.network_port_parser import NetworkPortParser
 
 
 class GatewayNetworkManager:

@@ -1,2 +1,2 @@
-"""Legacy shim for libertycall.gateway.audio_orchestrator."""
-from libertycall.gateway.audio.audio_orchestrator import *  # noqa: F401,F403
+"""Legacy shim for gateway.audio_orchestrator."""
+from gateway.audio.audio_orchestrator import *  # noqa: F401,F403

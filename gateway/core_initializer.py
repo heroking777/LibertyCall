@@ -1,2 +1,2 @@
-"""Legacy shim for libertycall.gateway.core_initializer."""
-from libertycall.gateway.core.core_initializer import *  # noqa: F401,F403
+"""Legacy shim for gateway.core_initializer."""
+from gateway.core.core_initializer import *  # noqa: F401,F403

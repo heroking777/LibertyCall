@@ -8,7 +8,7 @@ from pathlib import Path
 def _load_legacy_module():
     legacy_path = Path(__file__).resolve().parents[3] / "gateway" / "gateway_main.py"
     spec = importlib.util.spec_from_file_location(
-        "libertycall.gateway._legacy_gateway_main", legacy_path
+        "gateway._legacy_gateway_main", legacy_path
     )
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load legacy gateway_main module at {legacy_path}")

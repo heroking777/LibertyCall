@@ -6,7 +6,7 @@ import time
 import traceback
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from libertycall.client_loader import load_client_profile
+from client_loader import load_client_profile
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
     from ..realtime_gateway import RealtimeGateway

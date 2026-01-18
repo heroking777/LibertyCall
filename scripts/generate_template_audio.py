@@ -28,7 +28,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # テンプレート定義をインポート
-from libertycall.gateway.common.text_utils import TEMPLATE_CONFIG
+from gateway.common.text_utils import TEMPLATE_CONFIG
 
 # 出力ディレクトリ
 OUTPUT_DIR = PROJECT_ROOT / "clients" / "000" / "audio"

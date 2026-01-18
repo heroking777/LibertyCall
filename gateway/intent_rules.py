@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unicodedata
 
-from libertycall.gateway.common.text_utils import (
+from gateway.common.text_utils import (
     interpret_handoff_reply as _interpret_handoff_reply,
 )
 

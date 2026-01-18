@@ -2,14 +2,14 @@
 #
 # LibertyCall RTP監視スクリプト
 # gateway_*.log の [RTP_RECV_RAW] の更新時刻をチェックし、
-# 5分以上更新がなければ libertycall.service を再起動する
+# 5分以上更新がなければ service を再起動する
 #
 
 LOG_DIR="/tmp"
 PATTERN="gateway_*.log"
 TIMEOUT_MINUTES=5
 TIMEOUT_SECONDS=$((TIMEOUT_MINUTES * 60))
-SERVICE_NAME="libertycall.service"
+SERVICE_NAME="service"
 LOCK_FILE="/tmp/check_rtp_alive.lock"
 
 # ロックファイルで重複実行を防止

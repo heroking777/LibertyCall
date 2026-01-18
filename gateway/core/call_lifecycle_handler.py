@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from libertycall.client_loader import load_client_profile
+from client_loader import load_client_profile
 from ..core.client_mapper import resolve_client_id
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only

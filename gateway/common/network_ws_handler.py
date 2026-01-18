@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import websockets
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.common.network_manager import GatewayNetworkManager
+    from gateway.common.network_manager import GatewayNetworkManager
 
 
 class NetworkWSHandler:

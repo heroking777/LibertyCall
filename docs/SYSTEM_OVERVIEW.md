@@ -119,7 +119,7 @@ RTP 音声ストリームをリアルタイムで受け取り、ASR (Google/Whis
 ### 1) Gateway Event Listener (`gateway_event_listener.py`)
 - **役割**: FreeSWITCH の Event Socket (8021) に常時接続し、通話イベントを監視。
 - **動作**: `CHANNEL_PARK` や `CHANNEL_EXECUTE` (playback) をトリガーに、その通話専用の `realtime_gateway.py` プロセスを起動します。
-- **サービス**: `libertycall.service` (systemd) で管理。
+- **サービス**: `service` (systemd) で管理。
 
 ### 2) Realtime Gateway (`gateway/realtime_gateway.py`)
 - **役割**: 1通話1プロセスの音声ゲートウェイ。
@@ -189,7 +189,7 @@ RTP 音声ストリームをリアルタイムで受け取り、ASR (Google/Whis
 
 - **サービス管理**:
   ```bash
-  sudo systemctl restart libertycall.service  # Event Listener
+  sudo systemctl restart service  # Event Listener
   sudo systemctl restart libertycall-project-state-backend.service
   ```
 - **リアルタイムログ確認**:

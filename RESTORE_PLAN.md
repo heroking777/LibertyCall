@@ -109,13 +109,13 @@ git checkout HEAD~5 -- path/to/file.py
 
 ```bash
 # 現在のディレクトリをバックアップ
-mv /opt/libertycall /opt/libertycall.backup
+mv /opt/libertycall /opt/backup
 # 新規クローン
 cd /opt
 git clone https://github.com/heroking777/LibertyCall.git
 # 必要なローカルファイルをコピー
-cp /opt/libertycall.backup/.env /opt/libertycall/
-cp /opt/libertycall.backup/call_console.db /opt/libertycall/ 2>/dev/null || true
+cp /opt/backup/.env /opt/libertycall/
+cp /opt/backup/call_console.db /opt/libertycall/ 2>/dev/null || true
 ```
 
 **メリット**: 

@@ -18,13 +18,13 @@ echo ""
 # 2. systemd サービスの状態確認
 echo "【2】systemd サービスの状態確認"
 echo "----------------------------------------"
-systemctl status libertycall.service --no-pager 2>/dev/null | head -n 30
+systemctl status service --no-pager 2>/dev/null | head -n 30
 echo ""
 
 # 3. journalctl ログの確認（最新100行）
 echo "【3】journalctl ログの確認（最新100行）"
 echo "----------------------------------------"
-journalctl -u libertycall.service -n 100 --no-pager 2>/dev/null | tail -n 50
+journalctl -u service -n 100 --no-pager 2>/dev/null | tail -n 50
 if [ $? -ne 0 ]; then
     echo "❌ journalctl でログを取得できませんでした"
 fi
@@ -49,7 +49,7 @@ echo ""
 echo "【5】DEBUG_PRINT の確認（診断用）"
 echo "----------------------------------------"
 echo "journalctl から DEBUG_PRINT を検索:"
-journalctl -u libertycall.service -n 500 --no-pager 2>/dev/null | grep "DEBUG_PRINT" | tail -n 20
+journalctl -u service -n 500 --no-pager 2>/dev/null | grep "DEBUG_PRINT" | tail -n 20
 if [ $? -ne 0 ]; then
     echo "  (DEBUG_PRINT が見つかりません)"
 fi

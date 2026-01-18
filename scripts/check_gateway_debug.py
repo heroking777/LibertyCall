@@ -44,7 +44,7 @@ def main():
     code, stdout, stderr = run_cmd("systemctl list-units --type=service | grep liberty")
     if code == 0 and stdout.strip():
         print("[INFO] Detected: systemd service")
-        code2, stdout2, stderr2 = run_cmd("systemctl status libertycall.service 2>&1 | head -10")
+        code2, stdout2, stderr2 = run_cmd("systemctl status service 2>&1 | head -10")
         if code2 == 0:
             print(stdout2)
     else:
@@ -62,7 +62,7 @@ def main():
     
     for keyword in keywords:
         code, stdout, stderr = run_cmd(
-            f"journalctl -u libertycall.service --since '1 hour ago' --no-pager 2>&1 | grep '{keyword}' | tail -5"
+            f"journalctl -u service --since '1 hour ago' --no-pager 2>&1 | grep '{keyword}' | tail -5"
         )
         if code == 0 and stdout.strip():
             print(f"\n[{keyword}]")
@@ -85,10 +85,10 @@ def main():
     else:
         print("conversation_trace.log が見つかりません")
     
-    # 5. libertycall.log から検索（最新部分）
-    print("\n[5] libertycall.log から検索（最新500行）")
+    # 5. log から検索（最新部分）
+    print("\n[5] log から検索（最新500行）")
     print("-" * 60)
-    log_file = Path("/var/log/libertycall.log")
+    log_file = Path("/var/log/log")
     if log_file.exists():
         try:
             with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
@@ -104,7 +104,7 @@ def main():
         except Exception as e:
             print(f"Error reading log: {e}")
     else:
-        print("libertycall.log が見つかりません")
+        print("log が見つかりません")
     
     print("\n" + "=" * 60)
     print("確認完了")

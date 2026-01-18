@@ -8,7 +8,7 @@ AICore HANDOFF 周りのシナリオテスト
 import logging
 import pytest
 from unittest.mock import Mock
-from libertycall.gateway.core.ai_core import AICore
+from gateway.core.ai_core import AICore
 
 # ログ設定（テスト時は必要に応じて調整）
 logging.basicConfig(

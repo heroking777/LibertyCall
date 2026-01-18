@@ -1,2 +1,2 @@
-"""Legacy shim for libertycall.gateway.dialogue_handoff."""
-from libertycall.gateway.dialogue.dialogue_handoff import *  # noqa: F401,F403
+"""Legacy shim for gateway.dialogue_handoff."""
+from gateway.dialogue.dialogue_handoff import *  # noqa: F401,F403

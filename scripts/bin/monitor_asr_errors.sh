@@ -6,7 +6,7 @@
 LOG_CANDIDATES=(
     "/opt/libertycall/logs/realtime_gateway.log"
     "/opt/libertycall/logs/gateway.log"
-    "/var/log/libertycall.log"
+    "/var/log/log"
 )
 
 # 引数で指定された場合はそれを使用

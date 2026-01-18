@@ -142,7 +142,7 @@ class ConsoleBridge:
         if REQUESTS_AVAILABLE:
             try:
                 # 本番API URL（環境変数から取得、デフォルトはlocalhost）
-                # 本番環境では環境変数で https://console.libertycall.com を指定
+                # 本番環境では環境変数で https://console.com を指定
                 api_url = os.getenv(
                     "LIBERTYCALL_CONSOLE_API_BASE_URL",
                     "http://localhost:8001"  # 開発環境用デフォルト

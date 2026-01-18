@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
-from libertycall.client_loader import load_client_profile
+from client_loader import load_client_profile
 from .google_asr import GoogleASR
 from .asr_audio_processor import ASRAudioProcessor
 from .asr_stream_handler import ASRStreamHandler
@@ -16,7 +16,7 @@ from .asr_rtp_buffer import ASRRTPBuffer
 from .asr_batch_handler import ASRBatchHandler
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from libertycall.gateway.realtime_gateway import RealtimeGateway
+    from gateway.realtime_gateway import RealtimeGateway
 
 
 # ★ 転送先電話番号 (デフォルト)
@@ -102,7 +102,7 @@ def init_asr(core) -> None:
                 core.asr_model = None
                 core.logger.warning("AICore: ASR機能なしでGatewayを起動します（RTP受信は継続されます）")
         elif asr_provider == "whisper":
-            from libertycall.asr.whisper_local import WhisperLocalASR  # type: ignore[import-untyped]
+            from asr.whisper_local import WhisperLocalASR  # type: ignore[import-untyped]
 
             core.logger.debug("AICore: Loading Whisper via WhisperLocalASR...")
             core.asr_model = WhisperLocalASR(

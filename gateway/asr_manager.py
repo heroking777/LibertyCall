@@ -1,2 +1,2 @@
-"""Legacy shim for libertycall.gateway.asr_manager."""
-from libertycall.gateway.asr.asr_manager import *  # noqa: F401,F403
+"""Legacy shim for gateway.asr_manager."""
+from gateway.asr.asr_manager import *  # noqa: F401,F403

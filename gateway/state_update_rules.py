@@ -1,2 +1,2 @@
-"""Legacy shim for libertycall.gateway.state_update_rules."""
-from libertycall.gateway.core.state_update_rules import *  # noqa: F401,F403
+"""Legacy shim for gateway.state_update_rules."""
+from gateway.core.state_update_rules import *  # noqa: F401,F403

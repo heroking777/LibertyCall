@@ -13,7 +13,7 @@ from ..core.state_store import get_session_state
 
 def load_phrase_hints(core) -> List[str]:
     try:
-        from libertycall.config.config import ASR_PHRASE_HINTS  # type: ignore[import-untyped]
+        from config.config import ASR_PHRASE_HINTS  # type: ignore[import-untyped]
 
         if ASR_PHRASE_HINTS:
             core.logger.info("AICore: phrase_hints を読み込みました: %s", ASR_PHRASE_HINTS)

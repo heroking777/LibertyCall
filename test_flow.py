@@ -1,6 +1,6 @@
 import logging
-from libertycall.gateway.core.ai_core import AICore
-from libertycall.gateway.core import ai_core as ai_module
+from gateway.core.ai_core import AICore
+from gateway.core import ai_core as ai_module
 from gateway import intent_rules as intent_module
 def setup_logging() -> None:
     logging.basicConfig(

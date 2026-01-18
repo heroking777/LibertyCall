@@ -119,7 +119,7 @@ echo ""
 # 8. サービス状態確認
 echo "【8】サービス状態確認"
 echo "----------------------------------------"
-systemctl status libertycall.service --no-pager | head -n 10
+systemctl status service --no-pager | head -n 10
 echo ""
 
 echo "=========================================="
