@@ -106,21 +106,10 @@ class RealtimeGateway:
         )
         self.audio_manager = AudioManager(_PROJECT_ROOT)
         self.utils.init_state(console_bridge, self.audio_manager)
-        # TTS 送信用コールバックを設定
-        self.ai_core.tts_callback = self._send_tts
-        self.ai_core.transfer_callback = self._handle_transfer
-        # 自動切断用コールバックを設定
-        self.ai_core.hangup_callback = self._handle_hangup
-        # 音声再生用コールバックを設定
-        self.ai_core.playback_callback = self._handle_playback
         
         # FreeSWITCH ESL接続を初期化（再生制御・割り込み用）
         self.esl_connection = None
         self.esl_manager._init_esl_connection()
-        self.logger.info(
-            "HANGUP_CALLBACK_SET: hangup_callback=%s",
-            "set" if self.ai_core.hangup_callback else "none"
-        )
         
         # call_id -> FreeSWITCH UUID のマッピング
         self.call_uuid_map: Dict[str, str] = {}
@@ -139,6 +128,15 @@ class RealtimeGateway:
         self.asr_manager = GatewayASRManager(self)
         # Playback/TTSマネージャ初期化
         self.playback_manager = GatewayPlaybackManager(self)
+        # TTS/Playback callbacks now available
+        self.ai_core.tts_callback = self.playback_manager._send_tts
+        self.ai_core.transfer_callback = self._handle_transfer
+        self.ai_core.hangup_callback = self._handle_hangup
+        self.ai_core.playback_callback = self.playback_manager._handle_playback
+        self.logger.info(
+            "HANGUP_CALLBACK_SET: hangup_callback=%s",
+            "set" if self.ai_core.hangup_callback else "none"
+        )
 
     async def start(self):
         await self.utils.start()
@@ -221,6 +219,20 @@ class RealtimeGateway:
         state_label = f"AI_HANDOFF:{call_id or 'UNKNOWN'}"
         self.logger.debug("RealtimeGateway: transfer callback invoked (%s)", state_label)
         self._handle_transfer(call_id)
+
+    def _queue_initial_audio_sequence(self, client_id: Optional[str]) -> None:
+        """Compatibility wrapper so sync callers can trigger initial audio."""
+        coro = self.playback_manager._queue_initial_audio_sequence(client_id)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            asyncio.create_task(coro)
+            return
+
+        asyncio.run(coro)
 
 
 if __name__ == "__main__":
