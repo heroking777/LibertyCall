@@ -1,7 +1,2 @@
-"""Legacy shim exposing AudioManager from the new audio package."""
-
-from __future__ import annotations
-
-from libertycall.gateway.audio import AudioManager
-
-__all__ = ["AudioManager"]
+"""Legacy shim for libertycall.gateway.audio_manager."""
+from libertycall.gateway.audio.audio_manager import *  # noqa: F401,F403
