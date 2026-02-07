@@ -506,7 +506,7 @@
 	<!-- 二段階目の eval -->
 	<action application="set" data="destination_number=${eval(${destination_number})}"/>
 	<!-- 正規化後の番号が空でないことを確認 -->
-	<action application="set" data="effective_caller_id_number=$${outbound_caller_id_number}"/>
+	<action application="set" data="effective_caller_id_number=58304073"/>
 	<!-- LibertyCall: 内部legの早期切断を防止 -->
 	<action application="set" data="hangup_after_bridge=false"/>
 	<action application="set" data="continue_on_fail=true"/>
@@ -537,7 +537,7 @@
 	<action application="set" data="hangup_after_bridge=false"/>
 	<action application="set" data="continue_on_fail=true"/>
 	<action application="set" data="ignore_early_media=true"/>
-	<action application="set" data="effective_caller_id_number=$${outbound_caller_id_number}"/>
+	<action application="set" data="effective_caller_id_number=58304073"/>
 	<!-- デバッグ用ログ -->
 	<action application="log" data="INFO OUTBOUND TO ${destination_number} (orig=${orig_number})"/>
 	<!-- Rakutenゲートウェイに発信 -->

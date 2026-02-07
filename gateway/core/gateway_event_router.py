@@ -6,6 +6,13 @@ import time
 import traceback
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+def _safe_get(mapping: Optional[Dict[str, Any]], key: str, default: str = "") -> str:
+    try:
+        value = mapping.get(key, default) if isinstance(mapping, dict) else default
+    except Exception:
+        value = default
+    return "" if value is None else str(value)
+
 from client_loader import load_client_profile
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
@@ -109,8 +116,39 @@ class GatewayEventRouter:
     async def handle_event_socket_message(
         self, message: Dict[str, Any]
     ) -> Dict[str, Any]:
+        # [PATCH] Entry point debug & force dispatch (Smart)
+        try:
+            _evt_val = message.get("event") or message.get("type")
+            self.logger.info("[GW_ROUTER_ENTRY] keys=%s, event=%r", list(message.keys()), _evt_val)
+            if _evt_val and str(_evt_val).strip() == "fs_evt":
+                self.logger.info("[GW_FSEVT_FORCE] Force handling fs_evt at entry")
+                if hasattr(self, "handle_fs_evt"):
+                    import inspect
+                    if inspect.iscoroutinefunction(self.handle_fs_evt):
+                        await self.handle_fs_evt(message)
+                    else:
+                        self.handle_fs_evt(message)
+                    return
+        except Exception as e:
+            self.logger.error("[GW_ROUTER_ENTRY_ERR] %s", e)
+
         gateway = self.gateway
         event_type = message.get("event")
+
+        # [PATCH] Force fs_evt dispatch (High Priority)
+        # Debug: check what exactly is in the variable
+        if "event_type" in locals():
+            _evt_raw = str(event_type) if event_type is not None else ""
+            if _evt_raw.strip() == "fs_evt":
+                self.logger.info("[GW_FSEVT_ROUTE] Force dispatching fs_evt. Raw: %r", event_type)
+                if hasattr(self, "handle_fs_evt"):
+                    import inspect
+                    _msg = locals().get("message") or locals().get("msg") or {}
+                    if inspect.iscoroutinefunction(self.handle_fs_evt):
+                        await self.handle_fs_evt(_msg)
+                    else:
+                        self.handle_fs_evt(_msg)
+                    return
         uuid = message.get("uuid")
         call_id = message.get("call_id")
         client_id = message.get("client_id", "000")
@@ -326,5 +364,184 @@ class GatewayEventRouter:
                         effective_call_id,
                     )
 
+        if event_type == "fs_evt":
+            await self.handle_fs_evt(message)
+            return {"status": "ok"}
+
+
+        # [PATCH] Dispatch fs_evt explicitly
+        if event_type == "fs_evt":
+            self.logger.info("[GW_FSEVT_ROUTE] Dispatching fs_evt to handle_fs_evt")
+            if hasattr(self, "handle_fs_evt"):
+                # Try await if it is a coroutine
+                import inspect
+                if inspect.iscoroutinefunction(self.handle_fs_evt):
+                    await self.handle_fs_evt(message)
+                else:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, self.handle_fs_evt, message
+                    )
+                return
+            else:
+                self.logger.error("[GW_FSEVT_ROUTE] handle_fs_evt method missing!")
+                return
         self.logger.warning("[EVENT_SOCKET] Unknown event type: %s", event_type)
         return {"status": "error", "message": "unknown event type"}
+
+    async def handle_fs_evt(self, payload: Dict[str, Any]) -> None:
+        uuid = _safe_get(payload, "uuid") or _safe_get(payload, "Unique-ID")
+        name = _safe_get(payload, "Event-Name") or _safe_get(payload, "name")
+        app = _safe_get(payload, "app")
+        data = _safe_get(payload, "data")
+        call_id = uuid or _safe_get(payload, "call_id")
+
+        self.logger.info(
+            "[GW_FSEVT_RX] call_id=%s event=%s app=%s data=%s",
+            call_id,
+            name,
+            app,
+            data,
+        )
+
+        if not name:
+            self.logger.warning("[GW_FSEVT_RX] Event-Name missing; skipping")
+            return
+
+        try:
+            if call_id and name == "CHANNEL_ANSWER":
+                await self._start_asr_session(call_id, payload)
+            elif call_id and name in {"CHANNEL_HANGUP", "CHANNEL_DESTROY", "CHANNEL_HANGUP_COMPLETE"}:
+                await self._stop_asr_session(call_id)
+        except Exception:
+            self.logger.exception("[GW_FSEVT_ASR_CTRL_ERR] call_id=%s event=%s", call_id, name)
+
+        action = "ignore"
+        reason = "no_route"
+
+        if name in {"PLAYBACK_START", "PLAYBACK_STOP", "PLAYBACK_PAUSE", "PLAYBACK_RESUME"}:
+            action = "update_playback_state"
+            reason = "playback_event"
+        elif name in {"MEDIA_BUG_START", "MEDIA_BUG_STOP"}:
+            action = "update_media_bug_state"
+            reason = "media_bug_event"
+        elif name in {"CHANNEL_EXECUTE", "CHANNEL_EXECUTE_COMPLETE"}:
+            action = "update_channel_execute_state"
+            reason = "channel_execute"
+        elif name in {"CHANNEL_HANGUP", "CHANNEL_DESTROY", "CHANNEL_HANGUP_COMPLETE"}:
+            action = "update_call_end_state"
+            reason = "hangup_destroy"
+        else:
+            action = "ignore"
+            reason = "unhandled_name"
+
+        self.logger.info(
+            "[GW_FSEVT_ROUTE] call_id=%s action=%s reason=%s",
+            call_id,
+            action,
+            reason,
+        )
+
+        try:
+            if action == "update_playback_state":
+                return
+            if action == "update_media_bug_state":
+                return
+            if action == "update_channel_execute_state":
+                return
+            if action == "update_call_end_state":
+                return
+        except Exception:
+            self.logger.exception(
+                "[GW_FSEVT_ERR] call_id=%s event=%s app=%s", call_id, name, app
+            )
+
+    async def _start_asr_session(self, call_id: str, event_data: Dict[str, Any]) -> None:
+        self.logger.info("[GW_ROUTER_ASR_START] call_id=%s", call_id)
+        asr_manager = getattr(self.gateway, "asr_manager", None)
+        if not (asr_manager and hasattr(asr_manager, "start_asr_for_call")):
+            self.logger.warning("[GW_ROUTER_ASR_START] ASR manager unavailable for %s", call_id)
+            return
+
+        additional_keys = {
+            "Channel-Name",
+            "Channel-State",
+            "Answer-State",
+            "Caller-Caller-ID-Number",
+            "Caller-Destination-Number",
+        }
+        channel_vars = {
+            key: value
+            for key, value in event_data.items()
+            if key.startswith("variable_") or key in additional_keys
+        }
+
+        # ===== デバッグログ追加（Phase2確認用） =====
+        self.logger.info(f"🔍 [DEBUG] Channel vars for {call_id}:")
+
+        rtp_related_keys = [
+            key for key in channel_vars.keys()
+            if any(token in key.lower() for token in ("media", "rtp", "codec", "ssrc"))
+        ]
+
+        if rtp_related_keys:
+            for key in sorted(rtp_related_keys):
+                self.logger.info("  %s = %s", key, channel_vars.get(key))
+        else:
+            self.logger.warning("  ⚠️ No RTP-related variables found!")
+            preview_keys = list(channel_vars.keys())[:10]
+            self.logger.info("  Available keys: %s%s",
+                             preview_keys,
+                             "..." if len(channel_vars) > len(preview_keys) else "")
+        # ===== デバッグログ終了 =====
+
+        if channel_vars:
+            self.logger.debug(
+                "[GW_ROUTER_ASR_VARS] call_id=%s keys=%s",
+                call_id,
+                list(channel_vars.keys()),
+            )
+
+        required_vars = ["variable_remote_media_ip", "variable_remote_media_port"]
+        missing_vars = [var for var in required_vars if var not in channel_vars]
+        if missing_vars:
+            self.logger.warning(
+                "[GW_ROUTER_ASR_VARS_MISSING] call_id=%s missing=%s",
+                call_id,
+                missing_vars,
+            )
+
+        try:
+            result = asr_manager.start_asr_for_call(call_id, channel_vars)
+            if asyncio.iscoroutine(result):
+                result = await result
+            if not result:
+                self.logger.error(
+                    "[GW_ROUTER_ASR_START_ERR] ASR manager rejected call_id=%s",
+                    call_id,
+                )
+                return
+        except Exception:
+            self.logger.exception("[GW_ROUTER_ASR_START_ERR] call_id=%s", call_id)
+            return
+
+        ai_core = getattr(self.gateway, "ai_core", None)
+        if ai_core and hasattr(ai_core, "on_call_start"):
+            try:
+                result = ai_core.on_call_start(call_id, client_id=event_data.get("Client-ID"))
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                self.logger.exception("[GW_ROUTER_AI_START_ERR] call_id=%s", call_id)
+
+    async def _stop_asr_session(self, call_id: str) -> None:
+        self.logger.info("[GW_ROUTER_ASR_STOP] call_id=%s", call_id)
+        asr_manager = getattr(self.gateway, "asr_manager", None)
+        if asr_manager and hasattr(asr_manager, "stop_asr_for_call"):
+            try:
+                result = asr_manager.stop_asr_for_call(call_id)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                self.logger.exception("[GW_ROUTER_ASR_STOP_ERR] call_id=%s", call_id)
+        else:
+            self.logger.warning("[GW_ROUTER_ASR_STOP] ASR manager unavailable for %s", call_id)

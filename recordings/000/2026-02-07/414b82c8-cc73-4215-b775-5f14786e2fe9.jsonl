@@ -1,0 +1,15 @@
+{"type": "call_start", "uuid": "414b82c8-cc73-4215-b775-5f14786e2fe9", "client_id": "000", "time": "2026-02-07T11:13:27.957Z"}
+{"type": "asr_interim", "text": "もし", "confidence": 0.0, "time": "2026-02-07T11:13:38.869Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-02-07T11:13:39.082Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-02-07T11:13:39.653Z"}
+{"type": "response", "text": "もしもし", "audio_ids": ["004"], "phase": "QA", "time": "2026-02-07T11:13:40.251Z"}
+{"type": "playback_start", "audio_id": "004", "path": "/opt/libertycall/clients/000/audio/004.wav", "time": "2026-02-07T11:13:40.252Z"}
+{"type": "asr_final", "text": "もしもし", "confidence": 0.9226917624473572, "time": "2026-02-07T11:13:40.253Z"}
+{"type": "playback_end", "audio_id": "004", "duration": 0.0, "time": "2026-02-07T11:13:41.554Z"}
+{"type": "asr_interim", "text": " こんにちは", "confidence": 0.0, "time": "2026-02-07T11:13:43.193Z"}
+{"type": "asr_interim", "text": " こんにちは", "confidence": 0.0, "time": "2026-02-07T11:13:43.782Z"}
+{"type": "response", "text": "こんにちは", "audio_ids": ["005"], "phase": "QA", "time": "2026-02-07T11:13:44.483Z"}
+{"type": "playback_start", "audio_id": "005", "path": "/opt/libertycall/clients/000/audio/005.wav", "time": "2026-02-07T11:13:44.484Z"}
+{"type": "asr_final", "text": " こんにちは", "confidence": 0.7676680088043213, "time": "2026-02-07T11:13:44.485Z"}
+{"type": "playback_end", "audio_id": "005", "duration": 0.0, "time": "2026-02-07T11:13:48.190Z"}
+{"type": "call_end", "uuid": "414b82c8-cc73-4215-b775-5f14786e2fe9", "duration": 21.4, "time": "2026-02-07T11:13:49.398Z"}

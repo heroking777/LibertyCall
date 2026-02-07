@@ -144,7 +144,7 @@ def get_email_subject_and_template_path(stage: str, recipient: Dict) -> tuple:
     company_name = recipient.get("company_name", "")
     
     subject_map = {
-        "initial": "【人件費削減】電話対応コストを80％カットする方法",
+        "initial": "【人件費削減】電話対応コストを大幅削減する方法",
         "follow1": "【人件費削減のご提案】電話対応コストの見直しについて",
         "follow2": "【人件費削減のご提案】電話対応コストを見直しませんか？",
         "follow3": "【最終のご案内】電話対応コスト削減のご提案（LibertyCall）",

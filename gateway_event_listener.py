@@ -1,570 +1,287 @@
 #!/usr/bin/env python3
+import os
+os.write(2, b"[EVL_SOCK] TOP_REACHED\n")
 """
 FreeSWITCH Event Socket Listener (PyESL版)
 通話イベントを常時受信して、gateway処理をトリガーする
 """
-import logging
 import sys
+import time
+import logging
+import socket
+import threading
+from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
-# プロジェクトルートをパスに追加
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+from evl_helpers import (
+    _evl_fatal_write, _evl_excepthook, _evl_thread_excepthook,
+    _evl_conn, _evl_conn_trace, _h,
+)
+from evl_esl_state import set_esl_connection
+from evl_gateway_sender import (
+    send_event_to_gateway, _send_forced_gateway_event,
+    _maybe_force_forward, _send_boot_probe,
+)
+from evl_call_handlers import handle_channel_create, handle_call, handle_hangup
 
-from libs.esl.ESL import ESLconnection
-
-# クライアントIDマッピング機能をインポート
+_BOOT_TS = time.time()
+_EVL_BUILD = "EVL_BUILD_20260128_2335_A"
 try:
-    from gateway.core.client_mapper import resolve_client_id
-except ImportError:
-    # フォールバック: client_mapperが利用できない場合はNone
-    resolve_client_id = None
-    logger.warning("[CLIENT_MAPPER] client_mapper module not available, using fallback")
+    sys.stderr.write(
+        f"[EVL_BOOT] ts={_BOOT_TS:.3f} file={__file__} pid={os.getpid()} "
+        f"euid={os.geteuid()} cwd={os.getcwd()} py={sys.executable}\n"
+    )
+    sys.stderr.flush()
+except Exception:
+    pass
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s [%(levelname)s] %(name)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
-
 logger = logging.getLogger(__name__)
 
+sys.excepthook = _evl_excepthook
+try:
+    threading.excepthook = _evl_thread_excepthook
+except BaseException:
+    pass
 
-class FreeSwitchSocketClient:
-    """FreeSWITCH Event Socket Protocol 永続接続クライアント"""
-    def __init__(self, host="127.0.0.1", port=8021, password="ClueCon"):
-        import socket
-        self.socket = socket  # socketモジュールを保持
-        self.host = host
-        self.port = port
-        self.password = password
-        self.sock = None
-        self._lock = None  # スレッドセーフ用（必要に応じて）
-    
-    def connect(self):
-        """Event Socketに接続して認証（既に接続済みの場合は再利用）"""
-        if self.sock:
-            try:
-                # 接続が生きているか確認（簡単なテスト）
-                self.sock.settimeout(0.1)
-                self.sock.recv(1, self.socket.MSG_PEEK)
-                self.sock.settimeout(None)
-                return  # 既に接続済み
-            except (self.socket.error, OSError):
-                # 接続が切れている場合は再接続
-                try:
-                    self.sock.close()
-                except:
-                    pass
-                self.sock = None
-        
-        # 新規接続
-        self.sock = self.socket.create_connection((self.host, self.port), timeout=5)
-        
-        # バナーを受信
-        banner = self.sock.recv(1024).decode('utf-8', errors='ignore')
-        logger.debug(f"[FreeSwitchSocketClient] バナー受信: {banner[:50]}")
-        
-        if "auth/request" in banner:
-            # 認証送信
-            auth_cmd = f"auth {self.password}\r\n\r\n"
-            self.sock.sendall(auth_cmd.encode('utf-8'))
-            
-            # 認証応答を受信
-            reply = self.sock.recv(1024).decode('utf-8', errors='ignore')
-            logger.debug(f"[FreeSwitchSocketClient] 認証応答: {reply[:50]}")
-            
-            if "+OK" not in reply and "accepted" not in reply.lower():
-                self.sock.close()
-                self.sock = None
-                raise Exception(f"認証失敗: {reply[:100]}")
-            
-            logger.debug("[FreeSwitchSocketClient] 認証成功")
-        else:
-            logger.warning(f"[FreeSwitchSocketClient] 認証リクエストが見つかりません: {banner[:50]}")
-    
-    def api(self, cmd):
-        """APIコマンドを実行して応答を取得"""
-        self.connect()  # 接続確認・必要に応じて再接続
-        
-        # コマンド送信
-        api_cmd = f"api {cmd}\r\n\r\n"
-        self.sock.sendall(api_cmd.encode('utf-8'))
-        
-        # 応答を受信
-        response = b""
-        while True:
-            chunk = self.sock.recv(1024)
-            if not chunk:
-                break
-            response += chunk
-            # Content-Lengthを確認して完全な応答を受信
-            if b"Content-Length:" in response:
-                lines = response.decode('utf-8', errors='ignore').split('\n')
-                content_length = 0
-                for line in lines:
-                    if line.startswith("Content-Length:"):
-                        try:
-                            content_length = int(line.split(":")[1].strip())
-                            break
-                        except (ValueError, IndexError):
-                            pass
-                
-                if content_length > 0:
-                    header_end = response.find(b"\n\n")
-                    if header_end != -1:
-                        body_start = header_end + 2
-                        body = response[body_start:]
-                        if len(body) >= content_length:
-                            break
-        
-        response_text = response.decode('utf-8', errors='ignore')
-        
-        # ボディ部分を抽出
-        body_start = response_text.find("\n\n")
-        if body_start != -1:
-            body = response_text[body_start + 2:].strip()
-            return body
-        return response_text.strip()
-    
-    def close(self):
-        """接続を閉じる"""
-        if self.sock:
-            try:
-                self.sock.close()
-            except:
-                pass
-            self.sock = None
+_evl_fatal_write(f"[EVL_TOP2] ts={int(time.time())} pid={os.getpid()} file={__file__}\n")
+
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+from libs.esl.ESL import ESLconnection
+
+try:
+    from gateway.core.client_mapper import resolve_client_id
+except ImportError:
+    resolve_client_id = None
 
 
-# グローバルなPyESL Event Socket接続（メインのイベントリスナー接続を再利用）
-_esl_connection = None
-
-def set_esl_connection(con):
-    """PyESL接続をグローバルに設定"""
-    global _esl_connection
-    _esl_connection = con
-
-def get_esl_connection():
-    """PyESL接続を取得"""
-    global _esl_connection
-    return _esl_connection
-
-
-def send_event_to_gateway(event_type: str, uuid: str, call_id: Optional[str] = None, client_id: str = "000") -> bool:
-    """
-    realtime_gatewayにイベントを送信（Unixソケット経由）
-    
-    :param event_type: 'call_start' または 'call_end'
-    :param uuid: FreeSWITCH UUID
-    :param call_id: 通話ID（オプション）
-    :param client_id: クライアントID
-    :return: 成功した場合True
-    """
-    import socket
-    import json
-    
-    socket_path = Path("/tmp/liberty_gateway_events.sock")
-    
-    if not socket_path.exists():
-        logger.warning(f"[EVENT_SOCKET] Socket file not found: {socket_path}")
-        return False
-    
+def _connect_event_socket_once(socket_path, timeout=2.0, attempt=None):
+    _evl_conn(f"TRY attempt={attempt} path={socket_path} pid={os.getpid()}")
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
     try:
-        # Unixソケットに接続
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(5.0)  # 5秒タイムアウト
         sock.connect(str(socket_path))
-        
-        # イベントメッセージを送信
-        message = {
-            "event": event_type,
-            "uuid": uuid,
-            "call_id": call_id,
-            "client_id": client_id
-        }
-        
-        data = json.dumps(message).encode('utf-8')
-        sock.sendall(data)
-        
-        # 応答を受信
-        response = sock.recv(1024).decode('utf-8')
-        result = json.loads(response)
-        
-        sock.close()
-        
-        if result.get("status") == "ok":
-            logger.info(f"[EVENT_SOCKET] Event sent successfully: {event_type} uuid={uuid} call_id={call_id}")
-            return True
-        else:
-            logger.error(f"[EVENT_SOCKET] Event send failed: {result.get('message')}")
-            return False
-    
-    except socket.timeout:
-        logger.error(f"[EVENT_SOCKET] Connection timeout to {socket_path}")
+        _evl_conn(f"OK attempt={attempt} path={socket_path} fd={sock.fileno()}")
+        return True
+    except Exception as exc:
+        _evl_conn(f"FAIL attempt={attempt} path={socket_path} exc={exc!r}")
+        _evl_conn_trace(exc)
         return False
-    except FileNotFoundError:
-        logger.warning(f"[EVENT_SOCKET] Socket file not found: {socket_path}")
-        return False
-    except Exception as e:
-        logger.error(f"[EVENT_SOCKET] Failed to send event: {e}", exc_info=True)
-        return False
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+
+def _ensure_event_socket_connection(socket_path, max_attempts=30, delay=1.0):
+    for attempt in range(1, max_attempts + 1):
+        if _connect_event_socket_once(socket_path, attempt=attempt):
+            return
+        if attempt < max_attempts:
+            time.sleep(delay)
+    _evl_conn(f"GIVEUP attempts={max_attempts} path={socket_path}")
+
+
+_EVENT_SOCKET_PATH = Path(
+    os.environ.get("LIBERTY_GATEWAY_EVENTS_SOCK", "/tmp/liberty_gateway_events.sock")
+)
+logger.info("[EVL_CFG] sock_path=%s", _EVENT_SOCKET_PATH)
+_ensure_event_socket_connection(_EVENT_SOCKET_PATH)
 
 
 def main():
-    """Event Socket Listener のメイン処理"""
-    # FreeSWITCH Event Socket 接続パラメータ
-    host = "127.0.0.1"
-    port = "8021"
-    password = "ClueCon"
-    
+    host, port, password = "127.0.0.1", "8021", "ClueCon"
+    _send_boot_probe()
     logger.info(f"FreeSWITCH Event Socket に接続中... ({host}:{port})")
-    
-    # FreeSWITCH に接続
     con = ESLconnection(host, port, password)
-    
-    if not con.connected():
+    connected = int(con.connected())
+    logger.info("[EVL_ESL_CONN] connected=%s", connected)
+    if not connected:
         logger.error("Event Socket 接続失敗")
-        logger.error("確認: sudo netstat -tulnp | grep 8021")
-        logger.error("確認: sudo systemctl status freeswitch")
         return 1
-    
-    # グローバルに接続を設定（get_rtp_port()で再利用）
+    try:
+        status_text = con.api("status")
+        status_str = status_text if isinstance(status_text, str) else str(status_text)
+        logger.info("[EVL_ESL_API_STATUS] head=%s", status_str.splitlines()[0] if status_str else "")
+    except Exception as api_exc:
+        logger.exception("[EVL_ESL_API_STATUS] err=%s", api_exc)
+    try:
+        con.events("plain", "ALL")
+    except Exception as sub_exc:
+        logger.exception("[EVL_ESL_SUB] err=%s", sub_exc)
+    con.events("plain", "CHANNEL_CREATE CHANNEL_ANSWER CHANNEL_EXECUTE CHANNEL_EXECUTE_COMPLETE CHANNEL_PARK CHANNEL_HANGUP CHANNEL_AUDIO")
     set_esl_connection(con)
-    
     logger.info("Event Socket Listener 起動")
-    logger.info("受信イベント: CHANNEL_CREATE, CHANNEL_ANSWER, CHANNEL_EXECUTE, CHANNEL_EXECUTE_COMPLETE, CHANNEL_PARK, CHANNEL_HANGUP")
-    
-    # 受け取るイベントを購読
-    # CHANNEL_EXECUTE: playback開始時（この時点でチャンネルが生きており、RTP確立済み）
-    # CHANNEL_PARK: park完了後、parking bridgeに移動した新しいUUIDを取得（RTP確立済み）
-    # CHANNEL_EXECUTE_COMPLETE: playback完了時（チャンネル終了の可能性あり）
-    con.events("plain", "CHANNEL_CREATE CHANNEL_ANSWER CHANNEL_EXECUTE CHANNEL_EXECUTE_COMPLETE CHANNEL_PARK CHANNEL_HANGUP")
-    
-    # 重複起動を防ぐためのUUID管理
+
+    events_total = 0
+    events_window = 0
+    events_name_window: dict[str, int] = defaultdict(int)
+    window_lock = threading.Lock()
+    stop_evt = threading.Event()
+
+    def _esl_rx_logger():
+        nonlocal events_total, events_window
+        while not stop_evt.wait(1.0):
+            with window_lock:
+                per_sec = events_window
+                total = events_total
+                events_window = 0
+                top = sorted(events_name_window.items(), key=lambda kv: kv[1], reverse=True)[:3]
+                events_name_window.clear()
+            top_str = " ".join(f"{n}:{c}" for n, c in top) if top else "none"
+            logger.info("[EVL_ESL_RX] per_sec=%s total=%s top=%s", per_sec, total, top_str)
+
+    rx_thread = threading.Thread(target=_esl_rx_logger, daemon=True)
+    rx_thread.start()
     active_calls = set()
-    
+
     try:
         while True:
             try:
                 e = con.recvEvent()
                 if e is None:
                     continue
-                
-                event_name = e.getHeader("Event-Name")
-                uuid = e.getHeader("Unique-ID")
-                
-                # イベント名が取得できない場合はスキップ
-                if not event_name:
-                    continue
-                
-                logger.info(f"EVENT: {event_name} UUID={uuid}")
-                
+                event_name = e.getHeader("Event-Name") or "UNKNOWN"
+                uuid = (e.getHeader("Unique-ID") or e.getHeader("Channel-Call-UUID")
+                        or e.getHeader("Channel-UUID") or e.getHeader("variable_uuid")
+                        or e.getHeader("variable_origination_uuid") or "NONE")
+                application = e.getHeader("Application") or "-"
+                application_data = e.getHeader("Application-Data") or "-"
+                with window_lock:
+                    events_total += 1
+                    events_window += 1
+                    events_name_window[event_name] += 1
+                logger.info("[EVL_EVT_IN] type=%s uuid=%s app=%s data=%s",
+                           event_name, uuid, application, application_data[:200])
+                try:
+                    _maybe_force_forward(e)
+                except Exception as fe:
+                    logger.exception("[EVL_FORCE_ERR] %s", fe)
+
+                dispatched = False
+                dispatch_reason = None
+                reason_hint = None
+                allow_auto = True
+
                 if event_name == "CHANNEL_CREATE":
-                    logger.info(f"チャンネル作成: CREATE イベント UUID={uuid}")
+                    reason_hint = "channel_create"
                     handle_channel_create(uuid, e)
                 elif event_name == "CHANNEL_ANSWER":
-                    logger.info(f"通話開始: ANSWER イベント UUID={uuid}")
-                    
-                    # realtime_gatewayにcall_startイベントを送信
-                    # 着信番号を取得
-                    destination_number = e.getHeader("Caller-Destination-Number")
-                    
-                    # client_mapperを使用してクライアントIDを取得
+                    reason_hint = "channel_answer"
+                    dest_num = e.getHeader("Caller-Destination-Number")
+                    cid = "000"
                     if resolve_client_id:
                         try:
-                            client_id = resolve_client_id(destination_number=destination_number)
-                            logger.info(f"[CLIENT_MAPPER] destination={destination_number} -> client_id={client_id}")
-                        except Exception as ex:
-                            logger.warning(f"[CLIENT_MAPPER] Failed to resolve client_id: {ex}", exc_info=True)
-                            client_id = "000"  # フォールバック
-                    else:
-                        # client_mapperが利用できない場合はフォールバック
-                        client_id = "000"
-                        logger.warning(f"[CLIENT_MAPPER] client_mapper not available, using fallback client_id={client_id}")
-                    
-                    # call_idを生成（UUIDから）
-                    call_id = None  # realtime_gateway側で生成される
-                    
-                    success = send_event_to_gateway("call_start", uuid, call_id=call_id, client_id=client_id)
-                    if success:
-                        logger.info(f"[EVENT_SOCKET] call_start event sent to gateway: uuid={uuid} client_id={client_id}")
-                    else:
-                        logger.warning(f"[EVENT_SOCKET] Failed to send call_start event: uuid={uuid}")
-                    
-                    # Google Streaming ASRハンドラーを起動（既存の処理を維持）
+                            cid = resolve_client_id(destination_number=dest_num)
+                        except Exception:
+                            pass
+                    send_event_to_gateway("call_start", uuid, client_id=cid)
                     try:
                         from asr_handler import get_or_create_handler
-                        handler = get_or_create_handler(uuid)
-                        handler.on_incoming_call()
-                        logger.info(f"[ASRHandler] Started for UUID={uuid}")
-                    except ImportError:
-                        logger.warning("[ASRHandler] asr_handler module not available")
-                    except Exception as e:
-                        logger.error(f"[ASRHandler] Failed to start: {e}", exc_info=True)
+                        get_or_create_handler(uuid).on_incoming_call()
+                    except (ImportError, Exception):
+                        pass
                 elif event_name == "CHANNEL_EXECUTE":
-                    # CHANNEL_EXECUTE: playback開始時（この時点でチャンネルが生きており、RTP確立済み）
-                    application = e.getHeader("Application")
-                    logger.info(f"実行開始: EXECUTE イベント UUID={uuid}, Application={application}")
+                    reason_hint = f"channel_execute app={application}"
+                    if application == "endless_playback":
+                        _send_forced_gateway_event(uuid=uuid, name=event_name,
+                            app=application, data=application_data,
+                            reason_hint="CHANNEL_EXECUTE app=endless_playback")
                     if application == "playback":
-                        logger.info(f"[CHANNEL_EXECUTE] playback開始を検出 → 通話処理開始（UUID={uuid}）")
-                        # 重複起動を防ぐ（同じUUIDで既に処理中でないか確認）
                         if uuid not in active_calls:
                             active_calls.add(uuid)
+                            dispatched = True
+                            dispatch_reason = "channel_execute_playback"
                             handle_call(uuid, e)
                         else:
-                            logger.debug(f"[重複防止] UUID={uuid} は既に処理中です")
+                            allow_auto = False
+                            dispatch_reason = "channel_execute_playback_duplicate"
                 elif event_name == "CHANNEL_EXECUTE_COMPLETE":
-                    application = e.getHeader("Application")
-                    application_data = e.getHeader("Application-Data") or ""
-                    logger.info(f"実行完了: EXECUTE_COMPLETE イベント UUID={uuid}, Application={application}, Data={application_data}")
+                    reason_hint = f"channel_execute_complete app={application}"
                     if application == "playback":
-                        # 002.wav再生完了時にASRを有効化（Pull型ASR用）
-                        if "002.wav" in application_data or "/002.wav" in application_data:
-                            logger.info(f"[EVENT] 002.wav playback completed, enabling ASR for UUID={uuid}")
-                            # フラグファイルを作成してGatewayに通知
-                            flag_file = Path(f"/tmp/asr_enable_{uuid}.flag")
+                        if "002.wav" in application_data:
                             try:
-                                flag_file.touch()
-                                logger.info(f"[EVENT] Created ASR enable flag: {flag_file}")
-                            except Exception as ex:
-                                logger.error(f"[EVENT] Failed to create ASR enable flag: {ex}", exc_info=True)
-                        
+                                Path(f"/tmp/asr_enable_{uuid}.flag").touch()
+                            except Exception:
+                                pass
                         if uuid in active_calls:
-                            logger.info(f"[CHANNEL_EXECUTE_COMPLETE] playback完了を検出 → 既に処理済みUUID={uuid}（完全スキップ）")
                             continue
-                        # フォールバック削除（以前は handle_call() を再呼び出していた）
-                        logger.debug(f"[CHANNEL_EXECUTE_COMPLETE] playback完了を検出（フォールバック削除済み） UUID={uuid}")
                         continue
                     elif application == "park":
-                        logger.debug(f"[CHANNEL_EXECUTE_COMPLETE] park完了を検出（CHANNEL_PARK待機中） UUID={uuid}")
                         continue
                 elif event_name == "CHANNEL_PARK":
-                    # CHANNEL_PARK: park完了後、parking bridgeに移動した新しいUUIDを取得
-                    # この時点でRTPが確立されているため、ここで通話処理を開始
+                    reason_hint = "channel_park"
                     new_uuid = e.getHeader("Unique-ID")
-                    old_uuid = e.getHeader("Channel-Call-UUID") or e.getHeader("Channel-UUID") or uuid
-                    logger.info(f"[CHANNEL_PARK] 通話がparking bridgeに移動: 新UUID={new_uuid}, 元UUID={old_uuid}")
-                    # 重複起動を防ぐ（同じUUIDで既に処理中でないか確認）
+                    old_uuid = (e.getHeader("Channel-Call-UUID")
+                                or e.getHeader("Channel-UUID") or uuid)
                     if new_uuid and new_uuid not in active_calls:
                         active_calls.add(new_uuid)
-                        # 元のUUIDも記録（gateway起動時に使用）
+                        active_calls.add(old_uuid)
                         e.addHeader("Original-UUID", old_uuid)
+                        dispatched = True
+                        dispatch_reason = "channel_park"
                         handle_call(new_uuid, e)
                     else:
-                        logger.debug(f"[重複防止] UUID={new_uuid} は既に処理中です")
+                        allow_auto = False
+                        dispatch_reason = "channel_park_duplicate"
                 elif event_name == "CHANNEL_HANGUP":
-                    logger.info(f"通話終了: HANGUP イベント UUID={uuid}")
-                    
-                    # realtime_gatewayにcall_endイベントを送信
-                    call_id = None  # UUIDから逆引きされる
-                    success = send_event_to_gateway("call_end", uuid, call_id=call_id)
-                    if success:
-                        logger.info(f"[EVENT_SOCKET] call_end event sent to gateway: uuid={uuid}")
-                    else:
-                        logger.warning(f"[EVENT_SOCKET] Failed to send call_end event: uuid={uuid}")
-                    
-                    # 処理完了したUUIDを削除
+                    reason_hint = "channel_hangup"
+                    send_event_to_gateway("call_end", uuid)
                     active_calls.discard(uuid)
-                    # ASRハンドラーを停止
                     try:
                         from asr_handler import remove_handler
                         remove_handler(uuid)
-                    except ImportError:
+                    except (ImportError, Exception):
                         pass
-                    except Exception as e:
-                        logger.debug(f"[ASRHandler] Failed to remove handler: {e}")
                     handle_hangup(uuid, e)
-            except Exception as e:
-                # 個別のイベント処理エラーをログに記録して続行
-                logger.warning(f"イベント処理エラー（継続）: {e}")
+                elif event_name == "PLAYBACK_START":
+                    reason_hint = "playback_start"
+                    _send_forced_gateway_event(uuid=uuid, name=event_name,
+                        app=application, data=application_data, reason_hint=reason_hint)
+
+                channel_like = (event_name.startswith("CHANNEL_")
+                                or event_name.startswith("PLAYBACK_")
+                                or event_name.startswith("MEDIA_BUG_"))
+                if allow_auto and not dispatched and channel_like:
+                    dispatch_reason = reason_hint or f"auto_dispatch_{event_name}"
+                    dispatched = True
+                    handle_call(uuid, e)
+                if not dispatched and dispatch_reason is None:
+                    dispatch_reason = reason_hint or "skip_non_channel_event"
+                logger.info("[EVL_DISPATCH] uuid=%s type=%s handled=%d reason=%s",
+                           uuid, event_name, 1 if dispatched else 0, dispatch_reason)
+            except Exception as loop_err:
+                logger.warning(f"イベント処理エラー（継続）: {loop_err}")
+                logger.exception("[EVL_ESL_ERR] err=%s", loop_err)
                 continue
-    
     except KeyboardInterrupt:
         logger.info("Event Socket Listener を終了します")
         return 0
-    except Exception as e:
-        logger.error(f"予期しないエラー: {e}", exc_info=True)
+    except Exception as fatal_err:
+        logger.error(f"予期しないエラー: {fatal_err}", exc_info=True)
         return 1
     finally:
         con.disconnect()
-        logger.info("Event Socket 接続を切断しました")
-        # グローバル接続をクリア
         set_esl_connection(None)
-
-
-def handle_channel_create(uuid, event):
-    """チャンネル作成時の処理"""
-    caller_id = event.getHeader("Caller-Caller-ID-Number") or "unknown"
-    destination = event.getHeader("Caller-Destination-Number") or "unknown"
-    logger.info(f"  Caller: {caller_id} -> Destination: {destination}")
-
-
-def get_rtp_port(uuid):
-    """FreeSWITCH Inbound call 用 RTPポート取得（PyESL接続を再利用）
-    
-    remote_media_port: FreeSWITCHが送信するポート（gatewayが受信するポート）
-    """
-    import time
-    
-    logger.info(f"[get_rtp_port] UUID={uuid} のRTPポートを取得中...")
-    
-    # PyESL接続を取得（メインのイベントリスナー接続を再利用）
-    con = get_esl_connection()
-    if not con or not con.connected():
-        logger.warning("[get_rtp_port] PyESL接続が利用できません")
-        return "7002"
-    
-    # 初期待機（RTP確立を待つ）
-    time.sleep(1.0)
-    
-    # 最大5回リトライ（RTP確立を待つ）
-    for i in range(5):
-        try:
-            logger.debug(f"[get_rtp_port] APIコマンド実行(試行{i+1}): uuid_getvar {uuid} remote_media_port")
-            
-            # PyESLのapi()メソッドを使用（既存の接続を再利用）
-            # remote_media_port: FreeSWITCHが送信するポート（gatewayが受信するポート）
-            event = con.api("uuid_getvar", f"{uuid} remote_media_port")
-            
-            if event is None:
-                logger.warning(f"[get_rtp_port] API応答がNone (試行{i+1})")
-                if i < 4:  # 最後の試行でない場合は待機
-                    time.sleep(0.5)
-                continue
-            
-            # 応答ボディを取得
-            response = event.getBody()
-            if response:
-                response = response.strip()
-            
-            logger.debug(f"[get_rtp_port] 応答(試行{i+1}): {response}")
-            
-            # 数字かどうかをチェック（成功時）
-            if response and response.isdigit():
-                logger.info(f"[get_rtp_port] remote_media_port={response} (試行{i+1})")
-                return response
-            elif response and "-ERR" in response:
-                logger.warning(f"[get_rtp_port] FreeSWITCH応答エラー: {response} (試行{i+1})")
-                # -ERR No such channel の場合は、まだRTPが確立していない可能性がある
-                if "No such channel" in response:
-                    if i < 4:  # 最後の試行でない場合は待機
-                        time.sleep(0.5)
-                    continue  # 次の試行へ
-            else:
-                logger.debug(f"[get_rtp_port] 出力(試行{i+1}): {response}")
-            
-            if i < 4:  # 最後の試行でない場合は待機
-                time.sleep(0.5)
-        
-        except Exception as e:
-            logger.warning(f"[get_rtp_port] エラー (試行{i+1}): {e}", exc_info=True)
-            if i < 4:  # 最後の試行でない場合は待機
-                time.sleep(0.5)
-    
-    logger.warning("[get_rtp_port] 全試行失敗、デフォルト7002使用")
-    return "7002"
-
-
-def handle_call(uuid, event):
-    """通話開始時の処理（CHANNEL_PARK または CHANNEL_EXECUTE_COMPLETE (playback) イベントで呼び出される）"""
-    import subprocess
-    import os
-    
-    logger.info(f"[handle_call] 通話処理を開始します UUID={uuid}")
-    
-    # イベント種別を確認
-    event_name = event.getHeader("Event-Name")
-    application = event.getHeader("Application")
-    
-    # CHANNEL_EXECUTE (playback開始) イベントで呼び出される（この時点でRTP確立済み、チャンネルが生きている）
-    if event_name == "CHANNEL_EXECUTE" and application == "playback":
-        logger.info(f"[handle_call] CHANNEL_EXECUTE (playback開始) イベント検出 → 通話処理開始（RTP確立済み、チャンネル生存中）")
-        rtp_uuid = uuid  # playback開始時点ではUUIDは変わらない、チャンネルが生きている
-    elif event_name == "CHANNEL_PARK":
-        logger.info(f"[handle_call] CHANNEL_PARK イベント検出 → 通話処理開始（RTP確立済み）")
-        # CHANNEL_PARKイベントでは、UUIDが既に新しいUUID（parking bridge上のチャネル）になっている
-        rtp_uuid = uuid  # このUUIDが実際のRTPチャネルUUID
-        original_uuid = event.getHeader("Original-UUID") or event.getHeader("Channel-Call-UUID") or event.getHeader("Channel-UUID")
-        if original_uuid and original_uuid != uuid:
-            logger.info(f"[handle_call] park完了: 元のUUID={original_uuid} → 実際のRTPチャネルUUID={rtp_uuid}")
-    elif event_name == "CHANNEL_EXECUTE_COMPLETE" and application == "playback":
-        # playback完了時はチャンネルが終了している可能性があるため、非推奨
-        logger.warning(f"[handle_call] CHANNEL_EXECUTE_COMPLETE (playback完了) で処理（CHANNEL_EXECUTE推奨） UUID={uuid}")
-        rtp_uuid = uuid  # playbackではUUIDは変わらないが、チャンネルが終了している可能性あり
-    else:
-        # フォールバック: CHANNEL_EXECUTE_COMPLETE (park) の場合（非推奨）
-        if event_name == "CHANNEL_EXECUTE_COMPLETE" and application == "park":
-            logger.warning(f"[handle_call] CHANNEL_EXECUTE_COMPLETE (park) で処理（CHANNEL_PARK推奨） UUID={uuid}")
-            rtp_uuid = uuid
-        else:
-            logger.info(f"[handle_call] {event_name} (Application={application}) イベントでは処理をスキップします")
-            return
-    
-    # 通話情報を取得
-    caller_id = event.getHeader("Caller-Caller-ID-Number") or "unknown"
-    destination = event.getHeader("Caller-Destination-Number") or "unknown"
-    logger.info(f"  Caller: {caller_id} -> Destination: {destination}")
-    
-    # park完了後にRTPメディア確立を待つ（FreeSWITCHが内部でRTPバインドを完了するまで待機）
-    import time
-    logger.info(f"[handle_call] park完了 → RTP確立待機中 (1.0秒)")
-    time.sleep(1.0)
-    
-    # execute_on_mediaで固定ポート7002にRTP転送するため、固定ポートを使用
-    # FreeSWITCHがsocket:127.0.0.1:7002にRTPを転送するため、Gatewayも7002で待機
-    rtp_port = "7002"
-    logger.info(f"[handle_call] execute_on_media使用のため、固定ポート7002を使用")
-    
-    # gateway スクリプトのパス
-    gateway_script = "/opt/libertycall/libertycall/gateway/realtime_gateway.py"
-    
-    # パスが存在しない場合は別のパスを試す
-    if not os.path.exists(gateway_script):
-        gateway_script = "/opt/libertycall/gateway/realtime_gateway.py"
-    
-    if not os.path.exists(gateway_script):
-        logger.error(f"[handle_call] gateway スクリプトが見つかりません: {gateway_script}")
-        return
-    
-    # 通話ごとに独立したプロセスで起動
-    try:
-        log_file = f"/tmp/gateway_{uuid}.log"
-        logger.info(f"[handle_call] Preparing to spawn realtime_gateway for uuid={uuid} (log={log_file})")
-        # 必要な環境変数のみを選択的に渡す（LC_RTP_PORT等は引数で上書きされるため除外）
-        env = {}
-        # ASR関連の環境変数を渡す
-        for key in ["LC_ASR_STREAMING_ENABLED", "LC_ASR_PROVIDER", "LC_ASR_CHUNK_MS", "LC_ASR_SILENCE_MS", 
-                    "LC_DEFAULT_CLIENT_ID", "LC_TTS_STREAMING", "PYTHONUNBUFFERED"]:
-            value = os.getenv(key)
-            if value is not None:
-                env[key] = value
-        # デフォルトでストリーミングを有効化（環境変数が設定されていない場合）
-        if "LC_ASR_STREAMING_ENABLED" not in env:
-            env["LC_ASR_STREAMING_ENABLED"] = "1"
-        with open(log_file, "w") as log_fd:
-            logger.info("[LISTENER_DEBUG] About to spawn realtime_gateway")
-            process = subprocess.Popen(
-                ["python3", gateway_script, "--uuid", uuid, "--rtp_port", rtp_port],
-                stdout=log_fd,
-                stderr=subprocess.STDOUT,
-                cwd="/opt/libertycall",
-                env=env
-            )
-            logger.info(f"[LISTENER_DEBUG] Gateway process spawned with PID={process.pid}")
-        logger.info(f"[handle_call] realtime_gateway を起動しました (UUID={uuid}, RTP_PORT={rtp_port})")
-        logger.info(f"[handle_call] ログファイル: {log_file}")
-    except Exception as e:
-        logger.error(f"[handle_call] gateway 起動中にエラー: {e}", exc_info=True)
-
-
-def handle_hangup(uuid, event):
-    """通話終了時の処理"""
-    hangup_cause = event.getHeader("Hangup-Cause") or "unknown"
-    duration = event.getHeader("variable_duration") or "0"
-    logger.info(f"  終了理由: {hangup_cause}, 通話時間: {duration}秒")
+        stop_evt.set()
+        if rx_thread.is_alive():
+            rx_thread.join(timeout=1.0)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import traceback as _tb
+    try:
+        main()
+    except BaseException:
+        with open("/tmp/event_listener.trace", "a") as f:
+            f.write("\n[EVL_MAIN_FATAL]\n")
+            f.write(_tb.format_exc())
+            f.write("\n[EVL_MAIN_FATAL_END]\n")
+        raise

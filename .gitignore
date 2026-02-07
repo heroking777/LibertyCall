@@ -44,3 +44,16 @@ node_modules/
 clients/*/audio/
 clients/*/config/*.bak
 config/google-credentials.json
+
+# Cleanup prevention (added 2026-02-07)
+*.bak
+*.bak.*
+*.broken.*
+tmp_logs/
+artifacts/
+core
+$TMPTXT
+*.pcap
+cleanup_snapshot_*.txt
+bak_archive_*.tar.gz
+dialplan_backup_archive.tar.gz

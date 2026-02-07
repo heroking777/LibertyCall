@@ -5,16 +5,24 @@ Gemini APIを使用した音声合成機能を担当
 """
 
 import logging
+import os
 from typing import Optional
 
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ModuleNotFoundError:
+logger = logging.getLogger(__name__)
+
+_AI_DISABLE_LLM = os.getenv("AI_DISABLE_LLM") == "1"
+if _AI_DISABLE_LLM:
     genai = None
     GEMINI_AVAILABLE = False
-
-logger = logging.getLogger(__name__)
+    logger.info("[TTS] AI_DISABLE_LLM=1: skip google.generativeai import")
+else:
+    try:
+        import google.generativeai as genai
+        GEMINI_AVAILABLE = True
+    except ModuleNotFoundError:
+        genai = None
+        GEMINI_AVAILABLE = False
+        logger.exception("[TTS] google.generativeai import failed (non-fatal)")
 
 
 def synthesize_text_with_gemini(text: str, speaking_rate: float = 1.0, pitch: float = 0.0) -> Optional[bytes]:

@@ -1,7 +1,7 @@
 LibertyCall プロジェクト構造詳細ツリー（用途付き）
 ================================================================================
-生成日時: 2025-12-05
-最終更新: 2025-12-20（クライアント単位会話フロー分離・FlowEditor・運用安定タスク・メール送信リスト管理を追加）
+生成日時: 2026-01-19
+最終更新: 2026-01-19（gateway再編成完了・ASRストリーミング改善・RTP強制検出実装）
 ================================================================================
 
 .
@@ -21,653 +21,550 @@ LibertyCall プロジェクト構造詳細ツリー（用途付き）
 ├── process_csv.py                               # CSV処理ユーティリティ
 ├── test_flow.py                                 # フローテスト
 ├── test_init.py                                 # 初期化テスト
-├── test_output_audio.wav                        # テスト用音声ファイル
-├── sample_audio.wav                             # サンプル音声ファイル
-├── gemini_reply.wav                             # Gemini応答音声（テスト用）
-├── setup_env.sh                                 # 環境セットアップスクリプト
-├── run_test_gateway.sh                          # Gatewayテスト実行スクリプト
-├── monitor_asr_errors.sh                        # ASRエラー監視スクリプト
-├── test_asr_error.sh                            # ASRエラーテストスクリプト
-├── test_connection.sh                           # 接続テストスクリプト
-├── START_SERVERS.sh                             # サーバー起動スクリプト
-├── systemd_example.service                      # systemdサービス設定例
-├── python3                                      # Python実行ファイル（シンボリックリンク）
-├── lib                                          # ライブラリディレクトリ（空）
-│
-├── [ドキュメント]
-│   ├── AI_CODING_SETUP.md                       # AI開発環境セットアップ手順
-│   ├── AICORE_REFACTOR_PLAN.md                  # AIコアリファクタリング計画
-│   ├── AICORE_RISK_CASES.md                     # AIコアリスクケース
-│   ├── AICORE_SPEC.md                           # AIコア仕様書
-│   ├── AICORE_SPEC_NOTION.md                    # AIコア仕様（Notion版）
-│   ├── AICORE_TEST_SCENARIOS.md                 # AIコアテストシナリオ
-│   ├── ASR_HEAD_CUT_FIX_ANALYSIS.md             # ASR先頭カット修正分析
-│   ├── ASR_HEAD_CUT_FIX_SUMMARY.md              # ASR先頭カット修正サマリー
-│   ├── ASR_TTS_SYSTEM_SPEC.md                   # ASR/TTSシステム仕様
-│   ├── CHECK_VPS_FIREWALL.md                    # VPSファイアウォール確認
-│   ├── QUICK_START.md                           # クイックスタートガイド
-│   ├── TROUBLESHOOTING.md                       # トラブルシューティング
-│   ├── SENDGRID_AUTH_CHECKLIST.md              # SendGrid SPF/DKIM/DMARC認証チェックシート
-│   └── docs/
-│       ├── ANNOUNCEMENT_FLOW_FIX.md             # アナウンスフロー修正
-│       ├── ANNOUNCEMENT_FLOW_VERIFICATION.md    # アナウンスフロー検証
-│       ├── API接続設定ガイド.md                  # API接続設定ガイド
-│       ├── ASTERISK_DOWN_CAUSE.md               # Asterisk停止原因
-│       ├── ASTERISK_LOG_SETUP.md                # Asteriskログ設定
-│       ├── ASTERISK_PREVENTION_MEASURES.md      # Asterisk予防措置
-│       ├── ASTERISK_SERVICE_FIX.md              # Asteriskサービス修正
-│       ├── ASTERISK_WATCHDOG_FIX.md             # Asteriskウォッチドッグ修正
-│       ├── ASTERISK_WATCHDOG_ROOT_CAUSE_FIX.md  # Asteriskウォッチドッグ根本原因修正
-│       ├── BARGE_IN_ASR_CONFIGURATION.md       # 割り込みASR設定
-│       ├── CALL_ID_NONE_FIX.md                 # CALL_ID_NONE修正
-│       ├── CHANGES_SUMMARY.md                   # 変更サマリー
-│       ├── CHIRP3_MIGRATION.md                  # Chirp3移行
-│       ├── console_auth_design.md               # コンソール認証設計
-│       ├── console_deployment.md                # コンソールデプロイ手順
-│       ├── DATABASE_SETUP.md                    # データベースセットアップ手順
-│       ├── GATEWAY_PORT_CONFLICT_FIX.md        # Gatewayポート競合修正
-│       ├── GATEWAY_PREVENTION_MEASURES.md      # Gateway予防措置
-│       ├── GOOGLE_ASR_LANGUAGE_FIX.md          # Google ASR言語修正
-│       ├── GOOGLE_ASR_MODEL_FIX.md             # Google ASRモデル修正
-│       ├── HANDOFF_ANNOUNCEMENT_FIX_IMPLEMENTATION.md # ハンドオフアナウンス修正実装
-│       ├── HANDOFF_ANNOUNCEMENT_NOT_PLAYING_ANALYSIS.md # ハンドオフアナウンス再生されない分析
-│       ├── HANDOFF_FAIL_ANNOUNCEMENT_FIX.md    # ハンドオフ失敗アナウンス修正
-│       ├── HANDOFF_FAIL_SILENT_FIX.md          # ハンドオフ失敗無音修正
-│       ├── HANDOFF_FAIL_TTS_COMPLETE.md        # ハンドオフ失敗TTS完了
-│       ├── HANDOFF_FAIL_TTS_FIX.md             # ハンドオフ失敗TTS修正
-│       ├── HANDOFF_FAIL_TTS_IMPLEMENTATION.md   # ハンドオフ失敗TTS実装
-│       ├── HANDOFF_REQUEST_FIX.md               # ハンドオフリクエスト修正
-│       ├── HANDOFF_REQUEST_NO_RESPONSE_FIX.md   # ハンドオフリクエスト無応答修正
-│       ├── INTENT_RULES_FIX_SUMMARY.md          # インテントルール修正サマリー
-│       ├── libertycall_pbx_runtime.md            # PBXランタイム仕様
-│       ├── PHONE_CONNECTION_FIX_SUMMARY.md      # 電話接続修正サマリー
-│       ├── PHONE_DROP_CAUSE_ANALYSIS.md         # 電話切断原因分析
-│       ├── PHONE_DROP_CAUSE_SUMMARY.md          # 電話切断原因サマリー
-│       ├── PRODUCTION_DEPLOYMENT.md             # 本番環境デプロイ手順
-│       ├── PRODUCTION_ENVIRONMENT_SETUP.md      # 本番環境セットアップ
-│       ├── project_tree.txt                     # プロジェクトツリー（簡易版）
-│       ├── TRANSFER_ISSUE_FIX.md                # 転送問題修正
-│       ├── TRANSFER_PROCESS_FIX.md              # 転送プロセス修正
-│       ├── TROUBLESHOOTING_PHONE_CONNECTION.md  # 電話接続トラブルシューティング
-│       ├── 会話フロー一覧.md                     # 会話フロー一覧
-│       ├── 会話フロー一覧_修正版.md              # 会話フロー一覧（修正版・口語調対応）
-│       ├── 会話フロー_JSON構造版.json            # 会話フロー定義（JSON形式・ASR/Intent連携用）
-│       ├── 会話フロー修正_実装ガイド.md          # 会話フロー修正の実装ガイド
-│       ├── 音声ファイル再生成手順.md              # 音声ファイル再生成手順
-│       ├── 自己検証システム実装ガイド.md          # 自己検証システム実装ガイド（flow_tester・gatewayログ）
-│       ├── 自動リグレッションテストガイド.md      # 自動リグレッションテストガイド
-│       ├── 音声自動テストガイド.md                # 音声自動テストガイド（ASR/TTS実音声テスト）
-│       ├── WER評価ガイド.md                      # WER評価ガイド（ASR精度評価）
-│       ├── Webダッシュボード実装ガイド.md        # Webダッシュボード実装ガイド
-│       ├── 全体連携検証レポート.md                # 全体連携検証レポート
-│       └── 全体連携検証完了レポート.md            # 全体連携検証完了レポート
-│
-├── gateway_event_listener.py                    # FreeSWITCHイベントリスナー（通話検知・Gateway起動・systemdサービス）
-│
-├── [Gateway - リアルタイム音声処理]
-│   └── gateway/
-│       ├── __init__.py                          # パッケージ初期化
-│       ├── realtime_gateway.py                  # リアルタイム音声ゲートウェイ（RTP受信・送信・VAD・AI呼び出し・会話トレースログ出力）
-│       ├── audio_manager.py                     # 音声管理（バッファリング・チャンク処理）
-│       ├── intent_rules.py                      # インテント判定ルール（固定6分類）
-│       └── utils/
-│           ├── __init__.py
-│           └── client_config_loader.py          # クライアント設定ローダー
-│
-├── [ASR/TTS - 音声認識・合成]
-│   └── asr/
-│       ├── __init__.py                          # パッケージ初期化
-│       ├── asr_google.py                        # Google Cloud Speech-to-Text（旧版・ロールバック用）
-│       ├── asr_local.py                         # WhisperローカルASR（開発/テスト用、本番未使用）
-│       └── whisper_local.py                    # Whisper実装（開発/テスト用、本番未使用）
-│
-├── [LibertyCall Core - コア機能]
-│   └── libertycall/
-│       ├── __init__.py                          # パッケージ初期化
-│       ├── client_loader.py                     # クライアント設定ローダー（唯一の設定入口）
-│       ├── console_bridge.py                    # コンソールバックエンド連携
-│       └── gateway/
-│           ├── __init__.py
-│           ├── ai_core.py                       # AIコア（ASR→Intent→TTS統合処理・テンプレート選択・音声生成・会話フロー管理・クライアント別設定読み込み）
-│           ├── audio_utils.py                   # 音声変換ユーティリティ（u-law⇄PCM・RMS計算・音量正規化）
-│           ├── intent_rules.py                  # インテント判定ルール（テンプレートID選択・応答生成）
-│           ├── transcript_normalizer.py          # トランスクリプト正規化（全角・半角統一・記号除去）
-│           └── client_mapper.py                 # クライアントID自動判定（発信者番号・宛先番号・SIPヘッダー）
-│
-├── [Console Backend - 管理画面API]
-│   └── console_backend/
-│       ├── __init__.py                          # パッケージ初期化
-│       ├── config.py                            # 設定管理（Pydantic Settings）
-│       ├── database.py                          # データベース接続（SQLAlchemy）
-│       ├── models.py                            # データモデル（通話・ユーザー）
-│       ├── schemas.py                           # Pydanticスキーマ（APIリクエスト/レスポンス）
-│       ├── service_client.py                    # 外部サービス連携クライアント
-│       ├── routers/                             # APIルーター（FastAPI）
-│       │   ├── __init__.py                      # ルーター初期化
-│       │   ├── auth.py                          # 認証API（ログイン・トークン発行）
-│       │   ├── calls.py                         # 通話API（通話履歴・詳細・ログ追記）
-│       │   ├── dashboard.py                     # ダッシュボードAPI（統計情報・グラフデータ）
-│       │   ├── users.py                         # ユーザー管理API（CRUD操作）
-│       │   ├── audio_tests.py                   # 音声テストAPI（ASR評価結果・履歴・WebSocketログ）
-│       │   └── flow.py                          # 会話フロー管理API（FlowEditor用・flow.json読み込み・保存・ホットリロード）
-│       ├── services/                             # ビジネスロジック層
-│       │   ├── __init__.py
-│       │   ├── call_service.py                 # 通話サービス（通話作成・更新・ログ管理）
-│       │   ├── dashboard_service.py             # ダッシュボードサービス（統計集計）
-│       │   ├── export_service.py                # エクスポートサービス（CSV/JSON出力）
-│       │   └── user_service.py                  # ユーザーサービス（認証・権限管理）
-│       └── websocket/                           # WebSocket通信
-│           ├── __init__.py
-│           ├── dispatcher.py                    # WebSocketディスパッチャー（イベント配信）
-│           ├── manager.py                       # WebSocket接続管理（接続・切断・ブロードキャスト）
-│           └── routes.py                        # WebSocketルート定義
-│
-├── [Email Sender - 自動メール送信]
-│   └── email_sender/
-│       ├── __init__.py                          # パッケージ初期化
-│       ├── config.py                            # 設定管理（SendGrid・送信制限）
-│       ├── models.py                            # データモデル（Recipient）
-│       ├── csv_repository.py                    # CSV操作・配信停止チェック
-│       ├── csv_repository_prod.py               # 本番用CSVリポジトリ
-│       ├── ses_client.py                        # AWS SES送信クライアント（未使用）
-│       ├── sendgrid_client.py                   # SendGrid送信クライアント（本番使用）
-│       ├── scheduler.py                         # 送信タイミング判定
-│       ├── scheduler_service.py                 # APSchedulerサービス（定期実行）
-│       ├── scheduler_service_prod.py            # 本番用スケジューラーサービス
-│       ├── main.py                              # エントリーポイント（手動実行用）
-│       ├── run_batch.py                         # バッチ送信スクリプト
-│       ├── rebuild_master_leads.py               # master_leads.csv再構築スクリプト（業種別CSVから統合）
-│       ├── clean_master_leads.py                # master_leads.csvクリーニングスクリプト（無効メール・重複ドメイン削除）
-│       ├── recipients_sample.csv                # 送信先サンプル
-│       ├── email-sender.service.example         # systemdサービス設定例
-│       ├── README.md                            # 使用方法・セットアップ
-│       ├── README_PROD.md                       # 本番環境用README
-│       ├── data/                                # データディレクトリ
-│       │   ├── master_leads.csv                   # 本リスト（メアド・会社名・住所・ステージ）
-│       │   └── sendgrid_auth_checklist.csv      # SendGrid認証チェックシート（CSV版）
-│       └── templates/                           # メールテンプレート
-│           ├── initial_email.txt                # 初回メール
-│           ├── followup_1.txt                   # フォローメール1
-│           ├── followup_2.txt                   # フォローメール2
-│           ├── followup_3.txt                   # フォローメール3
-│           ├── consultation_reply.txt           # 相談返信
-│           └── material_request_reply.txt        # 資料請求返信
-│
-├── [LP - ランディングページ]
-│   └── lp/
-│       ├── index.html                           # メインランディングページ
-│       ├── unsubscribe.html                     # 配信停止ページ
-│       ├── style.css                            # スタイルシート
-│       ├── contact_api.py                       # お問い合わせAPI（Flask）
-│       ├── ai_abstract.png                      # 画像：AI抽象
-│       ├── ai_call_phone.png                    # 画像：AI電話
-│       ├── contact_reception.png                # 画像：受付
-│       ├── hero_main.png                        # 画像：ヒーロー
-│       ├── office_modern1.png                   # 画像：オフィス1
-│       ├── office_modern2.png                   # 画像：オフィス2
-│       ├── 管理画面.png                          # 画像：管理画面
-│       └── サービス概要.pdf                     # PDF：サービス概要
-│
-├── [Frontend - 管理画面UI]
-│   └── frontend/
-│       ├── package.json                         # Node.js依存パッケージ
-│       ├── package-lock.json                    # 依存パッケージロック
-│       ├── package.json                         # Node.js依存パッケージ（recharts, tailwindcss追加）
-│       ├── tailwind.config.js                   # Tailwind CSS設定
-│       ├── postcss.config.js                    # PostCSS設定（Tailwind用）
-│       ├── vite.config.js                       # Vite設定（プロキシ設定含む）
-│       ├── public/                              # 静的ファイル
-│       │   ├── index.html
-│       │   ├── favicon.ico
-│       │   ├── logo192.png
-│       │   ├── logo512.png
-│       │   ├── manifest.json
-│       │   └── robots.txt
-│       ├── src/
-│       │   ├── App.jsx                          # メインアプリケーション（ルーティング含む）
-│       │   ├── main.jsx                         # エントリーポイント
-│       │   ├── config.js                        # API設定
-│       │   ├── pages/
-│       │   │   ├── FileLogsList.jsx            # 通話ログ一覧ページ
-│       │   │   ├── FileLogDetail.jsx           # 通話ログ詳細ページ
-│       │   │   └── AudioTestDashboard.jsx     # 音声テストダッシュボード（ASR/WER可視化）
-│       │   └── components/
-│       │       ├── ConsoleLayout.jsx           # レイアウトコンポーネント
-│       │       └── ConsoleHeader.jsx            # ヘッダーコンポーネント
-│       └── build/                               # ビルド成果物
-│           ├── index.html
-│           ├── asset-manifest.json
-│           ├── manifest.json
-│           ├── robots.txt
-│           └── static/
-│               ├── css/                         # CSSファイル
-│               └── js/                          # JavaScriptファイル
-│
-├── [FreeSWITCH - Dialplan設定]
-│   └── freeswitch/
-│       ├── README.md                            # FreeSWITCH Dialplan説明書
-│       ├── dialplan/                            # Dialplan設定ファイル
-│       │   ├── default.xml                     # 段階アナウンス（sleep+transfer）設定
-│       │   └── public.xml                     # 外線経由の入口（FORCE_PUBLICエントリ）
-│       └── audio/                              # 8kHz音声ファイル
-│           ├── 000_8k.wav                      # 初期アナウンス音声
-│           ├── 001_8k.wav                      # 初期アナウンス音声
-│           ├── 002_8k.wav                      # 初期アナウンス音声
-│           ├── 000-004_8k.wav                  # 段階アナウンス音声
-│           ├── 000-005_8k.wav                  # 段階アナウンス音声
-│           ├── 000-006_8k.wav                  # 段階アナウンス音声
-│           └── combined_intro_8k.wav           # 000+001+002統合ファイル
-│
-├── [Clients - クライアント設定]
-│   └── clients/
-│       ├── _TEMPLATE/                           # 新規クライアント作成用テンプレート
-│       │   ├── config/
-│       │   │   └── incoming_sequence.json      # 着信シーケンス設定
-│       │   └── logs/                            # ログディレクトリ
-│       └── {client_id}/                         # クライアントID（電話番号）
-│           ├── config/
-│           │   ├── incoming_sequence.json      # 着信シーケンス設定
-│           │   └── voice_lines_{id}.json       # 音声ライン設定
-│           ├── audio/                           # クライアント専用音声ファイル
-│           │   └── *.wav                        # 音声ファイル
-│           └── logs/                            # クライアント専用ログ
-│
-├── [Config - 設定ファイル]
-│   └── config/
-│       ├── gateway.yaml                         # Gateway設定（ポート・クライアント）
-│       ├── client_mapping.json                  # クライアントID自動判定ルール（発信者番号・宛先番号・SIPヘッダー）
-│       ├── clients/                             # クライアント別会話フロー設定
-│       │   └── {client_id}/
-│       │       ├── flow.json                    # 会話フロー定義（phase遷移・テンプレートID・条件分岐）
-│       │       ├── keywords.json                # キーワード定義（インテント判定用）
-│       │       └── templates.json               # テンプレート定義（応答メッセージ）
-│       └── system/                              # システムデフォルト設定
-│           ├── default_flow.json                # デフォルト会話フロー
-│           ├── default_keywords.json            # デフォルトキーワード
-│           └── default_templates.json          # デフォルトテンプレート
-│
-├── [Key - 認証キー]
-│   └── key/
-│       └── google_tts.json                      # Google TTS認証キー
-│
-├── [Deploy - デプロイ設定]
-│   └── deploy/
-│           ├── hello.ulaw                       # テスト用音声
-│           └── prompts/                         # プロンプト音声
-│               ├── ai_operator.ulaw
-│               ├── ask_purpose.ulaw
-│               ├── greeting.ulaw
-│               └── qm_notice.ulaw
-│
-├── [Dialog - 対話管理]
-│   └── dialog/
-│       ├── __init__.py
-│       ├── dialog_manager.py                    # 対話管理（状態遷移）
-│       └── dialog_state.py                      # 対話状態定義
-│
-├── [Scripts - ユーティリティスクリプト]
-│   └── scripts/
-│       ├── __init__.py
-│       ├── check_template_voice_diff.py         # テンプレート音声差分チェック
-│       ├── dev_run_gateway.sh                  # 開発用Gateway起動
-│       ├── dummy_upwork_search.html            # Upwork検索ダミーHTML
-│       ├── find_jobs.py                        # ジョブ検索スクリプト
-│       ├── free_rtp_7100.sh                    # RTPポート解放
-│       ├── gcp_tts_test.py                     # Google TTSテスト
-│       ├── generate_client_000_audio.py        # クライアント音声生成
-│       ├── generate_client_000_audio_partial.py # 部分音声生成
-│       ├── generate_audio_specific.py          # 特定テンプレート音声再生成
-│       ├── generate_initial_greeting.py        # 初期挨拶生成
-│       ├── generate_lc_recording_notice.py     # 録音通知生成
-│       ├── generate_lc_transfer_failed.py       # 転送失敗メッセージ生成
-│       ├── handoff_notify.sh                    # ハンドオフ通知
-│       ├── handoff_redirect.py                 # ハンドオフリダイレクト
-│       ├── hangup_call.py                      # 通話終了
-│       ├── regenerate_000.py                   # クライアント000再生成
-│       ├── test_audio_asr.py                   # 音声ファイルASR認識テスト
-│       ├── test_ai_response.py                 # AI処理テスト（テキスト→フェーズ・テンプレート）
-│       ├── test_audio_flow.sh                  # 音声フロー統合テスト（ASR→AI→WER）
-│       ├── test_regression_audio.sh            # 自動リグレッションテスト（git diff検知＋部分テスト）
-│       ├── test_flow_integration.sh            # 会話フロー統合テスト（全主要インテント）
-│       ├── test_gateway_sync.sh                # Gatewayログ監視（conversation_trace.log）
-│       ├── asr_eval.py                         # ASR評価（WER計算・精度評価）
-│       ├── map_intent_audio.py                 # intentと音声ファイルのマッピング
-│       └── verify_integration.sh               # 全体連携検証スクリプト（ASR→AI→WER→ダッシュボード）
-│
-├── [Tests - テスト]
-│   └── tests/
-│       ├── conftest.py                          # pytest設定
-│       ├── test_ai_core_handoff.py              # AIコアハンドオフテスト
-│       ├── test_console_backend.py              # コンソールバックエンドテスト
-│       ├── test_generate_initial_greeting.py    # 初期挨拶生成テスト
-│       ├── test_initial_sequence.py             # 初期シーケンステスト
-│       ├── test_misunderstanding_guard.py       # 誤解防止ガードテスト
-│       └── test_production_performance.py       # 本番パフォーマンステスト
-│
-├── [Runtime - ランタイムデータ]
-│   └── runtime/
-│       ├── bench/                               # ベンチマーク
-│       │   └── asr_bench.csv                    # ASRベンチマーク結果
-│       ├── models/                              # モデルファイル
-│       └── test_audio/                          # テスト音声
-│           ├── make_sample_tts.py               # サンプルTTS生成
-│           └── sample_ja_1s.wav                 # サンプル音声
-│
-├── [Logs - ログファイル]
-│   └── logs/
-│       ├── calls/                               # 通話ログ
-│       │   └── {client_id}/
-│       │       └── *.log                        # 通話ログファイル
-│       ├── handoff_redirect.log                 # ハンドオフリダイレクトログ
-│       ├── hangup_call.log                      # 通話終了ログ
-│       ├── ngrok.log                            # ngrokログ
-│       ├── realtime_gateway.log                 # リアルタイムゲートウェイログ
-│       ├── conversation_trace.log               # 会話トレースログ（フェーズ・テンプレートID・発話内容）
-│       ├── asr_eval_results.json                # ASR評価結果（WER計算結果・Webダッシュボード用）
-│       └── audio_test_history/                  # 音声テスト履歴（将来用）
-│
-├── [Systemd - サービス管理]
-│   └── /etc/systemd/system/
-│       ├── service                  # Gateway Event Listenerサービス（常時稼働）
-│       ├── check_rtp_alive.service              # RTP監視サービス（oneshot）
-│       └── check_rtp_alive.timer                # RTP監視タイマー（5分ごと）
-│
-├── [Logrotate - ログローテーション]
-│   └── /etc/logrotate.d/
-│       └── libertycall                          # ログローテーション設定（event_listener.log, gateway_*.log）
-│
-├── [Data - データファイル]
-│   └── data/
-│       └── sample_audio.wav                     # サンプル音声
-│
-├── [Backups - バックアップ]
-│   └── backups/
-│       └── YYYYMMDD_HHMMSS/                     # 日時別バックアップ
-│           ├── alembic.ini.backup
-│           ├── call_console.db.backup
-│           └── code_backup.tar.gz
-│
-├── [Recordings - 録音ファイル]
-│   └── recordings/                              # 通話録音ファイル
-│
-├── [Debug Audio - デバッグ音声]
-│   └── debug_audio/
-│       └── call_unknown_chunk_*.wav             # デバッグ用音声チャンク
-│
-├── [TTS Test - TTSテスト]
-│   └── tts_test/
-│       ├── 000_notice.wav                       # テスト音声ファイル
-│       ├── 004_moshimoshi.wav                   # テスト音声ファイル（挨拶）
-│       ├── 005_inquiry.wav                      # テスト音声ファイル（問い合わせ）
-│       ├── moshimoshi_src.wav                   # テスト音声ファイル（ソース）
-│       ├── moshimoshi_ulaw.wav                  # テスト音声ファイル（u-law形式）
-│       ├── reference_texts.json                 # 期待テキスト定義（WER評価用）
-│       └── results/                             # 認識結果保存ディレクトリ（ASR評価用）
-│           └── *.txt                            # 認識結果ファイル（{音声ファイル名}.txt）
-│
-├── [Alembic - DBマイグレーション]
-│   └── alembic/
-│       ├── env.py                               # マイグレーション環境設定
-│       ├── script.py.mako                        # マイグレーションスクリプトテンプレート
-│       └── versions/                             # マイグレーションファイル
-│           └── 20251121_01.py                    # 初期マイグレーション（callsテーブル作成）
-│
-├── [Tools - ツール]
-│   └── tools/
-│       ├── __init__.py
-│       ├── check_rtp_alive.sh                   # RTP監視スクリプト（5分ごとに実行・systemd.timerで管理）
-│       └── validate_flow.py                     # 会話フロー検証ツール（flow.json構文チェック・参照エラー検出）
-│       ├── __init__.py
-│       ├── check_rtp_alive.sh                   # RTP監視スクリプト（5分ごとに実行・systemd.timerで管理）
-│       └── validate_flow.py                     # 会話フロー検証ツール（flow.json構文チェック・参照エラー検出）
-│
-├── [Src - TypeScriptソース（プロジェクト状態管理API）]
-│   └── src/
-│       ├── index.ts                             # エントリーポイント（Expressサーバー、ポート3000）
-│       ├── routes/
-│       │   └── projectRoutes.ts                 # プロジェクトルート（/projects, /projects/:id/state）
-│       ├── storage/
-│       │   └── projectStateStorage.ts           # プロジェクト状態ストレージ（project_states.json管理）
-│       ├── types/
-│       │   └── ProjectState.ts                  # プロジェクト状態型定義
-│       └── tools/                               # ツール（会話フロー・音声テスト）
-│           ├── flow_tester.ts                   # 会話フローテスター（JSON構造版からintent指定でシミュレーション）
-│           ├── flow_diff_parser.ts              # フロー差分パーサー（git diff→intentマッピング）
-│           └── audio_flow_tester.ts             # 音声フローテスター（音声→ASR→AI→ログ検証）
-│
-├── [Dist - ビルド成果物（TypeScript）]
-│   └── dist/                                    # TypeScriptコンパイル結果
-│
-├── [Node Modules - Node.js依存パッケージ]
-│   └── node_modules/                            # npm依存パッケージ
-│
-├── [Venv - Python仮想環境]
-│   └── venv/                                    # Python仮想環境
-│
-└── [Archive - アーカイブ]
-    └── _archive_20251113/                       # 2025年11月13日アーカイブ
-        └── LibertyCall/                         # 旧バージョンコード
+├── gateway_event_listener.py                    # FreeSWITCH Event Socket監視プロセス
+├── asr_handler.py                               # ASRハンドラー（レガシー）
+├── console_bridge.py                            # コンソールブリッジ
+├── client_loader.py                             # クライアントローダー
+├── mock_audio_test.py                           # 音声テスト（モック）
+├── perfect_silence_test.py                      # 無音テスト
+├── __init__.py                                  # Pythonパッケージ初期化
+│   ├── versions
+│   ├── env.py
+│   └── script.py.mako
+├── archives
+│   ├── logs
+│   └── trash
+├── asr
+│   ├── __init__.py
+│   └── whisper_local.py
+├── audio_recordings
+│   └── voice_monitor
+├── backups
+│   └── 20251202_053606
+├── clients
+│   ├── 000
+│   ├── 7003
+│   └── _TEMPLATE
+├── config
+│   ├── clients
+│   ├── system
+│   ├── client_mapping.json
+│   ├── gateway.yaml
+│   └── google-credentials.json
+├── console_backend
+│   ├── migrations
+│   ├── routers
+│   ├── services
+│   ├── websocket
+│   ├── config.py
+│   ├── database.py
+│   ├── __init__.py
+│   ├── main.py
+│   ├── models.py
+│   ├── README.md
+│   ├── schemas.py
+│   └── service_client.py
+├── deploy
+│   ├── scripts
+│   └── systemd
+├── dist
+│   ├── routes
+│   ├── storage
+│   ├── types
+│   └── index.js
+├── docs
+│   ├── reports
+│   ├── project_tree.txt
+│   ├── SENDGRID_AUTH_CHECKLIST.md
+│   └── SYSTEM_OVERVIEW.md
+├── email_sender
+│   ├── data
+│   ├── list
+│   ├── templates
+│   ├── clean_master_leads.py
+│   ├── config.py
+│   ├── csv_repository_prod.py
+│   ├── csv_repository.py
+│   ├── email-sender.service.example
+│   ├── __init__.py
+│   ├── main.py
+│   ├── models.py
+│   ├── README.md
+│   ├── README_PROD.md
+│   ├── rebuild_master_leads.py
+│   ├── remove_bounced_emails.py
+│   ├── run_batch.py
+│   ├── scheduler.py
+│   ├── scheduler_service_prod.py
+│   ├── scheduler_service.py
+│   ├── send_batch_21h.py
+│   ├── sendgrid_client.py
+│   ├── send_test_emails.py
+│   ├── ses_client.py
+│   └── validate_email_list.py
+├── freeswitch
+│   ├── audio
+│   ├── dialplan
+│   ├── scripts
+│   └── README.md
+├── frontend
+│   ├── build
+│   ├── src
+│   ├── index.html
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── postcss.config.js
+│   ├── README.md
+│   ├── tailwind.config.js
+│   ├── UI_UPDATE_SUMMARY.md
+│   └── vite.config.js
+├── gateway
+│   ├── asr
+│   ├── audio
+│   ├── common
+│   ├── core
+│   ├── dialogue
+│   ├── transcript
+│   ├── utils
+│   ├── asr_controller.py
+│   ├── __init__.py
+│   ├── intent_rules.py
+│   ├── realtime_gateway.py
+│   └── realtime_gateway.py.backup.20251225_190104
+├── key
+│   └── google_tts.json
+├── libs
+│   └── esl
+├── logs
+│   ├── calls
+│   ├── call_events.log
+│   ├── call_events.log.1
+│   ├── call_events.log.2.gz
+│   ├── call_events.log.3.gz
+│   ├── call_events.log.4.gz
+│   ├── console.stderr.log
+│   ├── console_stderr.log
+│   ├── console.stdout.log
+│   ├── console_stdout.log
+│   ├── contact_api.log
+│   ├── contact_api.log.1
+│   ├── conversation_trace.log
+│   ├── conversation_trace.log.1
+│   ├── cron_backup.log
+│   ├── cron_backup.log.1
+│   ├── cron_backup.log.2.gz
+│   ├── cron_backup.log.3.gz
+│   ├── cron_backup.log.4.gz
+│   ├── cron_backup.log.5.gz
+│   ├── cron_backup.log.6.gz
+│   ├── cron_backup.log.7.gz
+│   ├── cron_daily_report.log
+│   ├── cron_daily_report.log.1
+│   ├── cron_daily_report.log.2.gz
+│   ├── cron_daily_report.log.3.gz
+│   ├── cron_daily_report.log.4.gz
+│   ├── cron_daily_report.log.5.gz
+│   ├── cron_daily_report.log.6.gz
+│   ├── cron_daily_report.log.7.gz
+│   ├── cron_daily_report.log.8.gz
+│   ├── gateway_stderr.log
+│   ├── gateway_stderr.log.1
+│   ├── gateway_stderr.log.2.gz
+│   ├── gateway_stderr.log.3.gz
+│   ├── gateway_stderr.log.4.gz
+│   ├── gateway_stderr.log.5.gz
+│   ├── gateway_stderr.log.6.gz
+│   ├── gateway_stderr.log.7.gz
+│   ├── gateway_stdout.log
+│   ├── gateway_stdout.log.1
+│   ├── gateway_stdout.log.2.gz
+│   ├── gateway_stdout.log.3.gz
+│   ├── gateway_stdout.log.4.gz
+│   ├── gateway_stdout.log.5.gz
+│   ├── gateway_stdout.log.6.gz
+│   ├── gateway_stdout.log.7.gz
+│   ├── ghost_call_killer.log
+│   ├── ghost_call_killer.log.1
+│   ├── ghost_call_killer.log.11.gz
+│   ├── ghost_call_killer.log.14.gz
+│   ├── ghost_call_killer.log.2.gz
+│   ├── ghost_call_killer.log.3.gz
+│   ├── ghost_call_killer.log.4.gz
+│   ├── ghost_call_killer.log.5.gz
+│   ├── ghost_call_killer.log.6.gz
+│   ├── ghost_call_killer.log.7.gz
+│   ├── ghost_call_killer.log.8.gz
+│   ├── ghost_call_killer.log.9.gz
+│   ├── handoff_redirect.log
+│   ├── handoff_redirect.log.1
+│   ├── hangup_call.log
+│   ├── hangup_call.log.1
+│   ├── hangup_call.log.2.gz
+│   ├── hangup_call.log.3.gz
+│   ├── liberty_gateway.stderr.log
+│   ├── liberty_gateway_stderr.log
+│   ├── liberty_gateway.stdout.log
+│   ├── liberty_gateway_stdout.log
+│   ├── long_running_calls.log
+│   ├── long_running_calls.log.1
+│   ├── long_running_calls.log.11.gz
+│   ├── long_running_calls.log.14.gz
+│   ├── long_running_calls.log.2.gz
+│   ├── long_running_calls.log.3.gz
+│   ├── long_running_calls.log.4.gz
+│   ├── long_running_calls.log.5.gz
+│   ├── long_running_calls.log.6.gz
+│   ├── long_running_calls.log.7.gz
+│   ├── long_running_calls.log.8.gz
+│   ├── long_running_calls.log.9.gz
+│   ├── mock_test.log
+│   ├── perfect_silence_test.log
+│   ├── project_state_backend.log
+│   ├── project_state_backend.log.1
+│   ├── project_state_backend.log.2.gz
+│   ├── project_state.stderr.log
+│   ├── project_state.stdout.log
+│   ├── realtime_gateway.log
+│   ├── realtime_gateway.log.1
+│   ├── realtime_gateway.log.2.gz
+│   ├── realtime_gateway.log.3.gz
+│   ├── realtime_gateway.log.4.gz
+│   ├── realtime_gateway.log.5.gz
+│   ├── realtime_gateway.log.6.gz
+│   ├── realtime_gateway.log.7.gz
+│   ├── realtime_gateway.log.8.gz
+│   ├── realtime_gateway.log.old
+│   ├── rtp_detection_20260116_192041.log
+│   ├── rtp_detection_20260116_192041.log.1
+│   ├── rtp_detection_20260116_192052.log
+│   ├── rtp_detection_20260116_192052.log.1
+│   ├── rtp_detection_20260116_211637.log
+│   ├── rtp_detection_20260116_211637.log.1
+│   ├── rtp_detection_20260116_211648.log
+│   ├── rtp_detection_20260116_211648.log.1
+│   ├── rtp_detection_20260116_211648.log.2.gz
+│   ├── rtp_detection_20260116_211648.log.3.gz
+│   ├── rtp_detection_20260116_211648.log.4.gz
+│   ├── runtime.log
+│   ├── runtime.log.1
+│   ├── sendgrid_events.csv
+│   ├── tmp_monitor.log
+│   ├── tmp_monitor.log.1
+│   ├── tmp_monitor.log.11.gz
+│   ├── tmp_monitor.log.14.gz
+│   ├── tmp_monitor.log.2.gz
+│   ├── tmp_monitor.log.3.gz
+│   ├── tmp_monitor.log.4.gz
+│   ├── tmp_monitor.log.5.gz
+│   ├── tmp_monitor.log.6.gz
+│   ├── tmp_monitor.log.7.gz
+│   ├── tmp_monitor.log.8.gz
+│   └── tmp_monitor.log.9.gz
+├── lp
+│   ├── scripts
+│   ├── ai_abstract.png
+│   ├── ai_call_phone.png
+│   ├── contact_api.py
+│   ├── contact_reception.png
+│   ├── hero_main.png
+│   ├── index.html
+│   ├── manifest.json
+│   ├── office_modern1.png
+│   ├── office_modern2.png
+│   ├── serviceWorker.js
+│   ├── style.css
+│   ├── unsubscribe.html
+│   ├── サービス概要.pdf
+│   └── 管理画面.png
+├── scripts
+│   ├── bin
+│   ├── analyze_intent_usage.py
+│   ├── asr_eval.py
+│   ├── ASR_TEST_COMMANDS.md
+│   ├── audio_audit_report.py
+│   ├── auto_commit.sh.disabled
+│   ├── auto_detect_rtp_enhanced.sh
+│   ├── auto_detect_rtp_final.sh
+│   ├── auto_detect_rtp.sh
+│   ├── check_and_generate_audio.py
+│   ├── check_asr_status.sh
+│   ├── check_asterisk_errors.sh
+│   ├── check_audio_files.py
+│   ├── check_dependencies.py
+│   ├── check_env.sh
+│   ├── check_event_socket.sh
+│   ├── check_gateway_debug.py
+│   ├── check_gateway_errors.sh
+│   ├── check_gateway_port.sh
+│   ├── check_gateway_process.sh
+│   ├── check_google_apis.py
+│   ├── check_rtp_port_status.sh
+│   ├── check_template_voice_diff.py
+│   ├── cleanup_logs.sh
+│   ├── compare_audio_configs.py
+│   ├── convert_sessions_to_whisper_tsv.py
+│   ├── create_launch_snapshot.sh
+│   ├── debug_hangup.sh
+│   ├── detect_rtp_port_enhanced.sh
+│   ├── detect_rtp_port_final.sh
+│   ├── detect_rtp_port.sh
+│   ├── dev_run_gateway.sh
+│   ├── dummy_upwork_search.html
+│   ├── find_jobs.py
+│   ├── free_rtp_7100.sh
+│   ├── gcp_tts_test.py
+│   ├── generate_000_001_002_gemini.py
+│   ├── generate_001_002_1_2x.py
+│   ├── generate_004_moshimoshi.py
+│   ├── generate_all_missing_audio.py
+│   ├── generate_audio_direct.py
+│   ├── generate_audio_specific.py
+│   ├── generate_client_000_audio_partial.py
+│   ├── generate_client_000_audio.py
+│   ├── generate_daily_report.py
+│   ├── generate_f5_tts_clone.py
+│   ├── generate_f5_tts.py
+│   ├── generate_gemini_tts_fixed.py
+│   ├── generate_gemini_tts.py
+│   ├── generate_initial_greeting.py
+│   ├── generate_lc_recording_notice.py
+│   ├── generate_lc_transfer_failed.py
+│   ├── generate_no_input_audio.py
+│   ├── generate_prompt_audio.py
+│   ├── generate_silence_warning_audio.py
+│   ├── generate_template_audio.py
+│   ├── generate_verification_report.py
+│   ├── generate_voicevox_tts.py
+│   ├── handoff_fail_tts.py
+│   ├── handoff_fail_tts_simple.py
+│   ├── handoff_fail_tts_via_gateway.py
+│   ├── handoff_notify.sh
+│   ├── handoff_redirect.py
+│   ├── hangup_call.py
+│   ├── __init__.py
+│   ├── kill_ghost_calls.sh
+│   ├── map_intent_audio.py
+│   ├── monitor_asr_test.sh
+│   ├── monitor_asterisk.sh
+│   ├── monitor_call_logs.sh
+│   ├── monitor_call_rtp.sh
+│   ├── monitor_long_running_calls.sh
+│   ├── normalize_audio.sh
+│   ├── quick_test_checklist.md
+│   ├── README_gemini_tts.md
+│   ├── README_RTP_DETECTION.md
+│   ├── README_SYNC_PROJECT_STRUCTURE.md
+│   ├── regenerate_000.py
+│   ├── regenerate_all_1_2x.py
+│   ├── run_sync_and_generate.sh
+│   ├── run_verification.py
+│   ├── send_webhook_notification.py
+│   ├── setup_asr_test_env.sh
+│   ├── start_event_listener.sh
+│   ├── sync_project_structure.py
+│   ├── sync_voice_assets.py
+│   ├── test_ai_response.py
+│   ├── test_asr_handler.py
+│   ├── test_audio_asr.py
+│   ├── test_esl_auth.py
+│   ├── test_freeswitch_connection.sh
+│   ├── test_gateway_sync.sh
+│   ├── test_rtp_stream.sh
+│   ├── verify_asr_connection.sh
+│   ├── verify_gateway_startup.sh
+│   ├── verify_integration.sh
+│   ├── verify_rtp_connection.sh
+│   └── watch_project_tree.py
+├── src
+│   ├── routes
+│   ├── storage
+│   ├── types
+│   ├── index.ts
+│   └── README_STRUCTURE_AUTO_SYNC.md
+├── tests
+│   ├── conftest.py
+│   ├── test_ai_core_handoff.py
+│   ├── test_console_backend.py
+│   ├── test_dialogue_flow.py
+│   ├── test_generate_initial_greeting.py
+│   ├── test_initial_sequence.py
+│   ├── test_intent_classification.py
+│   ├── test_misunderstanding_guard.py
+│   └── test_production_performance.py
+├── tools
+│   ├── check_process_and_logs.sh
+│   ├── check_rtp_alive.sh
+│   ├── check_rtp_traffic.sh
+│   ├── check_uuid_outfile_contract.sh
+│   ├── diagnose_call_rejection.sh
+│   ├── diagnose_intro_template.sh
+│   ├── __init__.py
+│   ├── inspect_uuid_outfile.sh
+│   ├── monitor_gateway_live.sh
+│   ├── prompt_healthcheck_latest.sh
+│   ├── track_uuid_for_callid_10s.sh
+│   ├── uuid_healthcheck_latest.sh
+│   └── validate_flow.py
+├── tts_test
+│   ├── results
+│   └── reference_texts.json
+├── 127.0.0.1.7002:
+├── =2.31.0
+├── =3.9.0
+├── alembic.ini
+├── asr_handler.py
+├── ASR_RESPONSE_PLAYBACK_ANALYSIS.md
+├── call_console.db
+├── check_call_now.sh
+├── check_sdp.sh
+├── client_loader.py
+├── console_bridge.py
+├── custom_gpt_instructions.txt
+├── gateway_event_listener.py
+├── gateway_service_analysis.md
+├── GITHUB_LOCAL_COMPARISON_REPORT.md
+├── __init__.py
+├── Installs
+├── lib
+├── Makefile
+├── mock_audio_test.py
+├── mock_audio_test_with_real_voice.py
+├── openapi.yaml
+├── package.json
+├── package-lock.json
+├── perfect_silence_test.py
+├── process_csv.py
+├── python3
+├── QUICK_START.md
+├── README.md
+├── requirements.txt
+├── RESTORE_PLAN.md
+├── ROLLBACK.md
+├── rtp_monitor.sh
+├── setup_env.sh
+├── START_SERVERS.sh
+├── systemd_example.service
+├── test_asr_error.sh
+├── test_connection.sh
+├── test_flow.py
+├── test_init.py
+├── TROUBLESHOOTING.md
+├── tsconfig.json
+├── unsubscribe_list.csv
+└── VERSION
 
-================================================================================
-主要コンポーネント説明
-================================================================================
+68 directories, 358 files
+gateway/
+├── asr
+│   ├── asr_audio_processor_precise.py
+│   ├── asr_audio_processor.py
+│   ├── asr_audio_processor_raw.py
+│   ├── asr_batch_handler.py
+│   ├── asr_generator.py
+│   ├── asr_logic.py
+│   ├── asr_manager.py
+│   ├── asr_manager.py.bak
+│   ├── asr_quick_start.py
+│   ├── asr_rtp_buffer.py
+│   ├── asr_stream_handler.py
+│   ├── audio_processor.py
+│   ├── gateway_rtp_protocol.py
+│   ├── google_asr_config.py
+│   ├── google_asr.py
+│   ├── google_asr_stream_helper.py
+│   ├── google_client_wrapper.py
+│   ├── google_stream_asr.py
+│   ├── __init__.py
+│   ├── rtp_force_detector.py
+│   └── rtp_parser.py
+├── audio
+│   ├── audio_manager.py
+│   ├── audio_orchestrator.py
+│   ├── audio_processor.py
+│   ├── audio_utils.py
+│   ├── __init__.py
+│   ├── playback_controller.py
+│   ├── playback_handler.py
+│   ├── playback_manager.py
+│   ├── playback_sequencer.py
+│   ├── tts_sender.py
+│   └── tts_utils.py
+├── common
+│   ├── activity_monitor.py
+│   ├── __init__.py
+│   ├── network_log_monitor.py
+│   ├── network_manager.py
+│   ├── network_port_parser.py
+│   ├── network_socket_server.py
+│   ├── network_ws_handler.py
+│   └── text_utils.py
+├── core
+│   ├── ai_core.py
+│   ├── api_client.py
+│   ├── call_cleanup_helper.py
+│   ├── call_lifecycle_handler.py
+│   ├── call_manager.py
+│   ├── call_session_handler.py
+│   ├── call_session_store.py
+│   ├── call_status_logger.py
+│   ├── call_uuid_manager.py
+│   ├── client_mapper.py
+│   ├── config_loader.py
+│   ├── core_initializer.py
+│   ├── gateway_activity_monitor.py
+│   ├── gateway_component_factory.py
+│   ├── gateway_config_manager.py
+│   ├── gateway_console_manager.py
+│   ├── gateway_esl_manager.py
+│   ├── gateway_event_router.py
+│   ├── gateway_lifecycle_manager.py
+│   ├── gateway_lifecycle_manager.py.bak
+│   ├── gateway_loop_manager.py
+│   ├── gateway_main.py
+│   ├── gateway_resource_controller.py
+│   ├── gateway_utils.py
+│   ├── __init__.py
+│   ├── monitor_manager.py
+│   ├── realtime_gateway.py
+│   ├── resource_manager.py
+│   ├── rtp_handler.py
+│   ├── session_utils.py
+│   ├── state_logic.py
+│   ├── state_store.py
+│   ├── state_update_rules.py
+│   └── state_validators.py
+├── dialogue
+│   ├── dialogue_engine.py
+│   ├── dialogue_flow_engine.py
+│   ├── dialogue_flow.py
+│   ├── dialogue_handler.py
+│   ├── dialogue_handoff.py
+│   ├── dialogue_orchestrator.py
+│   ├── dialogue_phases.py
+│   ├── dialogue_reply_generator.py
+│   ├── flow_definition_loader.py
+│   ├── flow_engine.py
+│   ├── flow_manager.py
+│   ├── flow_transition_rules.py
+│   ├── __init__.py
+│   ├── intent_classifier.py
+│   └── prompt_factory.py
+├── transcript
+│   ├── __init__.py
+│   ├── transcript_db_client.py
+│   ├── transcript_file_manager.py
+│   ├── transcript_handler.py
+│   ├── transcript_merger.py
+│   ├── transcript_normalizer.py
+│   ├── transcript_notifier.py
+│   └── transcript_processor.py
+├── utils
+│   ├── client_config_loader.py
+│   └── __init__.py
+├── asr_controller.py
+├── __init__.py
+├── intent_rules.py
+├── realtime_gateway.py
+└── realtime_gateway.py.backup.20251225_190104
 
-1. Gateway (gateway/)
-   - リアルタイム音声処理の中核
-   - RTP受信・送信、VAD（音声区間検出）、AI呼び出し
-   - FreeSWITCHと連携して通話を処理
-
-1-1. FreeSWITCH Dialplan (freeswitch/)
-   - 段階的アナウンスシステム（sleep+transfer方式）
-   - loopback経由でも安定動作するタイマー制御
-   - 音声ファイル: 8kHz μ-law形式（PCMU/8000）
-   - 動作フロー: combined_intro_8k.wav → 000-004_8k.wav → 000-005_8k.wav → 000-006_8k.wav → 切断
-   - デプロイ先: /usr/local/freeswitch/conf/dialplan/
-
-2. Console Backend (console_backend/)
-   - 管理画面用REST API
-   - 通話履歴・ユーザー管理・統計情報を提供
-   - FastAPI + SQLAlchemy
-
-3. Email Sender (email_sender/)
-   - SendGridを使用した自動メール送信（本番環境）
-   - AWS SESクライアントも実装済み（未使用）
-   - 初回メール + フォローアップ3回を自動送信
-   - APSchedulerで定期実行
-
-4. LP (lp/)
-   - ランディングページ
-   - お問い合わせフォーム・配信停止機能
-
-6. LibertyCall Core (libertycall/)
-   - コア機能（ASR・Intent・TTS統合）
-   - クライアント設定ローダー
-
-
-8. Project State Backend (src/, dist/)
-   - プロジェクト状態管理API（Node.js/Express）
-   - 案件ごとの長期記憶を管理
-   - ポート3000で動作
-   - Nginx経由で /api/projects として公開
-
-================================================================================
-ポート使用状況一覧（2025-12-05更新）
-================================================================================
-
-🚫 ポート番号変更時の注意事項:
-   - ポート番号を変更する前に、必ずこの一覧を確認してください
-   - 既存のポートと競合すると、システムが停止する可能性があります
-   - ポート変更後は、この一覧を更新してください（追記のみ、上書き禁止）
-
-⚠️ 重要: ポート情報は基本的に上書き禁止です。
-⚠️ ポート変更時は既存の記載を削除せず、追記のみ行ってください。
-⚠️ 古いポート情報は「（旧）」などのマークを付けて残してください。
-
-本番環境で使用中のポート:
-
-1. HTTP/HTTPS (Nginx)
-   - 80:   HTTP（HTTPSへのリダイレクト用）
-   - 443:  HTTPS（SSL/TLS）
-   - 用途: libcall.com, console.libcall.com, api.libcall.com
-
-2. Console Backend (FastAPI)
-   - 8001: FastAPI管理画面API
-   - 用途: 通話ログ管理・ユーザー管理API
-   - サービス: liberty_console.service (systemd)
-   - エンドポイント: http://127.0.0.1:8001
-
-4. Project State Backend (Node.js/Express)
-   - 3000: プロジェクト状態管理API
-   - 用途: 案件ごとの状態管理・長期記憶サーバー
-   - エンドポイント: http://127.0.0.1:3000
-   - API: /projects, /projects/:projectId/state
-
-5. Gateway (リアルタイム音声処理)
-   - 7002: RTP受信ポート（config/gateway.yaml）
-   - 用途: FreeSWITCHからの音声データ受信
-   - 8000: ASR Controller API（FastAPI）
-   - 用途: FreeSWITCHからのASR起動通知受信（/asr/start/{uuid}）
-   - 9001: WebSocket接続（AI処理連携）
-   - 用途: ASR/TTS処理との通信
-
-6. FreeSWITCH (PBX)
-   - Dialplan設定: /usr/local/freeswitch/conf/dialplan/
-   - default.xml: 段階アナウンス（sleep+transfer）設定
-   - public.xml: 外線経由の入口（FORCE_PUBLICエントリ）
-   - 音声ファイル: 8kHz μ-law形式（PCMU/8000）
-   - 段階的アナウンス: combined_intro_8k.wav → 000-004_8k.wav → 000-005_8k.wav → 000-006_8k.wav
-
-7. 開発用ポート
-   - 5173: Vite開発サーバー（フロントエンド）
-   - 用途: 開発時のホットリロード
-
-ポート競合チェック:
-- Console Backend (8001) と Project State Backend (3000) は別ポートで動作
-- Gateway ASR Controller (8000) はFreeSWITCHからの通知専用（localhostのみ）
-- Nginxが80/443でリバースプロキシとして動作
-- Gatewayは7002でRTP、8000でASR制御API、9001でWebSocketを使用
-
-Nginx設定:
-- console.libcall.com:
-  - /api/projects → http://127.0.0.1:3000/projects (プロジェクト状態管理API)
-  - /api/logs → http://127.0.0.1:8001/api/logs (FastAPI)
-  - /api/* → http://127.0.0.1:8001 (その他のFastAPIエンドポイント)
-- libcall.com:
-  - /api/* → https://console.libcall.com/api/* (301リダイレクト)
-
-================================================================================
-システム概要
-================================================================================
-
-LibertyCall は、AIを活用した電話自動応対システムです。24時間365日対応で、
-一次受付から要件確認まで自動で行い、必要に応じて担当者へ転送します。
-
-【主要機能】
-
-1. AI電話自動応対
-   - FreeSWITCH（PBX）と連携したリアルタイム音声処理
-   - ASR（音声認識）: Google Cloud Speech-to-Text（本番使用）
-   - WhisperローカルASR（開発/テスト用、本番未使用）
-   - TTS（音声合成）: Google Cloud Text-to-Speech
-   - ルールベースの意図判定（誤案内防止のため自由会話は非対応）
-   - 会話フロー管理（ENTRY → QA → AFTER_085 → CLOSING → HANDOFF → END）
-   - 自動ハンドオフ（担当者への転送）
-
-2. 管理画面
-   - 通話ログの閲覧・検索（クライアントID、日付、通話IDでフィルタリング）
-   - タイムライン形式での通話詳細表示
-   - 統計情報・ダッシュボード
-   - WebSocketによるリアルタイム更新
-
-3. プロジェクト状態管理
-   - 案件ごとの長期記憶管理
-   - タスク・決定事項・問題点・重要ファイルの記録
-
-4. メール自動送信
-   - SendGridを使用した自動メール送信（本番環境）
-   - AWS SESクライアントも実装済み（未使用）
-   - 初回メール + フォローアップ3回を自動送信
-   - 配信停止機能
-
-5. 企業情報収集
-   - Google CSEで企業情報を収集
-   - OpenAIで情報抽出
-   - リードリスト管理
-
-【アーキテクチャ】
-
-┌─────────────────────────────────────────────────────────────┐
-│                    Nginx (443/80)                          │
-│  libcall.com / console.libcall.com / api.libcall.com       │
-└─────────────────────────────────────────────────────────────┘
-                          │
-        ┌─────────────────┼─────────────────┐
-        │                 │                 │
-        ▼                 ▼                 ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│  Frontend    │  │  FastAPI     │  │  Node.js     │
-│  (React)     │  │  (8001)      │  │  (3000)      │
-│  管理画面UI   │  │  通話ログAPI  │  │  プロジェクト │
-│              │  │              │  │  状態管理API  │
-└──────────────┘  └──────────────┘  └──────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Asterisk (PBX)                                 │
-│  SIP着信 → RTP音声ストリーム → Gateway                      │
-└─────────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Gateway (リアルタイム音声処理)                    │
-│  RTP受信 → VAD → ASR → Intent判定 → TTS → RTP送信          │
-│  └─→ AI Core (会話フロー管理・テンプレート選択)                │
-└─────────────────────────────────────────────────────────────┘
-                          │
-        ┌─────────────────┼─────────────────┐
-        │                 │                 │
-        ▼                 ▼                 ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│  Google ASR  │  │  Google TTS  │  │  転送判定     │
-│  (音声認識)   │  │  (音声合成)   │  │  (担当者へ)   │
-└──────────────┘  └──────────────┘  └──────────────┘
-
-【技術スタック】
-
-- バックエンド: Python 3.11+ (FastAPI, FreeSWITCH ESL)
-- フロントエンド: React 18, Vite
-- 音声処理: Google Cloud Speech-to-Text (本番使用), Google TTS
-- その他: WhisperローカルASR (開発/テスト用、本番未使用)
-- データベース: SQLite (通話ログ), JSON (プロジェクト状態)
-- インフラ: Nginx (リバースプロキシ), systemd (サービス管理)
-- その他: Node.js/Express (プロジェクト状態管理API), SendGrid (メール送信)
-
-【会話フロー】
-
-1. ENTRY: 初期フェーズ（最初の発話を待つ）
-2. QA: 質問応答フェーズ（通常の会話・質問への対応）
-3. AFTER_085: フォローアップ（SALES_CALLや通常応答後のフォロー）
-4. CLOSING: クロージング（最終確認・転送判断）
-5. HANDOFF: ハンドオフ開始（担当者転送の開始）
-6. HANDOFF_CONFIRM_WAIT: ハンドオフ確認待ち（転送確認のYES/NO待ち）
-7. HANDOFF_DONE: ハンドオフ完了（転送実行済み）
-8. END: 会話終了（自動切断タイマー60秒）
-
-詳細は `docs/会話フロー一覧.md` を参照してください。
-
-【セキュリティ】
-
-- Nginx Basic認証（管理画面・API）
-- SSL/TLS（Let's Encrypt）
-- 個人情報は保持せず、その場で処理のみ
-- 想定外の内容は全て担当者へ即転送する安全設計
-
-【運用】
-
-- 24時間365日自動対応
-- 通話ログの自動記録・保存
-- ログ分析による応答精度の継続的改善
-- クライアントごとの応答ルール・音声のカスタマイズ対応
-
-================================================================================
-
+8 directories, 104 files

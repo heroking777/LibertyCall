@@ -4,9 +4,32 @@ import asyncio
 import logging
 import sys
 import os
+import time
+
 from pathlib import Path
 from typing import Optional, Tuple, Dict
-import time
+import audioop
+# 【緊急修正】インポートパスを強制的に通す
+sys.path.append('/opt/libertycall')
+
+# サバイバル・インポート
+try:
+    import audioop
+    AUDIOOP_AVAILABLE = True
+    logging.info("audioop module imported successfully")
+except ImportError as e:
+    AUDIOOP_AVAILABLE = False
+    logging.error(f"audioop import failed: {e}")
+    logging.warning("Attempting to install audioop-lts...")
+    try:
+        import subprocess
+        subprocess.run([sys.executable, "-m", "pip", "install", "audioop-lts"], check=True)
+        import audioop
+        AUDIOOP_AVAILABLE = True
+        logging.info("audioop-lts installed and imported successfully")
+    except Exception as install_e:
+        logging.error(f"Failed to install audioop-lts: {install_e}")
+        AUDIOOP_AVAILABLE = False
 try:
     from scapy.all import sniff, IP, UDP
     SCAPY_AVAILABLE = True
@@ -69,6 +92,11 @@ class RealtimeGateway:
     def __init__(self, config: dict, rtp_port_override: Optional[int] = None):
         self.config = config
         self.logger = logging.getLogger(__name__)
+        
+        # ASRプロバイダのデフォルト設定
+        if 'LC_ASR_PROVIDER' not in os.environ:
+            os.environ['LC_ASR_PROVIDER'] = 'google'
+        
         # 起動確認用ログ（修正版が起動したことを示す）
         self.logger.warning("[DEBUG_VERSION] RealtimeGateway initialized with UPDATED LOGGING logic.")
         self.config_manager = GatewayConfigManager(self.logger)
@@ -124,8 +152,13 @@ class RealtimeGateway:
             ns_level_cls=NsLevel,
         )
 
-        # ASRマネージャ初期化
+        # ASRマネージャ初期化前にstream_handlerとbatch_handlerを設定
+        # ダミーハンドラーを設定して初期化エラーを回避
+        self.stream_handler = None
+        self.batch_handler = None
+        
         self.asr_manager = GatewayASRManager(self)
+        self._unmapped_ssrcs: Dict[int, float] = {}
         # Playback/TTSマネージャ初期化
         self.playback_manager = GatewayPlaybackManager(self)
         # TTS/Playback callbacks now available
@@ -137,6 +170,11 @@ class RealtimeGateway:
             "HANGUP_CALLBACK_SET: hangup_callback=%s",
             "set" if self.ai_core.hangup_callback else "none"
         )
+        
+        # Factory呼び出し
+        from .gateway_component_factory import GatewayComponentFactory
+        self.factory = GatewayComponentFactory(self)
+        self.factory.setup_all_components()
 
     async def start(self):
         await self.utils.start()
@@ -208,8 +246,130 @@ class RealtimeGateway:
                 self.logger.error(f"Streaming poll error: {e}", exc_info=True)
             await asyncio.sleep(0.1)  # 100ms間隔でポーリング
 
-    async def handle_rtp_packet(self, data: bytes, addr: Tuple[str, int]):
-        await self.asr_manager.process_rtp_audio(data, addr)
+    async def handle_rtp_packet(self, data: bytes, addr: Tuple[str, int]) -> None:
+        """
+        RTPパケット受信処理
+        SSRCを抽出してcall_idを解決し、ASRManagerに転送
+        """
+        try:
+            # パケット長チェック（RTP最小ヘッダー12バイト）
+            if len(data) < 12:
+                return
+            
+            # RTPバージョン確認（最初のバイトの上位2ビット）
+            version = (data[0] >> 6) & 0x03
+            if version != 2:
+                return
+            
+            # SSRC抽出（8-11バイト目、ビッグエンディアン）
+            ssrc = int.from_bytes(data[8:12], byteorder='big')
+            
+            # call_id解決（ASRManager経由）
+            call_id = None
+            if self.asr_manager:
+                call_id = self.asr_manager.resolve_call_id(ssrc=ssrc, addr=addr)
+            
+            # call_idが見つからない場合の処理
+            if not call_id:
+                # 未登録SSRCの記録（メモリリーク防止付き）
+                if not hasattr(self, '_unmapped_ssrcs'):
+                    self._unmapped_ssrcs = {}
+                
+                # 初回のみログ出力
+                if ssrc not in self._unmapped_ssrcs:
+                    self.logger.debug(
+                        f"\U0001f4e6 Unmapped RTP: ssrc={ssrc:#010x}, addr={addr}. "
+                        f"Waiting for CHANNEL_ANSWER..."
+                    )
+                    self._unmapped_ssrcs[ssrc] = time.time()
+                
+                # 60秒以上前のエントリを削除
+                import time as _time
+                now = _time.time()
+                self._unmapped_ssrcs = {
+                    k: v for k, v in self._unmapped_ssrcs.items()
+                    if now - v < 60
+                }
+                
+                return
+            
+            # RTPペイロード抽出
+            payload = self._extract_rtp_payload(data)
+            if not payload:
+                self.logger.debug(f"Empty RTP payload for call {call_id}")
+                return
+            
+            # ASRManagerに転送
+            await self.asr_manager.process_rtp_audio_for_call(call_id, payload)
+            
+        except Exception as e:
+            self.logger.error(f"\u274c Error in handle_rtp_packet from {addr}: {e}", exc_info=True)
+
+    def _extract_rtp_payload(self, rtp_packet: bytes) -> bytes:
+        """
+        RTPパケットからペイロードを抽出
+        
+        RTPヘッダー構造:
+        - Byte 0: V(2bit)|P(1bit)|X(1bit)|CC(4bit)
+        - Byte 1: M(1bit)|PT(7bit)
+        - Byte 2-3: Sequence Number
+        - Byte 4-7: Timestamp
+        - Byte 8-11: SSRC
+        - Byte 12-: CSRC list (CC個 * 4byte)
+        - 拡張ヘッダー（Xが1の場合）
+        - ペイロード
+        - パディング（Pが1の場合）
+        """
+        try:
+            if len(rtp_packet) < 12:
+                return b''
+            
+            # ビットフラグ抽出
+            padding = (rtp_packet[0] >> 5) & 0x01
+            extension = (rtp_packet[0] >> 4) & 0x01
+            csrc_count = rtp_packet[0] & 0x0F
+            
+            # ヘッダー長計算（基本12バイト + CSRC）
+            header_length = 12 + (csrc_count * 4)
+            
+            # 拡張ヘッダー処理
+            if extension:
+                if len(rtp_packet) < header_length + 4:
+                    self.logger.warning("RTP packet too short for extension header")
+                    return b''
+                
+                # 拡張ヘッダー長（16bitワード単位、オフセット+2から2バイト）
+                ext_length_words = int.from_bytes(
+                    rtp_packet[header_length + 2:header_length + 4],
+                    byteorder='big'
+                )
+                # 拡張ヘッダー全体 = 4バイト固定部 + 可変長部
+                header_length += 4 + (ext_length_words * 4)
+            
+            # ヘッダー長チェック
+            if len(rtp_packet) <= header_length:
+                self.logger.warning(
+                    f"RTP header ({header_length}B) >= packet ({len(rtp_packet)}B)"
+                )
+                return b''
+            
+            # ペイロード抽出
+            payload = rtp_packet[header_length:]
+            
+            # パディング除去
+            if padding and len(payload) > 0:
+                padding_length = payload[-1]
+                # パディング長の妥当性チェック
+                if 0 < padding_length < len(payload):
+                    payload = payload[:-padding_length]
+                else:
+                    self.logger.warning(f"Invalid padding length: {padding_length}")
+            
+            return payload
+            
+        except Exception as e:
+            self.logger.error(f"\u274c Error extracting RTP payload: {e}", exc_info=True)
+            return b''
 
     async def shutdown(self):
         """Graceful shutdown for RTP transport and all resources"""
@@ -233,6 +393,65 @@ class RealtimeGateway:
             return
 
         asyncio.run(coro)
+
+    def _log_unmapped_ssrc(self, ssrc: int, addr: Tuple[str, int]) -> None:
+        now = time.time()
+        last_logged = self._unmapped_ssrcs.get(ssrc)
+        if last_logged is None or (now - last_logged) > 10:
+            self.logger.debug(
+                "[RTP_HANDLER] Unmapped SSRC=0x%08x addr=%s; awaiting CHANNEL_ANSWER",
+                ssrc,
+                addr,
+            )
+            self._unmapped_ssrcs[ssrc] = now
+
+        # クリーンアップ（60秒以上経過したエントリを除去）
+        stale_threshold = now - 60
+        self._unmapped_ssrcs = {
+            key: ts for key, ts in self._unmapped_ssrcs.items() if ts >= stale_threshold
+        }
+
+    def _extract_rtp_payload(self, packet: bytes) -> bytes:
+        try:
+            if len(packet) < 12:
+                return b""
+
+            padding = (packet[0] >> 5) & 0x01
+            extension = (packet[0] >> 4) & 0x01
+            csrc_count = packet[0] & 0x0F
+
+            header_length = 12 + (csrc_count * 4)
+
+            if extension:
+                if len(packet) < header_length + 4:
+                    self.logger.warning("[RTP_HANDLER] Packet too short for extension header")
+                    return b""
+                ext_length_words = int.from_bytes(
+                    packet[header_length + 2: header_length + 4], byteorder="big"
+                )
+                header_length += 4 + (ext_length_words * 4)
+
+            if len(packet) <= header_length:
+                self.logger.warning(
+                    "[RTP_HANDLER] Header length %s exceeds packet size %s",
+                    header_length,
+                    len(packet),
+                )
+                return b""
+
+            payload = packet[header_length:]
+
+            if padding and payload:
+                padding_length = payload[-1]
+                if 0 < padding_length < len(payload):
+                    payload = payload[:-padding_length]
+                else:
+                    self.logger.warning("[RTP_HANDLER] Invalid padding length=%s", padding_length)
+
+            return payload
+        except Exception as exc:
+            self.logger.error("[RTP_HANDLER] Payload extraction failed: %s", exc, exc_info=True)
+            return b""
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import logging
+import subprocess
 
 logger = logging.getLogger(__name__)
 logger.error("!!! CRITICAL_LOAD: ai_core.py is LOADED from /opt/libertycall !!!")
@@ -69,6 +70,8 @@ from .session_utils import (
 from .resource_manager import cleanup_call, cleanup_asr_instance
 from .state_store import get_session_state, reset_session_state, set_call_id
 
+FS_CLI_PATH = os.getenv("FS_CLI_PATH", "/usr/local/freeswitch/bin/fs_cli")
+
 MIN_TEXT_LENGTH_FOR_INTENT = 2  # 「はい」「うん」も判定可能に
 class AICore:
     # キーワードはインスタンス変数として初期化時にJSONから読み込まれる（後方互換性のためクラス変数としても定義）
@@ -119,7 +122,7 @@ class AICore:
         )
     
     def play_template_sequence(self, call_id: str, template_ids: List[str], client_id: Optional[str] = None) -> None:
-        play_template_sequence(call_id, template_ids, client_id=client_id)
+        play_template_sequence(self, call_id, template_ids, client_id=client_id)
     
     def send_playback_request_http(self, call_id: str, audio_file: str) -> None:
         send_playback_request_http(call_id, audio_file)
@@ -375,8 +378,67 @@ class AICore:
     def _on_asr_error(self, call_id: str, error: Exception) -> None:
         on_asr_error(self, call_id, error)
 
-    def on_transcript(self, call_id: str, text: str, is_final: bool = True, **kwargs) -> Optional[str]:
-        return handle_transcript(self, call_id, text, is_final=is_final, **kwargs)
+    def _send_fallback_tone(self, call_id: str) -> None:
+        if not call_id:
+            return
+        tone_cmd = f"uuid_broadcast {call_id} tone_stream://%(1000,0,660) aleg"
+        try:
+            subprocess.run(
+                [FS_CLI_PATH, "-x", tone_cmd],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.logger.warning("[AICORE] Fallback tone triggered: call_id=%s", call_id)
+        except Exception:
+            self.logger.exception("[AICORE] Failed to trigger fallback tone: call_id=%s", call_id)
+
+    def on_transcript(self, *args, **kwargs) -> Optional[str]:
+        """ASR認識結果を受信（Phase2-3暫定実装）"""
+
+        transcript = kwargs.pop("transcript", None)
+        call_id = kwargs.pop("call_id", None)
+        confidence = float(kwargs.pop("confidence", 1.0))
+        is_final_kw = kwargs.pop("is_final", None)
+
+        if args:
+            # 旧シグネチャ互換: (call_id, text, is_final)
+            if call_id is None:
+                call_id = args[0]
+            if len(args) > 1 and transcript is None:
+                transcript = args[1]
+            if len(args) > 2 and is_final_kw is None:
+                is_final_kw = args[2]
+
+        if transcript is None:
+            transcript = kwargs.pop("text", "")
+
+        if call_id is None:
+            call_id = kwargs.get("uuid") or "unknown"
+
+        is_final = True if is_final_kw is None else bool(is_final_kw)
+        transcript = transcript or ""
+
+        self.logger.info(
+            "📝 AICore received: '%s' (final=%s, conf=%.2f, call=%s)",
+            transcript,
+            is_final,
+            confidence,
+            call_id,
+        )
+
+        if is_final and confidence >= 0.6:
+            self.logger.info("🤖 [TODO Phase3] Generate AI response for: '%s'", transcript)
+        else:
+            reason = "interim result" if not is_final else f"low confidence ({confidence:.2f})"
+            self.logger.debug("🔄 Skipping AI response: %s", reason)
+
+        try:
+            return handle_transcript(self, call_id, transcript, is_final=is_final, **kwargs)
+        except Exception as exc:
+            self.logger.exception("[AICORE] on_transcript error: call_id=%s", call_id)
+            self._send_fallback_tone(call_id)
+            return None
     
     def _cleanup_stale_partials(self, max_age_sec: float = 30.0) -> None:
         cleanup_stale_partials(self, max_age_sec=max_age_sec)

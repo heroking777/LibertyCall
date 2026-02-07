@@ -8,11 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+from ..core.gateway_component_factory import GatewayComponentFactory
 from ..core.gateway_lifecycle_manager import GatewayLifecycleManager
 from ..core.gateway_resource_controller import GatewayResourceController
 
 
-IGNORE_RTP_IPS = {"160.251.170.253", "127.0.0.1", "::1"}
+IGNORE_RTP_IPS = {"127.0.0.1", "::1"}
 
 
 class GatewayUtils:
@@ -151,6 +152,11 @@ class GatewayUtils:
         old_call_id = gateway.call_id
         gateway.call_id = None
         gateway.call_start_time = None
+        self.logger.info("[GW_UTILS_FACTORY] creating GatewayComponentFactory")
+        factory = GatewayComponentFactory(self)
+        self.logger.info("[GW_UTILS_FACTORY] invoking setup_all_components")
+        factory.setup_all_components()
+        self.logger.info("[GW_UTILS_FACTORY] setup_all_components completed")
         gateway.user_turn_index = 0
         gateway.call_completed = False
         gateway.transfer_notified = False

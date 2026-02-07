@@ -1,0 +1,53 @@
+{"type": "call_start", "uuid": "41c8c326-f812-45b4-becb-0f7ee1543fea", "client_id": "000", "time": "2026-02-06T18:01:06.152Z"}
+{"type": "asr_interim", "text": "べ", "confidence": 0.0, "time": "2026-02-06T18:01:17.453Z"}
+{"type": "asr_interim", "text": "ベラン", "confidence": 0.0, "time": "2026-02-06T18:01:17.549Z"}
+{"type": "asr_interim", "text": "ベランダ", "confidence": 0.0, "time": "2026-02-06T18:01:17.556Z"}
+{"type": "asr_interim", "text": "ベランダ", "confidence": 0.0, "time": "2026-02-06T18:01:18.145Z"}
+{"type": "asr_interim", "text": "べ", "confidence": 0.0, "time": "2026-02-06T18:01:18.448Z"}
+{"type": "asr_interim", "text": "ベラン", "confidence": 0.0, "time": "2026-02-06T18:01:18.550Z"}
+{"type": "asr_interim", "text": "ベランダ", "confidence": 0.0, "time": "2026-02-06T18:01:18.560Z"}
+{"type": "asr_interim", "text": "ベランダは", "confidence": 0.0, "time": "2026-02-06T18:01:18.752Z"}
+{"type": "asr_interim", "text": "ベランダは", "confidence": 0.0, "time": "2026-02-06T18:01:19.342Z"}
+{"type": "response", "text": "ベランダは", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-06T18:01:20.043Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-06T18:01:20.044Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-06T18:01:21.546Z"}
+{"type": "asr_interim", "text": "ベランダはあり", "confidence": 0.0, "time": "2026-02-06T18:01:22.565Z"}
+{"type": "asr_interim", "text": "ベランダはあります", "confidence": 0.0, "time": "2026-02-06T18:01:22.677Z"}
+{"type": "response", "text": "ベランダはあります", "audio_ids": ["0604"], "phase": "transfer_confirm", "time": "2026-02-06T18:01:23.672Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-06T18:01:23.672Z"}
+{"type": "asr_final", "text": "ベランダはあります", "confidence": 0.22391362488269806, "time": "2026-02-06T18:01:23.673Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-06T18:01:24.074Z"}
+{"type": "asr_interim", "text": " 焼", "confidence": 0.0, "time": "2026-02-06T18:01:31.200Z"}
+{"type": "asr_interim", "text": " 焼け", "confidence": 0.0, "time": "2026-02-06T18:01:31.211Z"}
+{"type": "asr_interim", "text": " 焼けて", "confidence": 0.0, "time": "2026-02-06T18:01:31.390Z"}
+{"type": "asr_interim", "text": " 焼けても", "confidence": 0.0, "time": "2026-02-06T18:01:31.401Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:31.691Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:32.009Z"}
+{"type": "asr_interim", "text": " 窓", "confidence": 0.0, "time": "2026-02-06T18:01:32.010Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:32.097Z"}
+{"type": "asr_interim", "text": " 窓際", "confidence": 0.0, "time": "2026-02-06T18:01:32.097Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:32.293Z"}
+{"type": "asr_interim", "text": " 窓際で", "confidence": 0.0, "time": "2026-02-06T18:01:32.294Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:32.498Z"}
+{"type": "asr_interim", "text": " 窓際でやっ", "confidence": 0.0, "time": "2026-02-06T18:01:32.498Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:32.595Z"}
+{"type": "asr_interim", "text": " 窓際でやって", "confidence": 0.0, "time": "2026-02-06T18:01:32.596Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:32.607Z"}
+{"type": "asr_interim", "text": " 窓際でやっても", "confidence": 0.0, "time": "2026-02-06T18:01:32.608Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:32.712Z"}
+{"type": "asr_interim", "text": " 窓際でやってそんな", "confidence": 0.0, "time": "2026-02-06T18:01:32.713Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:32.790Z"}
+{"type": "asr_interim", "text": " 窓際でやっても そんな", "confidence": 0.0, "time": "2026-02-06T18:01:32.791Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:32.998Z"}
+{"type": "asr_interim", "text": " 窓際でやってもそんな変わら", "confidence": 0.0, "time": "2026-02-06T18:01:32.999Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:33.010Z"}
+{"type": "asr_interim", "text": " 窓際でやってもそんな変わらない", "confidence": 0.0, "time": "2026-02-06T18:01:33.010Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:33.322Z"}
+{"type": "asr_interim", "text": " 窓際でやってもそんな変わらないん", "confidence": 0.0, "time": "2026-02-06T18:01:33.323Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな", "confidence": 0.0, "time": "2026-02-06T18:01:33.385Z"}
+{"type": "asr_interim", "text": " 窓際でやってもそんな変わらないんです", "confidence": 0.0, "time": "2026-02-06T18:01:33.385Z"}
+{"type": "asr_interim", "text": " 焼けてもそんな 窓際でやってもそんな変わらないんです", "confidence": 0.0, "time": "2026-02-06T18:01:33.996Z"}
+{"type": "response", "text": "焼けてもそんな 窓際でやってもそんな変わらないんです", "audio_ids": ["114"], "phase": "transfer_confirm", "time": "2026-02-06T18:01:34.905Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-06T18:01:34.906Z"}
+{"type": "asr_final", "text": " 焼けてもそんな 窓際でやってもそんな変わらないんです", "confidence": 0.19693291187286377, "time": "2026-02-06T18:01:34.907Z"}
+{"type": "call_end", "uuid": "41c8c326-f812-45b4-becb-0f7ee1543fea", "duration": 29.2, "time": "2026-02-06T18:01:35.316Z"}

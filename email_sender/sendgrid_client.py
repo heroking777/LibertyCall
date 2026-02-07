@@ -11,8 +11,8 @@ from sendgrid.helpers.mail import Mail, Attachment, TrackingSettings, ClickTrack
 from dotenv import load_dotenv
 from pathlib import Path
 
-# .envファイルを読み込む（絶対パスで指定、Webルート外）
-env_path = Path(__file__).parent.parent / ".env"
+# .envファイルを読み込む（絶対パスで指定、email_senderディレクトリ内）
+env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")

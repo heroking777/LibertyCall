@@ -1,0 +1,708 @@
+# === AF RAW MODE ADDON (nohang) ===
+import asyncio
+import binascii
+import json
+import logging
+import os
+import queue
+import socketserver
+import struct
+import sys
+import threading
+import time
+from datetime import datetime
+
+import websockets
+from google.cloud import speech
+from websockets import exceptions as ws_exceptions
+
+from speech_client_manager import SpeechClientManager
+RAW_HOST = os.environ.get("AF_RAW_HOST", "127.0.0.1")
+RAW_PORT = int(os.environ.get("AF_RAW_PORT", "9002"))
+RAW_LOG  = os.environ.get("AF_RAW_LOG", "/var/log/asr-ws-sink.raw.log")
+
+class _RawHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        try:
+            peer = self.request.getpeername()
+        except Exception:
+            peer = ("?", 0)
+        with open(RAW_LOG, "a", encoding="utf-8") as f:
+            f.write(f"[AF_RAW] connect {peer}\n")
+        buf = b""
+        try:
+            self.request.settimeout(2.0)
+            buf = self.request.recv(16) or b""
+        except Exception:
+            pass
+        with open(RAW_LOG, "a", encoding="utf-8") as f:
+            f.write(f"[AF_RAW] first16={buf!r}\n")
+        total = len(buf)
+        start = time.time()
+        try:
+            while True:
+                if time.time() - start > 3.0:
+                    break
+                self.request.settimeout(0.5)
+                chunk = self.request.recv(4096)
+                if not chunk:
+                    break
+                total += len(chunk)
+        except Exception:
+            pass
+        with open(RAW_LOG, "a", encoding="utf-8") as f:
+            f.write(f"[AF_RAW] done {peer} bytes={total}\n")
+        try:
+            self.request.close()
+        except Exception:
+            pass
+
+class _ReusableTCPServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+
+def start_raw_server():
+    srv = _ReusableTCPServer((RAW_HOST, RAW_PORT), _RawHandler)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    return srv
+
+AF_DUMP_MAX_FRAMES = 5
+AF_DUMP_MAX_BYTES  = 64
+_af_frame_count = 0
+
+def _af_hex(b: bytes) -> str:
+    if b is None:
+        return ""
+    b = b[:AF_DUMP_MAX_BYTES]
+    return binascii.hexlify(b).decode("ascii")
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s %(name)s: %(message)s', stream=sys.stdout)
+logger_ws = logging.getLogger('websockets')
+logger_ws.setLevel(logging.DEBUG)
+logger_ws.addHandler(logging.StreamHandler(sys.stdout))
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+GASR_SAMPLE_RATE = int(os.environ.get("GASR_SAMPLE_RATE", "8000"))
+GASR_LANGUAGE = os.environ.get("GASR_LANGUAGE", "ja-JP")
+GASR_OUTPUT_DIR = os.environ.get("GASR_OUTPUT_DIR", "/tmp")
+
+def _extract_uuid_from_path(path):
+    if not path:
+        return "unknown"
+    trimmed = path.strip("/")
+    if not trimmed:
+        return "unknown"
+    parts = trimmed.split("/")
+    if parts[0] == "u" and len(parts) >= 2:
+        candidate = parts[1]
+    else:
+        candidate = parts[-1]
+    candidate = candidate.strip()
+    if not candidate:
+        return "unknown"
+    return "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in candidate) or "unknown"
+
+class SilenceHandler:
+    def __init__(self, uuid, client_id="000"):
+        self.uuid = uuid
+        self.client_id = client_id
+        self.last_speech_time = None
+        self.prompt_count = 0
+        self.is_running = True
+        self.esl = None
+        self._connect_esl()
+        self._timer_thread = None
+
+    def _connect_esl(self):
+        try:
+            sys.path.insert(0, '/opt/libertycall')
+            from libs.esl.ESL import ESLconnection
+            self.esl = ESLconnection("127.0.0.1", "8021", "ClueCon")
+            if not self.esl.connected():
+                logger.error("[SILENCE] ESL connection failed uuid=%s", self.uuid)
+                self.esl = None
+        except Exception as e:
+            logger.error("[SILENCE] ESL error uuid=%s err=%s", self.uuid, e)
+            self.esl = None
+
+    def _play_audio(self, filename):
+        if not self.esl or not self.esl.connected():
+            logger.warning("[SILENCE] ESL not connected uuid=%s", self.uuid)
+            return False
+        audio_path = f"/opt/libertycall/clients/{self.client_id}/audio/{filename}"
+        cmd = f"uuid_broadcast {self.uuid} {audio_path} aleg"
+        try:
+            result = self.esl.api(cmd)
+            logger.info("[SILENCE] play uuid=%s file=%s result=%s", self.uuid, filename, result.getBody() if result else "None")
+            
+            # ASR反応フラグを作成してLuaスクリプトに通知
+            if result and result.getBody().startswith('+OK'):
+                try:
+                    flag_path = f"/tmp/asr_response_{self.uuid}.flag"
+                    with open(flag_path, 'w') as f:
+                        f.write(str(time.time()))
+                    logger.info("[ASR_FLAG] Created: %s", flag_path)
+                except Exception as e:
+                    logger.warning("[ASR_FLAG] Failed to create: %s", e)
+            
+            return True
+        except Exception as e:
+            logger.error("[SILENCE] play error uuid=%s err=%s", self.uuid, e)
+            return False
+
+    def _hangup(self):
+        if not self.esl or not self.esl.connected():
+            return
+        try:
+            result = self.esl.api(f"uuid_kill {self.uuid}")
+            logger.info("[SILENCE] hangup uuid=%s result=%s", self.uuid, result.getBody() if result else "None")
+        except Exception as e:
+            logger.error("[SILENCE] hangup error uuid=%s err=%s", self.uuid, e)
+
+    def _timer_loop(self):
+        while self.is_running:
+            time.sleep(1)
+            if self.last_speech_time is None:
+                continue
+            elapsed = time.time() - self.last_speech_time
+            if elapsed >= 10:
+                if self.prompt_count == 0:
+                    logger.info("[SILENCE] prompt1 uuid=%s elapsed=%.1f", self.uuid, elapsed)
+                    self._play_audio("prompt_001_8k.wav")
+                    self.prompt_count = 1
+                    self.last_speech_time = time.time()
+                elif self.prompt_count == 1:
+                    logger.info("[SILENCE] prompt2 uuid=%s elapsed=%.1f", self.uuid, elapsed)
+                    self._play_audio("prompt_002_8k.wav")
+                    self.prompt_count = 2
+                    self.last_speech_time = time.time()
+                elif self.prompt_count == 2:
+                    logger.info("[SILENCE] prompt3 uuid=%s elapsed=%.1f", self.uuid, elapsed)
+                    self._play_audio("prompt_003_8k.wav")
+                    self.prompt_count = 3
+                    time.sleep(17)
+                    self.last_speech_time = time.time()
+                elif self.prompt_count >= 3:
+                    logger.info("[SILENCE] timeout uuid=%s elapsed=%.1f", self.uuid, elapsed)
+                    self._hangup()
+                    self.is_running = False
+                    break
+
+    def reset_timer(self):
+        self.last_speech_time = time.time()
+        self.prompt_count = 0
+        logger.info("[SILENCE] timer_reset uuid=%s", self.uuid)
+
+    def play_greeting(self, gasr_session=None):
+        self._play_audio("000.wav")
+        time.sleep(5)
+        self._play_audio("001.wav")
+        time.sleep(2)
+        self._play_audio("002.wav")
+        time.sleep(2)
+        if gasr_session:
+            gasr_session.unmute()
+        self.start_timer()
+
+    def start_timer(self):
+        self.last_speech_time = time.time()
+        self.prompt_count = 0
+        self._timer_thread = threading.Thread(target=self._timer_loop, daemon=True)
+        self._timer_thread.start()
+        logger.info("[SILENCE] timer_started uuid=%s", self.uuid)
+
+    def stop(self):
+        self.is_running = False
+
+class GoogleStreamingSession:
+    def __init__(self, uuid, client_id="000"):
+        self.uuid = uuid or "unknown"
+        self.client_id = client_id
+        self.language = GASR_LANGUAGE
+        self.sample_rate = GASR_SAMPLE_RATE
+        self.output_path = os.path.join(GASR_OUTPUT_DIR, f"asr_{self.uuid}.jsonl")
+        os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
+        self.queue = queue.Queue()
+        self._stop_requested = threading.Event()
+        self._closed = threading.Event()
+        self.muted = True
+        self._current_phase = "QA"
+        self._dialog_state = {}
+        self._accumulated_text = ""
+        self._silence_timer = None
+        self._is_playing = False
+        self.client = speech.SpeechClient()
+        
+        # ESL接続を事前に作成
+        self._esl = None
+        self._connect_esl()
+        
+        self.streaming_config = speech.StreamingRecognitionConfig(
+            config=speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+                sample_rate_hertz=self.sample_rate,
+                language_code=self.language,
+                enable_automatic_punctuation=False,
+            ),
+            interim_results=True,
+            single_utterance=False,
+        )
+        logger.info("[GASR] session_open uuid=%s config=LINEAR16/%s/%s", self.uuid, self.sample_rate, self.language)
+
+    def send_audio(self, chunk):
+        if self._stop_requested.is_set() or not chunk:
+            return
+        
+        if self.muted:
+            return
+        
+        # 最初のチャンク受信時刻を記録
+        if not hasattr(self, '_first_audio_time'):
+            self._first_audio_time = time.time()
+            logger.info("[TIMING] first_audio_received uuid=%s time=%.3f", self.uuid, self._first_audio_time)
+        
+        self.queue.put(chunk)
+        
+        # キューサイズを定期的にログ出力（100チャンク毎）
+        if not hasattr(self, '_chunk_count'):
+            self._chunk_count = 0
+        self._chunk_count += 1
+        if self._chunk_count % 100 == 0:
+            qsize = self.queue.qsize()
+            logger.info("[QUEUE] uuid=%s chunk_count=%d queue_size=%d", self.uuid, self._chunk_count, qsize)
+        
+        # 自前無音検知（エラーを握りつぶす）
+        try:
+            self._detect_silence(chunk)
+        except Exception as e:
+            logger.warning("[SILENCE_DETECT] error uuid=%s err=%s", self.uuid, e)
+
+    def close(self):
+        if not self._stop_requested.is_set():
+            self._stop_requested.set()
+            self.queue.put(None)
+        self._closed.wait(timeout=5)
+
+    def _request_generator(self):
+        first_chunk = True
+        while True:
+            chunk = self.queue.get()
+            dequeue_time = time.time()
+            
+            if chunk is None:
+                break
+            if not chunk:
+                continue
+            
+            # 最初のチャンク取得時にキューが溜まっていたらフラッシュ
+            if first_chunk:
+                first_audio = getattr(self, '_first_audio_time', dequeue_time)
+                queue_latency = dequeue_time - first_audio
+                logger.info("[TIMING] first_chunk_dequeued uuid=%s queue_latency=%.3fs", self.uuid, queue_latency)
+                
+                # キューに溜まった古いデータを捨てる
+                flushed = 0
+                while not self.queue.empty():
+                    try:
+                        old_chunk = self.queue.get_nowait()
+                        if old_chunk is None:
+                            self.queue.put(None)  # 終了シグナルは戻す
+                            break
+                        flushed += 1
+                    except:
+                        break
+                if flushed > 0:
+                    logger.info("[QUEUE_FLUSH] uuid=%s flushed=%d chunks", self.uuid, flushed)
+                
+                first_chunk = False
+            
+            yield speech.StreamingRecognizeRequest(audio_content=chunk)
+
+    def _consume_responses(self):
+        logger.info("[GASR] _consume_responses started uuid=%s", self.uuid)
+        try:
+            responses = self.client.streaming_recognize(self.streaming_config, requests=self._request_generator())
+            logger.info("[GASR] got responses iterator uuid=%s", self.uuid)
+            for response in responses:
+                self._handle_response(response)
+        except Exception as exc:
+            logger.exception("[GASR] error uuid=%s detail=%s", self.uuid, exc)
+        finally:
+            logger.info("[GASR] _consume_responses finished uuid=%s", self.uuid)
+            self._closed.set()
+
+    def _handle_response(self, response):
+        recv_time = time.time()
+        for result in response.results:
+            if not result.alternatives:
+                continue
+            alt = result.alternatives[0]
+            text = alt.transcript or ""
+            tag = "final" if result.is_final else "interim"
+            
+            # 発話開始時刻を記録（interimの最初で記録）
+            if not hasattr(self, '_utterance_start_time') or self._utterance_start_time is None:
+                self._utterance_start_time = recv_time
+            
+            latency = recv_time - self._utterance_start_time
+            logger.info('[TIMING] transcript_%s uuid=%s latency=%.3fs text="%s"', tag, self.uuid, latency, text)
+            
+            # interimテキストを保存
+            if not result.is_final:
+                self._last_interim_text = text
+            
+            if result.is_final:
+                self._utterance_start_time = None
+                self._last_interim_text = ''
+            
+            self._append_transcript(result.is_final, text, alt.confidence)
+
+    def _detect_silence(self, chunk):
+        """音声チャンクの振幅を見て無音を検知"""
+        # LINEAR16 (16-bit signed) の振幅を計算
+        try:
+            samples = struct.unpack(f'<{len(chunk)//2}h', chunk)
+            amplitude = sum(abs(s) for s in samples) / len(samples)
+        except:
+            return
+        
+        # 閾値（調整可能）
+        SILENCE_THRESHOLD = 500
+        SILENCE_DURATION = 0.5   # 0.25から変更（誤反応防止のため）
+        
+        now = time.time()
+        
+        if amplitude < SILENCE_THRESHOLD:
+            if not hasattr(self, '_silence_start') or self._silence_start is None:
+                self._silence_start = now
+            
+            silence_duration = now - self._silence_start
+            
+            if silence_duration >= SILENCE_DURATION:
+                self._trigger_interim_response()
+        else:
+            self._silence_start = None
+            self._is_speaking = True
+
+    def _trigger_interim_response(self):
+        """無音検知で即応答（interimテキストを使用）"""
+        if not getattr(self, '_is_speaking', False):
+            return
+        
+        interim_text = getattr(self, '_last_interim_text', '')
+        if interim_text and len(interim_text) >= 3:
+            responded = getattr(self, '_responded_text', '')
+            if not responded or (interim_text not in responded and responded not in interim_text):
+                trigger_time = time.time()
+                logger.info("[SILENCE_DETECT] uuid=%s responding_with_interim text=%r", self.uuid, interim_text)
+                self._responded_text = interim_text
+                if hasattr(self, 'silence_handler') and self.silence_handler:
+                    self.silence_handler.reset_timer()
+                self._handle_dialog(interim_text)
+                dialog_time = time.time()
+                logger.info("[TIMING] dialog_complete uuid=%s duration=%.3fs", self.uuid, dialog_time - trigger_time)
+        
+        self._is_speaking = False
+        self._silence_start = None
+
+    def _connect_esl(self):
+        """ESL接続を作成"""
+        try:
+            sys.path.insert(0, '/opt/libertycall')
+            from libs.esl.ESL import ESLconnection
+            self._esl = ESLconnection("127.0.0.1", "8021", "ClueCon")
+            if self._esl.connected():
+                logger.info("[ESL] connected uuid=%s", self.uuid)
+            else:
+                logger.error("[ESL] connection failed uuid=%s", self.uuid)
+                self._esl = None
+        except Exception as e:
+            logger.error("[ESL] error uuid=%s err=%s", self.uuid, e)
+            self._esl = None
+
+    def unmute(self):
+        self.muted = False
+        logger.info("[GASR] unmuted uuid=%s", self.uuid)
+        
+        # unmute時にストリーミングを事前開始
+        if not hasattr(self, '_stream_started'):
+            self._stream_started = True
+            self._thread = threading.Thread(target=self._consume_responses, daemon=True)
+            self._thread.start()
+            logger.info("[GASR] streaming_prestarted uuid=%s", self.uuid)
+
+    def _apply_replacements(self, text):
+        """テキストの置換ルール適用"""
+        return text
+    
+    def is_same_utterance(self, t1, t2):
+        """同じ発話かどうかを判定（部分一致を含む）"""
+        if not t1 or not t2:
+            return False
+        return t1 in t2 or t2 in t1
+    
+    def _append_transcript(self, is_final, transcript, confidence):
+        """音声認識結果を蓄積し、必要に応じて応答"""
+        try:
+            logger.info("[APPEND_TRANSCRIPT_START] uuid=%s is_final=%s transcript=%r", 
+                       self.uuid, is_final, transcript)
+            
+            if not transcript or not transcript.strip():
+                return
+            
+            # クリーニング
+            cleaned = transcript.strip()
+            
+            # 置換ルール適用
+            cleaned = self._apply_replacements(cleaned)
+            
+            last_text = getattr(self, '_last_text', '')
+            responded_text = getattr(self, '_responded_text', '')
+            
+            # 同じ発話かどうかを判定
+            is_same = self.is_same_utterance(cleaned, last_text) or \
+                       (responded_text and self.is_same_utterance(cleaned, responded_text))
+            
+            # 完全に別の発話 & 前回テキストが2文字以上ある場合のみ割り込み
+            logger.info("[INTERRUPT_CHECK] uuid=%s _is_playing=%s is_same=%s last_text=%r len=%d", 
+                       self.uuid, self._is_playing, is_same, last_text, len(last_text) if last_text else 0)
+            if self._is_playing and not is_same and last_text and len(last_text) >= 2:
+                logger.info("[INTERRUPT_TRIGGERED] uuid=%s", self.uuid)
+                self._stop_current_playback()
+                self._responded_text = ''  # 応答済みをリセット
+                logger.info("[INTERRUPT] uuid=%s new=%r old=%r", self.uuid, cleaned, last_text)
+            self._last_text = cleaned
+            
+            # interimでもfinalでも蓄積してタイマー開始
+            self._accumulated_text = cleaned  # 最新のテキストで上書き（interimは途中経過なので）
+            logger.info("[ACCUMULATE] uuid=%s text=%r is_final=%s", self.uuid, cleaned, is_final)
+            self._start_silence_timer()
+            
+            logger.info("[APPEND_TRANSCRIPT_END] uuid=%s", self.uuid)
+        except Exception as e:
+            logger.error("[APPEND_TRANSCRIPT_ERROR] uuid=%s error=%s", self.uuid, e)
+    
+    def _start_silence_timer(self):
+        """0.5秒の沈黙タイマーを開始。既存タイマーはキャンセル"""
+        if self._silence_timer:
+            self._silence_timer.cancel()
+        self._silence_timer = threading.Timer(0.3, self._on_silence_timeout)
+        self._silence_timer.start()
+    
+    def _on_silence_timeout(self):
+        """0.5秒沈黙後に呼ばれる。蓄積テキストで応答"""
+        if not self._accumulated_text:
+            return
+        text = self._accumulated_text.strip()
+        self._accumulated_text = ""
+        if len(text) < 2:
+            logger.info("[SILENCE_SKIP] uuid=%s text=%r (too short)", self.uuid, text)
+            return
+        # 既に応答済みのテキスト（または部分一致）なら再応答しない
+        responded = getattr(self, '_responded_text', '')
+        if responded and (text in responded or responded in text):
+            logger.info("[SKIP_DUPLICATE] uuid=%s text=%r already_responded=%r", self.uuid, text, responded)
+            return
+        logger.info("[SILENCE_RESPONSE] uuid=%s text=%r", self.uuid, text)
+        self._responded_text = text  # 応答済みテキストを記憶
+        if hasattr(self, 'silence_handler') and self.silence_handler:
+            self.silence_handler.reset_timer()
+        self._handle_dialog(text)
+        
+        # 応答後、2秒後にresponded_textをクリア
+        def _clear_responded():
+            self._responded_text = ''
+            logger.info("[CLEAR_RESPONDED] uuid=%s", self.uuid)
+        
+        threading.Timer(2.0, _clear_responded).start()
+    
+    def _stop_current_playback(self):
+        """現在再生中の音声を停止（割り込み用）"""
+        try:
+            if hasattr(self, '_esl') and self._esl and self._esl.connected():
+                result = self._esl.api(f"uuid_break {self.uuid}")
+                logger.info("[INTERRUPT] uuid=%s result=%s", self.uuid, result.getBody() if result else "None")
+        except Exception as e:
+            logger.warning("[INTERRUPT] error uuid=%s err=%s", self.uuid, e)
+
+    def _load_voice_list(self):
+        """voice_list_000.tsvを読み込んでID→文言のマッピングを返す"""
+        if hasattr(self, '_voice_map'):
+            return self._voice_map
+        self._voice_map = {}
+        try:
+            with open('/opt/libertycall/clients/000/voice_list_000.tsv', 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split('	')
+                    if len(parts) >= 2:
+                        self._voice_map[parts[0]] = parts[1]
+        except Exception as e:
+            logger.warning("[VOICE] Failed to load voice_list: %s", e)
+        return self._voice_map
+
+    def _handle_dialog(self, transcript):
+        logger.info("[DIALOG_START] uuid=%s transcript=%r", self.uuid, transcript)
+        try:
+            sys.path.insert(0, '/opt/libertycall')
+            from libs.esl.ESL import ESLconnection
+            from gateway.dialogue.dialogue_flow import get_response
+            logger.info("[DIALOG_IMPORT] uuid=%s import success", self.uuid)
+            voice_map = self._load_voice_list()
+            logger.info("[DIALOG_VOICE_MAP] uuid=%s voice_map loaded", self.uuid)
+            
+            # dialogue_flowで応答を取得
+            logger.info("[DIALOG_GET_RESPONSE] uuid=%s calling get_response", self.uuid)
+            audio_ids, phase, state = get_response(
+                text=transcript,
+                phase=self._current_phase,
+                state=self._dialog_state,
+                client_id=self.client_id
+            )
+            logger.info("[DIALOG_AFTER_RESPONSE] uuid=%s audio_ids=%s phase=%s", self.uuid, audio_ids, phase)
+            logger.info("[DIALOG_BEFORE_STATE_UPDATE] uuid=%s", self.uuid)
+            self._current_phase = phase
+            self._dialog_state = state
+            logger.info("[DIALOG_AFTER_STATE_UPDATE] uuid=%s", self.uuid)
+            logger.info("[DIALOG_BEFORE_RESPONSE_LOG] uuid=%s", self.uuid)
+            
+            # 強制的にファイルに書き込み
+            with open('/tmp/dialog_response_test.log', 'a') as f:
+                f.write(f"{self.uuid} client={self.client_id} RESPONSE: input='{transcript}' audio={audio_ids} phase={phase}\n")
+            
+            logger.info('[RESPONSE] input="%s" → audio=%s phase=%s', transcript.replace('"', "'"), audio_ids, phase)
+            logger.info("[DIALOG_AFTER_RESPONSE_LOG] uuid=%s", self.uuid)
+            
+            # ESL接続チェック（再作成ではなく、再接続のみ）
+            if not self._esl or not self._esl.connected():
+                logger.warning("[ESL] reconnecting uuid=%s", self.uuid)
+                self._connect_esl()
+            
+            try:
+                logger.info("[DIALOG_BEFORE_CONNECTED_CHECK] uuid=%s", self.uuid)
+                if self._esl and self._esl.connected():
+                    logger.info("[DIALOG_CONNECTED] uuid=%s", self.uuid)
+                    if audio_ids:
+                        logger.info("[DIALOG_BEFORE_PLAY] uuid=%s audio_ids=%s", self.uuid, audio_ids)
+                        self._is_playing = True
+                        self._playback_end_time = time.time()
+                        
+                        for audio_id in audio_ids:
+                            template = str(audio_id).zfill(3)
+                            audio_path_8k = f"/dev/shm/audio/{template}_8k.wav"
+                            ram_audio_path = f"/dev/shm/audio/{template}.wav"
+                            import os
+                            if os.path.exists(audio_path_8k):
+                                audio_path = audio_path_8k
+                            elif os.path.exists(ram_audio_path):
+                                audio_path = ram_audio_path
+                            else:
+                                audio_path = f"/opt/libertycall/clients/000/audio/{template}.wav"
+                            
+                            try:
+                                file_size = os.path.getsize(audio_path)
+                                audio_duration = max((file_size - 44) / 16000, 0.5)
+                            except:
+                                audio_duration = 2.0
+                            
+                            logger.info("[DIALOG_PLAYING] uuid=%s template=%s path=%s duration=%.2fs", self.uuid, template, audio_path, audio_duration)
+                            
+                            broadcast_start = time.time()
+                            result = self._esl.api(f"uuid_broadcast {self.uuid} {audio_path} aleg")
+                            broadcast_end = time.time()
+                            logger.info("[TIMING] uuid_broadcast uuid=%s duration=%.3fs", self.uuid, broadcast_end - broadcast_start)
+                            
+                            phrase = voice_map.get(template, "???")
+                            status = "OK" if result and "+OK" in str(result.getBody()) else "NG"
+                            logger.info("[PLAY] %s.wav → %s 「%s」", template, status, phrase)
+                            
+                            self._playback_end_time = time.time() + audio_duration
+                        
+                        def _clear_playing():
+                            wait_time = self._playback_end_time - time.time()
+                            if wait_time > 0:
+                                time.sleep(wait_time)
+                            self._is_playing = False
+                            logger.info("[PLAY_END] uuid=%s", self.uuid)
+                        
+                        import threading
+                        threading.Thread(target=_clear_playing, daemon=True).start()
+                        logger.info("[DIALOG_PLAY_STARTED] uuid=%s end_time=%.3f", self.uuid, self._playback_end_time)
+                    else:
+                        logger.info("[DIALOG_NO_AUDIO_IDS] uuid=%s", self.uuid)
+                else:
+                    logger.info("[DIALOG_NOT_CONNECTED] uuid=%s", self.uuid)
+            except Exception as e:
+                logger.error("[DIALOG_EXCEPTION] uuid=%s error=%s", self.uuid, e)
+        except Exception as e:
+            logger.error("[DIALOG] error uuid=%s err=%s", self.uuid, e)
+            # エラー時フォールバック
+            try:
+                if hasattr(self, '_esl') and self._esl and self._esl.connected():
+                    audio_path = "/opt/libertycall/clients/000/audio/004.wav"
+                    result = self._esl.api(f"uuid_broadcast {self.uuid} {audio_path} aleg")
+                    logger.info("[PLAY] uuid=%s template=004(fallback) result=%s", self.uuid, result.getBody() if result else "None")
+            except:
+                pass
+
+class WSSinkServer:
+    def __init__(self):
+        self.connections = {}
+
+    async def handle_client(self, websocket):
+        global _af_frame_count
+        path = getattr(websocket, "path", None)
+        call_uuid = _extract_uuid_from_path(path)
+        conn_id = str(id(websocket))
+        logger.error(f"[AF_WS] connected conn={conn_id} path={path}")
+        gasr_session = None
+        silence_handler = None
+        try:
+            gasr_session = GoogleStreamingSession(call_uuid, client_id="000")
+            silence_handler = SilenceHandler(call_uuid, client_id="000")
+            gasr_session.silence_handler = silence_handler
+            silence_handler.play_greeting(gasr_session)
+        except Exception as exc:
+            logger.exception("[GASR] session_init_failed uuid=%s err=%s", call_uuid, exc)
+            return
+        total = 0
+        try:
+            async for message in websocket:
+                if isinstance(message, str) and message.strip() == "{}":
+                    await websocket.send('{"ok":true}')
+                    continue
+                if not isinstance(message, (bytes, bytearray)):
+                    continue
+                total += len(message)
+                if gasr_session:
+                    # logger.info("[AF_WS] audio_received uuid=%s size=%d", call_uuid, len(message))
+                    gasr_session.send_audio(bytes(message))
+        except Exception as e:
+            logger.info(f"[AF_WS] conn={conn_id} closed {type(e).__name__}")
+        finally:
+            logger.error(f"[AF_WS] disconnected conn={conn_id} total={total}")
+            if silence_handler:
+                silence_handler.stop()
+            if gasr_session:
+                gasr_session.close()
+
+async def main():
+    logger.error("Starting WSSink server on ws://0.0.0.0:9000/")
+    from speech_client_manager import warmup_speech_client
+    await warmup_speech_client()
+    async def periodic_warmup():
+        while True:
+            await asyncio.sleep(60)
+            await warmup_speech_client()
+    asyncio.create_task(periodic_warmup())
+    server = WSSinkServer()
+    server_instance = await websockets.serve(server.handle_client, host="0.0.0.0", port=9000, ping_interval=None, max_size=None)
+    logger.error("WSSink server started successfully")
+    await server_instance.wait_closed()
+
+if __name__ == "__main__":
+    _raw_srv = start_raw_server()
+    asyncio.run(main())

@@ -6,12 +6,44 @@ import logging
 import queue
 import threading
 import time
-from typing import Callable, Iterable, Optional
+from typing import Callable, Iterable, Optional, TYPE_CHECKING
 
 from .google_asr_config import cloud_speech
 
+# --- HELPER BUILD FINGERPRINT (must appear on import) ---
+import os, hashlib, time
+
+
+def _sha1_12(path: str) -> str:
+    try:
+        with open(path, "rb") as f:
+            return hashlib.sha1(f.read()).hexdigest()[:12]
+    except Exception:
+        return "sha1_err"
+
+
+HELPER_SIG = "GASR_ROUTE_V3_CALLLOG_20260128"  # ←好きな一意文字列でOK
+
+
+try:
+    _p = __file__
+    _mtime = os.path.getmtime(_p)
+    _sha = _sha1_12(_p)
+    # logger がまだ無い可能性あるので print で確実に /tmp/ws_sink.log に落とす
+    print(f"[HELPER_SIG] sig={HELPER_SIG} file={_p} mtime={_mtime} sha1={_sha}", flush=True)
+except Exception as e:
+    print(f"[HELPER_SIG_ERR] {type(e).__name__} {e}", flush=True)
+# --- /HELPER BUILD FINGERPRINT ---
+
 KEEPALIVE_EMPTY_CHUNK_INTERVAL = 10
 QUEUE_GET_TIMEOUT_SEC = 0.1
+
+# 【100%確実ガード】グローバルConfig送信済みフラグ
+_config_sent_calls = set()
+_config_lock = threading.Lock()
+
+if TYPE_CHECKING:
+    from .google_asr import AudioFlowStats
 
 
 class StreamRecoveryPolicy:
@@ -29,6 +61,68 @@ class StreamRecoveryPolicy:
         self._attempt = 0
 
 
+def ensure_config_first(
+    audio_iter: Iterable["cloud_speech.StreamingRecognizeRequest"],
+    streaming_config: "cloud_speech.StreamingRecognitionConfig",
+    logger: logging.Logger,
+    call_id_getter: Optional[Callable[[], str]] = None,
+    flow_stats: Optional["AudioFlowStats"] = None,
+) -> Iterable["cloud_speech.StreamingRecognizeRequest"]:
+    call_id = call_id_getter() if call_id_getter else "unknown"
+    seq = 0
+    audio_count = 0
+    audio_bytes = 0
+
+    def log_req(req, note: str) -> "cloud_speech.StreamingRecognizeRequest":
+        nonlocal seq
+        audio_len = len(req.audio_content) if getattr(req, "audio_content", None) else 0
+        req_type = "CONFIG" if getattr(req, "streaming_config", None) else ("AUDIO" if audio_len else "OTHER")
+        logger.error(
+            "[REQTRACE] seq=%d type=%s bytes=%d note=%s",
+            seq,
+            req_type,
+            audio_len,
+            note,
+        )
+        if flow_stats:
+            if req_type == "CONFIG":
+                flow_stats.add_req_cfg()
+            elif req_type == "AUDIO" and audio_len:
+                flow_stats.add_req_audio(audio_len)
+        seq += 1
+        return req
+
+    def generator():
+        nonlocal audio_count, audio_bytes
+        logger.warning("[REQGEN] yielded_config uuid=%s", call_id)
+        yield log_req(
+            cloud_speech.StreamingRecognizeRequest(streaming_config=streaming_config),
+            "config_prepend",
+        )
+        for req in audio_iter:
+            audio_len = len(req.audio_content) if getattr(req, "audio_content", None) else 0
+            if audio_len:
+                audio_count += 1
+                audio_bytes += audio_len
+                if audio_count <= 10 or audio_count % 100 == 0:
+                    logger.warning(
+                        "[REQGEN] yielded_audio uuid=%s count=%d bytes_total=%d",
+                        call_id,
+                        audio_count,
+                        audio_bytes,
+                    )
+            yield log_req(req, "audio" if audio_len else "non_audio")
+
+        logger.warning(
+            "[REQGEN] audio_iter_complete uuid=%s audio_count=%d bytes_total=%d",
+            call_id,
+            audio_count,
+            audio_bytes,
+        )
+
+    return generator()
+
+
 def build_request_generator(
     audio_queue: "queue.Queue[bytes]",
     stop_event: threading.Event,
@@ -36,43 +130,101 @@ def build_request_generator(
     call_id_getter: Callable[[], str],
     keepalive_interval: int = KEEPALIVE_EMPTY_CHUNK_INTERVAL,
     queue_timeout_sec: float = QUEUE_GET_TIMEOUT_SEC,
+    flow_stats: Optional["AudioFlowStats"] = None,
 ) -> Iterable["cloud_speech.StreamingRecognizeRequest"]:
+    call_id = call_id_getter()
+    
+    # 【100%確実ガード】このcall_idで既にConfigを送ったかチェック
+    global _config_sent_calls, _config_lock
+    with _config_lock:
+        config_already_sent = call_id in _config_sent_calls
+        if not config_already_sent:
+            _config_sent_calls.add(call_id)
+    
     logger.warning(
-        "[REQUEST_GEN_ENTRY] Generator START for call_id=%s",
-        call_id_getter(),
-    )
-    print(
-        f"[REQUEST_GEN_ENTRY] Generator START for call_id={call_id_getter()}",
-        flush=True,
+        "[REQGEN] start call_id=%s config_already_sent=%s",
+        call_id,
+        config_already_sent,
     )
 
     empty_count = 0
-    while not stop_event.is_set():
-        try:
-            chunk = audio_queue.get(timeout=queue_timeout_sec)
-            if chunk is None:
-                logger.info("[REQUEST_GEN] Received sentinel (None), stopping generator")
-                return
-            logger.warning("[REQUEST_GEN_DATA] Got chunk from queue, size=%d", len(chunk))
+
+    audio_count = 0
+    bytes_total = 0
+    end_reason = "stop_event"
+    last_audio_ts = 0.0
+    try:
+        while not stop_event.is_set():
+            try:
+                # 【デバッグ】取得待ち開始ログ
+                logger.debug("[GENERATOR_WAIT] Waiting for audio chunk...")
+            
+                # キューから音声データを取得 (タイムアウト付きでブロック回避)
+                chunk = audio_queue.get(timeout=queue_timeout_sec)
+            
+                if chunk is None:
+                    logger.info("[REQGEN] received sentinel -> stop")
+                    end_reason = "sentinel"
+                    return
+            
+                # 【デバッグ】データ取得成功証明
+                logger.warning(f"[GENERATOR_POP] Got chunk size: {len(chunk)} bytes. Yielding to Google...")
+                print(
+                    f"[GENERATOR_POP] Got chunk from queue, size={len(chunk)}",
+                    flush=True,
+                )
+            
+                empty_count = 0
+            except queue.Empty:
+                if stop_event.is_set():
+                    break
+                empty_count += 1
+                if empty_count >= keepalive_interval:
+                    empty_count = 0
+                    logger.debug("[ASR_GEN] Emitting keepalive empty audio chunk")
+                    yield cloud_speech.StreamingRecognizeRequest(audio_content=b"")  # type: ignore[arg-type]
+                    if flow_stats:
+                        flow_stats.add_req_audio(0)
+                    continue
+
+            if not isinstance(chunk, bytes) or len(chunk) == 0:
+                continue
+        
+            # 【デバッグ】Google ASRへのリクエストを記録
+            logger.info(f"[ASR_REQUEST] Sending audio chunk: size={len(chunk)} bytes")
+            logger.debug("[ASR_GEN] Yielding audio request")
+            if flow_stats:
+                flow_stats.add_deq(len(chunk))
+                flow_stats.add_req_audio(len(chunk))
+            yield cloud_speech.StreamingRecognizeRequest(audio_content=chunk)  # type: ignore[arg-type]
+            audio_count += 1
+            bytes_total += len(chunk)
+            last_audio_ts = time.time()
+
+            # 【BOOT_DIAG】ASR送信診断（chunkサイズ/累計）
+            if not hasattr(build_request_generator, '_asr_send_diag_total'):
+                build_request_generator._asr_send_diag_total = 0
+            build_request_generator._asr_send_diag_total += 1
+            logger.warning(f"[ASR_SEND_DIAG] will_send bytes={len(chunk)} total_requests={build_request_generator._asr_send_diag_total}")
+
+            # 【デバッグ】Yield成功証明
+            logger.warning(f"[GENERATOR_YIELD] Yielded chunk to Google successfully.")
             print(
-                f"[REQUEST_GEN_DATA] Got chunk from queue, size={len(chunk)}",
+                f"[GENERATOR_YIELD] Yielded chunk to Google successfully.",
                 flush=True,
             )
-            empty_count = 0
-        except queue.Empty:
-            if stop_event.is_set():
-                break
-            empty_count += 1
-            if empty_count >= keepalive_interval:
-                empty_count = 0
-                logger.debug("[ASR_GEN] Emitting keepalive empty audio chunk")
-                yield cloud_speech.StreamingRecognizeRequest(audio_content=b"")  # type: ignore[arg-type]
-            continue
-
-        if not isinstance(chunk, bytes) or len(chunk) == 0:
-            continue
-        logger.debug("[ASR_GEN] Yielding audio request")
-        yield cloud_speech.StreamingRecognizeRequest(audio_content=chunk)  # type: ignore[arg-type]
+    except Exception as exc:
+        end_reason = f"exception:{type(exc).__name__}"
+        raise
+    finally:
+        logger.warning(
+            "[REQGEN] end call_id=%s reason=%s audio_count=%d bytes_total=%d last_audio_ts=%s",
+            call_id,
+            end_reason,
+            audio_count,
+            bytes_total,
+            f"{last_audio_ts:.3f}" if last_audio_ts else "NA",
+        )
 
 
 def schedule_stream_recovery(
@@ -146,6 +298,7 @@ def feed_audio_chunk(
     start_stream_worker: Callable[[str], None],
     logger: logging.Logger,
     flush_buffer: Callable[[], None],
+    flow_stats: Optional["AudioFlowStats"] = None,
 ) -> None:
     print(
         f"[FEED_AUDIO_ENTRY] call_id={call_id} len={len(pcm16k_bytes) if pcm16k_bytes else 0}",
@@ -186,25 +339,10 @@ def feed_audio_chunk(
     except Exception as exc:  # pragma: no cover
         logger.debug("[STREAMING_FEED] RMS calculation failed: %s", exc)
 
+    # 即座にstream開始（pre_stream_buffer削除）
     if not stream_running:
-        if len(pre_stream_buffer) < pre_stream_buffer_max_bytes:
-            pre_stream_buffer.extend(pcm16k_bytes)
-            logger.debug(
-                "GoogleASR: PRE_STREAM_BUFFER: call_id=%s len=%d bytes (total=%d)",
-                call_id,
-                len(pcm16k_bytes),
-                len(pre_stream_buffer),
-            )
-        else:
-            logger.warning(
-                "GoogleASR: PRE_STREAM_BUFFER_FULL: forcing stream start (call_id=%s)",
-                call_id,
-            )
-            start_stream_worker(call_id)
-            flush_buffer()
-            stream_running = True
-
-    if not stream_running:
+        start_stream_worker(call_id)
+        stream_running = True
         start_stream_worker(call_id)
 
     if len(debug_raw) < debug_max_bytes:
@@ -217,6 +355,9 @@ def feed_audio_chunk(
     )
     try:
         audio_queue.put_nowait(pcm16k_bytes)
+        if flow_stats:
+            flow_stats.add_enq(len(pcm16k_bytes))
+            flow_stats.capture_chunk(pcm16k_bytes)
         print(
             f"[FEED_AUDIO_QUEUE_SUCCESS] call_id={call_id} len={len(pcm16k_bytes)} queue_size={audio_queue.qsize()}",
             flush=True,
@@ -226,6 +367,8 @@ def feed_audio_chunk(
             call_id,
             len(pcm16k_bytes),
         )
+        # 【強制プッシュ証明】キューへのプッシュ直後にログを刻む
+        logger.warning(f"[FORCE_QUEUE_PUSH] Audio pushed to queue (size: {len(pcm16k_bytes)})")
     except queue.Full:
         print(
             f"[FEED_AUDIO_QUEUE_FULL] call_id={call_id} len={len(pcm16k_bytes)}",
@@ -258,11 +401,31 @@ def handle_streaming_responses(
     restart_flag_getter: Callable[[], bool],
     restart_flag_reset: Callable[[], None],
 ) -> None:
+    import os
+    logger.info("[GASR_RESP_LOOP] enter file=google_asr_stream_helper.py pid=%s", os.getpid())
+
+    fallback_max_age_ms = 15000.0
+    fallback_max_age_env = os.getenv("LIBERTYCALL_FINAL_FALLBACK_MAX_AGE_MS")
+    if fallback_max_age_env:
+        try:
+            fallback_max_age_ms = float(fallback_max_age_env)
+        except ValueError:
+            logger.warning(
+                "[GASR_FINAL_FALLBACK_CFG] invalid max age env=%s, defaulting to %.0f",
+                fallback_max_age_env,
+                fallback_max_age_ms,
+            )
+    single_utterance_mode = os.getenv("LIBERTYCALL_ASR_SIMPLE_CFG", "").lower() in {"1", "true", "yes"}
+
+    last_nonempty_text = None
+    last_nonempty_conf = 0.0
+    last_nonempty_ts = None
+
     for response in responses:
         results_count = len(response.results) if response.results else 0
         error_code = response.error.code if response.error else None
-        logger.warning(
-            "[ASR_RESPONSE_RECEIVED] results=%s, error_code=%s",
+        logger.error(
+            "[GASR_RAW] got_response results=%s error_code=%s",
             results_count,
             error_code,
         )
@@ -283,39 +446,59 @@ def handle_streaming_responses(
             transcript = alt.transcript
             is_final = result.is_final
             confidence = alt.confidence if getattr(alt, "confidence", 0.0) else 0.0
+            call_id = current_call_id() or "TEMP_CALL"
+            safe_transcript = transcript or ""
 
             logger.debug(
                 "[ASR_DEBUG] google_raw call_id=%s is_final=%s transcript=%r confidence=%s",
-                current_call_id() or "TEMP_CALL",
+                call_id,
                 is_final,
-                transcript,
+                safe_transcript,
                 confidence if confidence else None,
             )
             logger.info(
                 "GoogleASR: ASR_GOOGLE_RAW: final=%s conf=%.3f text=%s",
                 is_final,
                 confidence,
-                transcript,
+                safe_transcript,
             )
+            logger.info(
+                "🎤 ASR result: '%s' (final=%s, confidence=%.2f, call=%s)",
+                safe_transcript,
+                is_final,
+                confidence,
+                call_id,
+            )
+            text_stripped = transcript.strip() if transcript else ""
+
+            if text_stripped:
+                last_nonempty_text = text_stripped
+                last_nonempty_conf = confidence
+                last_nonempty_ts = time.monotonic()
+                logger.info(
+                    "[GASR_LAST_NONEMPTY] call_id=%s text_len=%d conf=%.3f",
+                    current_call_id() or "TEMP_CALL",
+                    len(last_nonempty_text),
+                    confidence if confidence else 0.0,
+                )
+
             if ai_core:
                 try:
-                    call_id = current_call_id() or "TEMP_CALL"
                     if not is_final:
-                        text_stripped = transcript.strip() if transcript else ""
-                        if 1 <= len(text_stripped) <= 6:
-                            backchannel_keywords = [
-                                "はい",
-                                "えっと",
-                                "あの",
-                                "ええ",
-                                "そう",
-                                "うん",
-                                "ああ",
-                            ]
-                            if any(keyword in text_stripped for keyword in backchannel_keywords):
+                        backchannel_keywords = [
+                            "はい",
+                            "えっと",
+                            "あの",
+                            "ええ",
+                            "そう",
+                            "うん",
+                            "ああ",
+                        ]
+                        if safe_transcript and len(safe_transcript.strip()) <= 6:
+                            if any(keyword in safe_transcript for keyword in backchannel_keywords):
                                 logger.debug(
                                     "[BACKCHANNEL_TRIGGER_ASR] Detected short utterance: %s",
-                                    text_stripped,
+                                    safe_transcript,
                                 )
                                 if hasattr(ai_core, "tts_callback") and ai_core.tts_callback:  # type: ignore[attr-defined]
                                     try:
@@ -342,17 +525,188 @@ def handle_streaming_responses(
                                             call_id,
                                             err,
                                         )
-                    ai_core.on_transcript(call_id, transcript, is_final=is_final)
+
+                    fn = getattr(ai_core, "on_transcript", None)
+                    if fn:
+                        params = {
+                            "transcript": safe_transcript,
+                            "is_final": is_final,
+                            "confidence": confidence,
+                            "call_id": call_id,
+                        }
+                        try:
+                            if asyncio.iscoroutinefunction(fn):
+                                try:
+                                    loop = asyncio.get_running_loop()
+                                except RuntimeError:
+                                    loop = None
+                                if loop and loop.is_running():
+                                    loop.create_task(fn(**params))
+                                else:
+                                    asyncio.run(fn(**params))
+                            else:
+                                fn(**params)
+                        except Exception:
+                            logger.exception(
+                                "❌ Error calling AICore.on_transcript call_id=%s", call_id
+                            )
+                    else:
+                        if not getattr(handle_streaming_responses, "_warned_no_on_transcript", False):
+                            logger.warning(
+                                "⚠️ AICore.on_transcript not found. Transcripts will be dropped."
+                            )
+                            handle_streaming_responses._warned_no_on_transcript = True
                 except Exception as err:  # pragma: no cover
                     logger.exception("GoogleASR: on_transcript 呼び出しエラー: %s", err)
 
             if is_final:
+                final_call_id = (
+                    call_id
+                    if "call_id" in locals() and call_id
+                    else (current_call_id() or "TEMP_CALL")
+                )
+                text_len_any = len(transcript) if transcript is not None else None
+                text_is_empty = not transcript or not transcript.strip()
+
+                fallback_used = False
+                if text_is_empty and last_nonempty_text and last_nonempty_ts:
+                    age_ms = (time.monotonic() - last_nonempty_ts) * 1000.0
+                    within_age = age_ms <= fallback_max_age_ms
+                    allow_override = single_utterance_mode and not within_age
+                    if within_age or allow_override:
+                        transcript = last_nonempty_text
+                        confidence = last_nonempty_conf
+                        text_len_any = len(transcript)
+                        text_is_empty = False
+                        fallback_used = True
+                        fallback_reason = "within_max_age" if within_age else "single_utterance"
+                        logger.info(
+                            "[GASR_FINAL_FALLBACK] call_uuid=%s age_ms=%.0f max_age_ms=%.0f reason=%s text_len=%d",
+                            final_call_id,
+                            age_ms,
+                            fallback_max_age_ms,
+                            fallback_reason,
+                            text_len_any,
+                        )
+                    else:
+                        logger.info(
+                            "[GASR_FINAL_FALLBACK_SKIP] call_uuid=%s age_ms=%.0f max_age_ms=%.0f reason=stale",
+                            final_call_id,
+                            age_ms,
+                            fallback_max_age_ms,
+                        )
+
+                manager = ai_core
+                manager_type = type(manager).__name__ if manager else None
+                manager_id = hex(id(manager)) if manager else None
+
+                ai_core_obj = None
+                ai_core_attr = "none"
+                if manager:
+                    if getattr(manager, "ai_core", None) is not None:
+                        ai_core_obj = getattr(manager, "ai_core", None)
+                        ai_core_attr = "ai_core"
+                    elif getattr(manager, "_ai_core", None) is not None:
+                        ai_core_obj = getattr(manager, "_ai_core", None)
+                        ai_core_attr = "_ai_core"
+                ai_core_type = type(ai_core_obj).__name__ if ai_core_obj else None
+                ai_core_id = hex(id(ai_core_obj)) if ai_core_obj else None
+
+                handler = None
+                handler_attr = "none"
+                if ai_core_obj:
+                    if getattr(ai_core_obj, "_asr_stream_handler", None) is not None:
+                        handler = getattr(ai_core_obj, "_asr_stream_handler", None)
+                        handler_attr = "_asr_stream_handler"
+                    elif getattr(ai_core_obj, "asr_stream_handler", None) is not None:
+                        handler = getattr(ai_core_obj, "asr_stream_handler", None)
+                        handler_attr = "asr_stream_handler"
+                handler_type = type(handler).__name__ if handler else None
+                handler_id = hex(id(handler)) if handler else None
+                handler_has_method = bool(handler and hasattr(handler, "handle_asr_final"))
+
+                logger.info(
+                    "[GASR_FINAL_ROUTE] call_uuid=%s text_len=%s manager_type=%s manager_id=%s "
+                    "has_ai_core=%s ai_core_type=%s ai_core_id=%s ai_core_attr=%s has_handler=%s handler_type=%s handler_attr=%s handler_id=%s",
+                    final_call_id,
+                    text_len_any,
+                    manager_type,
+                    manager_id,
+                    int(ai_core_obj is not None),
+                    ai_core_type,
+                    ai_core_id,
+                    ai_core_attr,
+                    int(handler is not None),
+                    handler_type,
+                    handler_attr,
+                    handler_id,
+                )
+
                 logger.info(
                     "GoogleASR: ASR_GOOGLE_FINAL: conf=%.3f text=%s",
                     confidence,
                     transcript,
                 )
                 logger.info('[ASR_RESULT] "%s"', transcript)
+
+                has_manager = manager is not None
+                logger.info(
+                    "[GASR_FINAL] call_uuid=%s is_final=1 text=\"%s\" text_len=%d has_manager=%d",
+                    final_call_id,
+                    transcript,
+                    len(transcript) if transcript else 0,
+                    int(has_manager),
+                )
+
+                if text_is_empty:
+                    logger.info("[GASR_FINAL_SKIP_EMPTY] call_uuid=%s", final_call_id)
+                    continue
+
+                # ASR finalを既存返答ルールへ接着
+                if handler_has_method and transcript and transcript.strip():
+                    try:
+                        logger.info(
+                            "[GASR_FINAL_CALL] call_uuid=%s handler_attr=%s handler_type=%s text_len=%d",
+                            final_call_id,
+                            handler_attr,
+                            handler_type,
+                            len(transcript),
+                        )
+                        handler.handle_asr_final(  # type: ignore[call-arg]
+                            final_call_id, transcript, confidence, source="google"
+                        )
+                        logger.info("[GASR_FINAL_CALL] done call_uuid=%s", final_call_id)
+                    except Exception as err:
+                        logger.exception(
+                            "[GASR_FINAL_CALL_ERR] call_uuid=%s handler_type=%s type=%s msg=%s",
+                            final_call_id,
+                            handler_type,
+                            type(err).__name__,
+                            err,
+                        )
+                else:
+                    if not handler:
+                        reason = "no_handler"
+                    elif not handler_has_method:
+                        reason = "no_handle_method"
+                    elif not transcript or not transcript.strip():
+                        reason = "empty_text"
+                    else:
+                        reason = "unknown"
+                    logger.info(
+                        "[GASR_FINAL_CALL_SKIP] call_uuid=%s reason=%s handler_attr=%s handler_type=%s handler_has_method=%d text_len=%s",
+                        final_call_id,
+                        reason,
+                        handler_attr,
+                        handler_type,
+                        int(handler_has_method),
+                        len(transcript) if transcript else None,
+                    )
+
+                if fallback_used:
+                    last_nonempty_text = None
+                    last_nonempty_conf = 0.0
+                    last_nonempty_ts = None
 
     if restart_flag_getter():
         call_id = current_call_id() or "TEMP_CALL"

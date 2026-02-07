@@ -74,6 +74,11 @@ def build_recognition_config(
     sample_rate: int,
     phrase_hints: Optional[List[str]],
 ) -> "cloud_speech.RecognitionConfig":
+    # 【設定確認】ログ出力
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"[ASR_CONFIG_BUILD] language_code={language_code}, sample_rate={sample_rate}, encoding=LINEAR16")
+    
     config = cloud_speech.RecognitionConfig(  # type: ignore[call-arg]
         encoding=cloud_speech.RecognitionConfig.AudioEncoding.LINEAR16,  # type: ignore[attr-defined]
         sample_rate_hertz=sample_rate,
@@ -83,7 +88,8 @@ def build_recognition_config(
         enable_separate_recognition_per_channel=False,
         enable_automatic_punctuation=True,
         max_alternatives=1,
-        speech_contexts=[],
+        speech_contexts=[cloud_speech.SpeechContext(phrases=["はい", "もしもし", "お電話", "ありがとう", "です", "ます", "よろしく"])],
+        model="telephony",  # 最も汎用的な設定に戻す
     )
     if phrase_hints:
         config.speech_contexts = [
@@ -95,8 +101,12 @@ def build_recognition_config(
 def build_streaming_config(
     recognition_config: "cloud_speech.RecognitionConfig",
 ) -> "cloud_speech.StreamingRecognitionConfig":
+    logging.getLogger(__name__).info(
+        "[ASR_STREAM_CONFIG] interim_results=True single_utterance=False enable_voice_activity_events=True"
+    )
     return cloud_speech.StreamingRecognitionConfig(  # type: ignore[call-arg]
         config=recognition_config,
-        interim_results=True,
-        single_utterance=False,
+        interim_results=True,  # 【強制的にTrue】Googleが途中経過を出すように設定
+        single_utterance=False,  # 【強制的にFalse】勝手に耳を閉じさせない
+        enable_voice_activity_events=True,
     )

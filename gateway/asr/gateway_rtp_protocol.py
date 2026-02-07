@@ -2,13 +2,24 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import struct
+import sys
+import traceback
 from typing import Optional, Tuple, TYPE_CHECKING
 
 from gateway.core.gateway_utils import IGNORE_RTP_IPS
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
     from gateway.realtime_gateway import RealtimeGateway
+
+
+def _task_done_callback(task):
+    try:
+        task.result()
+    except Exception:
+        sys.stderr.write(f"[TASK_ERROR] {traceback.format_exc()}\n")
+        sys.stderr.flush()
 
 
 class RTPPacketBuilder:
@@ -68,6 +79,11 @@ class RTPProtocol(asyncio.DatagramProtocol):
             )
 
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
+        os.write(2, b"[RAW_UDP_HIT]\n")
+        os.write(2, f"\n[RAW_UDP_HIT] PID={os.getpid()} Received {len(data)} bytes from {addr}\n".encode())
+        with open("/tmp/gateway_direct.log", "a") as f:
+            f.write(f"HIT: {addr} at {__import__('time').time()} PID={os.getpid()}\n")
+        print(f"[DEBUG_PROTOCOL] datagram_received called: {len(data)} bytes from {addr}")  # 一時的にprintに戻す
         # 【最優先デバッグ】フィルタリング前の「生」の到達を記録（全パケット）
         if not hasattr(self, "_raw_packet_count"):
             self._raw_packet_count = 0
@@ -79,16 +95,17 @@ class RTPProtocol(asyncio.DatagramProtocol):
                 flush=True,
             )
 
-        # FreeSWITCH/localhostからのループバックは除外
-        if addr[0] in IGNORE_RTP_IPS:
-            # FreeSWITCH自身からのパケット（システム音声の逆流）を無視
-            if self._raw_packet_count % 100 == 1:
-                print(
-                    "DEBUG_TRACE: [RTP_FILTER] Ignored packet from local IP: %s (count=%s)"
-                    % (addr[0], self._raw_packet_count),
-                    flush=True,
-                )
-            return
+        # FreeSWITCH/localhostからのループバックは除外（一時的に無効化）
+        os.write(2, f"[DEBUG_RTP_ALL] Packet from: {addr}\n".encode())
+        # if addr[0] in IGNORE_RTP_IPS:
+        #     # FreeSWITCH自身からのパケット（システム音声の逆流）を無視
+        #     if self._raw_packet_count % 100 == 1:
+        #         print(
+        #             "DEBUG_TRACE: [RTP_FILTER] Ignored packet from local IP: %s (count=%s)"
+        #             % (addr[0], self._raw_packet_count),
+        #             flush=True,
+        #         )
+        #     return
 
         # デバッグ: ユーザーからのパケットのみ処理されることを確認（50回に1回出力）
         if not hasattr(self, "_packet_count"):
@@ -111,6 +128,7 @@ class RTPProtocol(asyncio.DatagramProtocol):
                     ssrc = None
             else:
                 ssrc = None
+                self.gateway.logger.warning(f"[DEBUG_RTP_REJECT] Too short: {len(data)} bytes (need >=12)")
 
             # SSRCによるロック（存在すれば優先的にチェック）
             if ssrc is not None:
@@ -159,6 +177,25 @@ class RTPProtocol(asyncio.DatagramProtocol):
         )
         # RTP受信ログ（軽量版：fromとlenのみ）
         self.gateway.logger.info("[RTP_RECV_RAW] from=%s, len=%s", addr, len(data))
+        
+        # 【BOOT_DIAG】RTP受信診断（連打防止で間引く）
+        if not hasattr(self, '_rtp_recv_diag_count'):
+            self._rtp_recv_diag_count = 0
+        self._rtp_recv_diag_count += 1
+        if (self._rtp_recv_diag_count % 50) == 1:
+            self.gateway.logger.warning(f"[RTP_RECV_DIAG] pkts={self._rtp_recv_diag_count} bytes={len(data)} from={addr}")
+        
+        self.gateway.logger.warning(f"[DEBUG_RTP] Received datagram: {len(data)} bytes from {addr}")  # 既存の受信処理の直後に追加
+        
+        # 【デバッグ】ペイロード先頭16バイトをダンプ
+        payload_hex = data[:16].hex()
+        self.gateway.logger.info(f"[RTP_PAYLOAD_DUMP] first_16_bytes={payload_hex}")
+        
+        # 無音データチェック（0x00や0xFFが連続する場合）
+        if all(b == 0 for b in data[:16]):
+            self.gateway.logger.warning("[RTP_PAYLOAD] Detected all-zero payload (silence)")
+        elif all(b == 255 for b in data[:16]):
+            self.gateway.logger.warning("[RTP_PAYLOAD] Detected all-0xFF payload (possible silence)")
 
         # RakutenのRTP監視対策：受信したパケットをそのまま送り返す（エコー）
         # これによりRakuten側は「RTP到達OK」と判断し、通話が切れなくなる
@@ -172,17 +209,16 @@ class RTPProtocol(asyncio.DatagramProtocol):
             self.gateway.logger.warning("[RTP_ECHO] failed to send echo: %s", e)
 
         try:
-            task = asyncio.create_task(self.gateway.handle_rtp_packet(data, addr))
-
-            def log_exception(task: asyncio.Task) -> None:
-                exc = task.exception()
-                if exc is not None:
-                    self.gateway.logger.error(
-                        "handle_rtp_packet failed: %r", exc, exc_info=exc
-                    )
-
-            task.add_done_callback(log_exception)
+            os.write(2, f"[TRACE_DISPATCH] Type: {type(self.gateway.handle_rtp_packet)}\n".encode())
+            
+            coro = self.gateway.handle_rtp_packet(data, addr)
+            if not asyncio.iscoroutine(coro):
+                os.write(2, f"[FATAL_NOT_CORO] Expected coroutine, got {type(coro)}\n".encode())
+            else:
+                task = asyncio.create_task(coro)
+                task.add_done_callback(_task_done_callback)
+                os.write(2, f"[TRACE_TASK_CREATED] Task: {task.get_name()}\n".encode())
         except Exception as e:
-            self.gateway.logger.error(
-                "Failed to create task for handle_rtp_packet: %r", e, exc_info=True
-            )
+            os.write(2, f"[TRACE_DISPATCH_FAIL] {e}\n".encode())
+            import traceback
+            os.write(2, f"[TRACE_DISPATCH_TRACEBACK] {traceback.format_exc()}\n".encode())

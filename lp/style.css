@@ -1488,3 +1488,50 @@ audio {
     padding: 0.65rem 1.5rem;
   }
 }
+
+/* ========================================
+   Hero Stats & Inline CTA Styles
+   ======================================== */
+.hero-stats {
+  display: flex;
+  gap: 20px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+  color: var(--text);
+  position: relative;
+  z-index: 2;
+}
+
+.hero-stats li strong {
+  color: var(--blue);
+  font-size: 1.05rem;
+}
+
+.cta-inline {
+  text-align: center;
+  margin: 64px 0;
+}
+
+.cta-inline .btn {
+  min-width: 220px;
+}
+
+/* Mobile responsive for hero-stats */
+@media (max-width: 480px) {
+  .hero-stats {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+/* Hero Kicker Style */
+.hero-kicker {
+  color: var(--blue);
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}

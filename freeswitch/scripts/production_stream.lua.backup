@@ -1,0 +1,66 @@
+-- production_stream.lua
+-- FreeSWITCH Workaround for RTP Streaming via File+NC
+-- Concurrency Safe Version
+
+api = freeswitch.API()
+
+if session:ready() then
+    session:answer()
+    -- 接続安定待ち
+    session:sleep(200)
+
+    -- 1. 設定
+    local gateway_ip = "127.0.0.1" -- Gatewayの内部IP（同一サーバー）
+    local gateway_port = "7002"
+    local uuid = session:get_uuid()
+    
+    -- 通話ごとにユニークなファイルパスを作成（録音と同じパスを使用）
+    local file_path = "/usr/local/freeswitch/storage/asr_" .. uuid .. ".r8"
+    
+    freeswitch.consoleLog("info", "[Stream] Starting for UUID: " .. uuid .. "\n")
+
+    -- 2. ファイル初期化
+    os.execute("touch " .. file_path)
+
+    -- 3. 転送プロセス起動 (tail + nc)
+    -- すぐにストリーミングを開始
+    freeswitch.consoleLog("info", "--- About to execute stream command ---\n")
+    local stream_cmd = "tail -F -c +1 " .. file_path .. " | nc -u " .. gateway_ip .. " " .. gateway_port .. " &"
+    
+    freeswitch.consoleLog("info", "--- Executing Stream Command: " .. stream_cmd .. " ---\n")
+    local handle = io.popen(stream_cmd)
+    if handle then
+        freeswitch.consoleLog("info", "--- Stream Command Launched Successfully ---\n")
+        handle:close()
+    else
+        freeswitch.consoleLog("err", "--- Failed to Launch Stream Command ---\n")
+    end
+
+    -- 4. 録音開始 (Raw 8k)
+    -- Media Bugとして動作するため、通話（bridge/echo等）と並行して走る
+    session:execute("set", "RECORD_STEREO=false")
+    api:execute("uuid_record", uuid .. " start " .. file_path)
+    
+    -- 5. メイン処理（ここに対話ロジックやBridgeが入る）
+    -- 例: Gatewayからの応答を待つ、またはIVRを再生する
+    -- 今回はテストとしてブロックしないようにコメントアウト
+    -- session:streamFile("/usr/local/freeswitch/sounds/custom/000-000.wav")
+    
+    -- ストリーミングを維持するため、無音ループで待機
+    while session:ready() do 
+        session:sleep(1000)
+    end
+
+    -- 6. 終了処理 (Clean up)
+    freeswitch.consoleLog("info", "[Stream] Cleaning up for UUID: " .. uuid .. "\n")
+    
+    -- 録音停止
+    api:execute("uuid_record", uuid .. " stop " .. file_path)
+    
+    -- ストリーミングプロセスを停止
+    -- ファイル名を含む tail プロセスを特定してkillする
+    os.execute("pkill -f 'tail -F -c +1 " .. file_path .. "'")
+    
+    -- 一時ファイル削除（録音ファイルは保存するため削除しない）
+    -- os.execute("rm -f " .. file_path)
+end

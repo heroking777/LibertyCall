@@ -7,10 +7,13 @@ FreeSWITCHからの着信を制御し、音声案内→ASR→無反応催促→�
 import time
 import threading
 import logging
+import os
+import sys
+import inspect
 from typing import Optional, Dict
 from pathlib import Path
 
-from google_stream_asr import GoogleStreamingASR
+from gateway.asr.google_stream_asr import GoogleStreamingASR
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +110,12 @@ class ASRHandler:
         
         # Google Streaming ASR開始
         self.asr = GoogleStreamingASR()
-        self.asr.start_stream()
+        
+        # NOTE: ASR_IMPORTPATH block removed to keep file under 300 lines (rule)
+        pass
+        
+        start_result = self.asr.start_stream()
+        logger.info(f"[ASRHandler] Streaming started: {start_result}")
         
         # 無反応監視スレッド起動
         self.monitor_thread = threading.Thread(
@@ -117,6 +125,20 @@ class ASRHandler:
         self.monitor_thread.start()
         
         logger.info(f"[ASRHandler] Call handling started for {self.call_id}")
+    
+    def send_audio(self, chunk: bytes):
+        """
+        音声データをASRに直接送信（強制放流用）
+        
+        Args:
+            chunk: PCM16音声データ
+        """
+        logger.info(f"[ASRHandler] send_audio called: {len(chunk)} bytes")
+        if self.asr and self.active:
+            self.asr.add_audio(chunk)
+            logger.info(f"[ASRHandler] Audio sent to ASR successfully")
+        else:
+            logger.warning(f"[ASRHandler] Cannot send audio: asr={self.asr is not None}, active={self.active}")
     
     def _play_initial_prompts(self):
         """初回アナウンス（000, 001, 002）を再生"""

@@ -130,7 +130,13 @@ class GatewayLifecycleManager:
         gateway.event_server = None
 
     async def start(self) -> None:
+        import os
+        from .gateway_component_factory import GatewayComponentFactory
+        
+        os.write(2, b"[TRACE_LIFECYCLE_ENTRY] async def start() called\n")
         gateway = self.gateway
+        os.write(2, b"[TRACE_START_1] Starting lifecycle manager\n")
+        self.logger.info("[TRACE_LIFECYCLE] 1: Starting lifecycle manager")
         self.logger.info("[RTP_START] RealtimeGateway.start() called")
         gateway.running = True
         gateway.rtp_builder = self.utils.rtp_builder_cls(
@@ -139,355 +145,66 @@ class GatewayLifecycleManager:
 
         try:
             loop = asyncio.get_running_loop()
+            os.write(2, b"[TRACE_START_2] Creating RTP socket\n")
 
             # ソケットをメンバに保持してbind（IPv4固定、0.0.0.0で全インターフェースにバインド）
-            # 0.0.0.0 にバインドすることで、FreeSWITCHからのRTPパケットを確実に受信できる
             gateway.rtp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             gateway.rtp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             gateway.rtp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            gateway.rtp_sock.bind(("0.0.0.0", gateway.rtp_port))
+        except OSError as e:
+            os.write(2, f"[TRACE_START_ERROR] Socket error: {e}\n".encode())
+            # 【bind error対策】ポートが競合したら即座にポートをズラしてでも無理やり口を開けろ
+            if "Address already in use" in str(e):
+                original_port = gateway.rtp_port
+                for offset in range(1, 100):  # 100ポートまで試す
+                    test_port = original_port + offset
+                    try:
+                        gateway.rtp_sock.bind(("0.0.0.0", test_port))
+                        gateway.rtp_sock.setblocking(False)
+                        bound_addr = gateway.rtp_sock.getsockname()
+                        gateway.rtp_port = test_port  # ポートを更新
+                        self.logger.warning(f"[RTP_BIND_RETRY] Bind error on {original_port}, successfully bound to {test_port}")
+                        self.logger.warning(f"[RTP_RECEIVER_START] Listening on {bound_addr[0]}:{bound_addr[1]} for RTP packets (recovered)")
+                        break
+                    except OSError:
+                        continue
+                else:
+                    raise e  # 100ポート試してもダメなら諦める
+            else:
+                raise e
+        else:
             gateway.rtp_sock.setblocking(False)  # asyncio用にノンブロッキングへ
+            gateway.rtp_sock.bind(("0.0.0.0", gateway.rtp_port))  # バインドを追加
             bound_addr = gateway.rtp_sock.getsockname()
             self.logger.info("[RTP_BIND_FINAL] Bound UDP socket to %s", bound_addr)
+            # 【強制生存確認】RTP受信スレッドがどのIP:Portでリッスンを開始したかをログに吐く
+            self.logger.warning(f"[RTP_RECEIVER_START] Listening on {bound_addr[0]}:{bound_addr[1]} for RTP packets")
 
             # asyncioにソケットを渡す
+            os.write(2, b"[TRACE_START_3] Creating datagram endpoint\n")
+            self.logger.info("[DEBUG_ENDPOINT] About to create datagram endpoint")
             gateway.rtp_transport, _ = await loop.create_datagram_endpoint(
                 lambda: self.utils.rtp_protocol_cls(gateway),
                 sock=gateway.rtp_sock,
             )
+            os.write(2, b"[TRACE_START_4] Datagram endpoint created\n")
+            self.logger.info(f"[DEBUG_ENDPOINT] Datagram endpoint created successfully: {gateway.rtp_transport}")
             self.logger.info(
                 "[RTP_READY_FINAL] RTP listener active and awaiting packets on %s",
                 bound_addr,
             )
 
-            # WebSocketサーバー起動処理
-            try:
-                ws_task = asyncio.create_task(gateway._ws_server_loop())
-                self.logger.info(
-                    "[BOOT] WebSocket server startup scheduled on port 9001 (task=%r)",
-                    ws_task,
-                )
-            except Exception as e:
-                self.logger.error(
-                    "[BOOT] Failed to start WebSocket server: %s", e, exc_info=True
-                )
-
-            asyncio.create_task(gateway._ws_client_loop())
-            asyncio.create_task(gateway._tts_sender_loop())
-
-            # ストリーミングモード: 定期的にASR結果をポーリング
-            if gateway.streaming_enabled:
-                asyncio.create_task(gateway._streaming_poll_loop())
-
-            # 無音検出ループ開始（TTS送信後の無音を監視）
-            gateway.monitor_manager.start_no_input_monitoring()
-
-            # ログファイル監視ループ開始（転送失敗時のTTSアナウンス用）
-            asyncio.create_task(gateway._log_monitor_loop())
-
-            # イベントループ起動後にキューに追加された転送タスクを処理
-            # 注意: イベントループが起動した後でないと asyncio.create_task が呼べない
-            async def process_queued_transfers():
-                while gateway._transfer_task_queue:
-                    call_id = gateway._transfer_task_queue.popleft()
-                    self.logger.info(
-                        "TRANSFER_TASK_PROCESSING: call_id=%s (from queue)", call_id
-                    )
-                    asyncio.create_task(gateway._wait_for_tts_and_transfer(call_id))
-                # 定期的にキューをチェック（新しいタスクが追加される可能性があるため）
-                while gateway.running:
-                    await asyncio.sleep(0.5)  # 0.5秒間隔でチェック
-                    while gateway._transfer_task_queue:
-                        call_id = gateway._transfer_task_queue.popleft()
-                        self.logger.info(
-                            "TRANSFER_TASK_PROCESSING: call_id=%s (from queue, delayed)",
-                            call_id,
-                        )
-                        asyncio.create_task(
-                            gateway._wait_for_tts_and_transfer(call_id)
-                        )
-
-            asyncio.create_task(process_queued_transfers())
-
-            # FreeSWITCH送信RTPポート監視を開始（pull型ASR用）
-            # record_session方式では不要なため、条件付きで実行
-            if gateway.monitor_manager.fs_rtp_monitor:
-                gateway.monitor_manager.start_rtp_monitoring()
-
-            # FreeSWITCHイベント受信用Unixソケットサーバーを起動
-            self.logger.info("[EVENT_SOCKET_DEBUG] Creating event server task")
-            asyncio.create_task(gateway._event_socket_server_loop())
+            # ComponentFactoryを使用して各コンポーネントをセットアップ
+            factory = GatewayComponentFactory(self.utils)
+            factory.setup_all_components()
+            
+            os.write(2, b"[TRACE_START_6] Initialization complete\n")
 
             # サービスを維持（停止イベントを待つ）
             await gateway.shutdown_event.wait()
 
-        except Exception as e:
-            self.logger.error("[RTP_BIND_ERROR_FINAL] %s", e, exc_info=True)
-        finally:
-            if hasattr(gateway, "rtp_transport") and gateway.rtp_transport:
-                self.logger.info("[RTP_EXIT_FINAL] Closing RTP transport")
-                gateway.rtp_transport.close()
-            if hasattr(gateway, "rtp_sock") and gateway.rtp_sock:
-                gateway.rtp_sock.close()
-                self.logger.info("[RTP_EXIT_FINAL] Socket closed")
-
-    async def shutdown(self, remove_handler_fn=None) -> None:
-        gateway = self.gateway
-        self.logger.info("[SHUTDOWN] Starting graceful shutdown...")
-        gateway.running = False
-        gateway._complete_console_call()
-
-        if gateway.websocket:
-            try:
-                await gateway.websocket.close()
-                self.logger.debug("[SHUTDOWN] WebSocket closed")
-            except Exception as e:
-                self.logger.warning(
-                    "[SHUTDOWN] Error while closing WebSocket: %s", e
-                )
-
-        if gateway.rtp_transport:
-            try:
-                self.logger.info("[SHUTDOWN] Closing RTP transport...")
-                gateway.rtp_transport.close()
-                await asyncio.sleep(0.1)
-                self.logger.info("[SHUTDOWN] RTP transport closed")
-            except Exception as e:
-                self.logger.error(
-                    "[SHUTDOWN] Error while closing RTP transport: %s", e
-                )
-
-        for call_id, timer_task in list(gateway._no_input_timers.items()):
-            if timer_task and not timer_task.done():
-                try:
-                    timer_task.cancel()
-                    self.logger.debug(
-                        "[SHUTDOWN] Cancelled no_input_timer for call_id=%s",
-                        call_id,
-                    )
-                except Exception as e:
-                    self.logger.warning(
-                        "[SHUTDOWN] Error cancelling timer for call_id=%s: %s",
-                        call_id,
-                        e,
-                    )
-        gateway._no_input_timers.clear()
-
-        if gateway.call_id and remove_handler_fn:
-            try:
-                remove_handler_fn(gateway.call_id)
-                self.logger.info(
-                    "[SHUTDOWN] ASR handler removed for call_id=%s",
-                    gateway.call_id,
-                )
-            except Exception as e:
-                self.logger.warning(
-                    "[SHUTDOWN] Error removing ASR handler: %s", e
-                )
-
-        if gateway.event_server:
-            try:
-                self.logger.info("[SHUTDOWN] Closing event socket server...")
-                gateway.event_server.close()
-                await gateway.event_server.wait_closed()
-                self.logger.info("[SHUTDOWN] Event socket server closed")
-            except Exception as e:
-                self.logger.warning(
-                    "[SHUTDOWN] Error closing event socket server: %s", e
-                )
-
-        if gateway.event_socket_path.exists():
-            try:
-                gateway.event_socket_path.unlink()
-                self.logger.info(
-                    "[SHUTDOWN] Removed socket file: %s", gateway.event_socket_path
-                )
-            except Exception as e:
-                self.logger.warning(
-                    "[SHUTDOWN] Error removing socket file: %s", e
-                )
-
-        gateway.shutdown_event.set()
-        self.logger.info("[SHUTDOWN] Graceful shutdown completed")
-
-    def _recover_esl_connection(self, max_retries: int = 3) -> bool:
-        """
-        FreeSWITCH ESL接続を自動リカバリ（接続が切れた場合に再接続を試みる、最大3回リトライ）
-
-        :param max_retries: 最大リトライ回数（デフォルト: 3）
-        :return: 再接続に成功したかどうか
-        """
-        gateway = self.gateway
-        if gateway.esl_connection and gateway.esl_connection.connected():
-            return True  # 既に接続されている場合は成功として返す
-
-        self.logger.warning(
-            "[ESL_RECOVERY] ESL connection lost, attempting to reconnect (max_retries=%s)...",
-            max_retries,
-        )
-
-        for attempt in range(1, max_retries + 1):
-            try:
-                time.sleep(3)  # 3秒待機してから再接続
-                gateway._init_esl_connection()
-
-                if gateway.esl_connection and gateway.esl_connection.connected():
-                    self.logger.info(
-                        "[ESL_RECOVERY] ESL connection recovered successfully (attempt %s/%s)",
-                        attempt,
-                        max_retries,
-                    )
-                    # イベントリスナーも再起動
-                    if (
-                        hasattr(gateway, "esl_listener_thread")
-                        and gateway.esl_listener_thread
-                        and not gateway.esl_listener_thread.is_alive()
-                    ):
-                        gateway._start_esl_event_listener()
-                    return True
-                else:
-                    self.logger.warning(
-                        "[ESL_RECOVERY] ESL reconnection failed (attempt %s/%s)",
-                        attempt,
-                        max_retries,
-                    )
-            except Exception as e:
-                self.logger.exception(
-                    "[ESL_RECOVERY] Failed to recover ESL connection (attempt %s/%s): %s",
-                    attempt,
-                    max_retries,
-                    e,
-                )
-
-        self.logger.error(
-            "[ESL_RECOVERY] ESL reconnection failed after %s attempts", max_retries
-        )
-        return False
-
-    def _start_esl_event_listener(self) -> None:
-        """
-        FreeSWITCH ESLイベントリスナーを開始（CHANNEL_EXECUTE_COMPLETE監視）
-
-        :return: None
-        """
-        gateway = self.gateway
-        if not gateway.esl_connection or not gateway.esl_connection.connected():
-            self.logger.warning(
-                "[ESL_LISTENER] ESL not available, event listener not started"
-            )
-            return
-
-        def _esl_event_listener_worker():
-            """ESLイベントリスナーのワーカースレッド（自動リカバリ対応）"""
-            try:
-                from libs.esl.ESL import ESLevent
-
-                # CHANNEL_EXECUTE_COMPLETEイベントを購読
-                gateway.esl_connection.events("plain", "CHANNEL_EXECUTE_COMPLETE")
-                self.logger.info(
-                    "[ESL_LISTENER] Started listening for CHANNEL_EXECUTE_COMPLETE events"
-                )
-
-                consecutive_errors = 0
-                max_consecutive_errors = 5
-
-                while gateway.running:
-                    try:
-                        # ESL接続が切れている場合は自動リカバリを試みる
-                        if (
-                            not gateway.esl_connection
-                            or not gateway.esl_connection.connected()
-                        ):
-                            self.logger.warning(
-                                "[ESL_LISTENER] ESL connection lost, attempting recovery..."
-                            )
-                            self._recover_esl_connection()
-                            if (
-                                not gateway.esl_connection
-                                or not gateway.esl_connection.connected()
-                            ):
-                                time.sleep(3)  # 再接続に失敗した場合は3秒待機
-                                continue
-                            # 再接続成功時はイベント購読を再設定
-                            gateway.esl_connection.events(
-                                "plain", "CHANNEL_EXECUTE_COMPLETE"
-                            )
-                            consecutive_errors = 0
-
-                        # イベントを受信（タイムアウト: 1秒）
-                        event = gateway.esl_connection.recvEventTimed(1000)
-
-                        if not event:
-                            consecutive_errors = 0  # タイムアウトはエラーではない
-                            continue
-
-                        event_name = event.getHeader("Event-Name")
-                        if event_name != "CHANNEL_EXECUTE_COMPLETE":
-                            continue
-
-                        application = event.getHeader("Application")
-                        if application != "playback":
-                            continue
-
-                        uuid = event.getHeader("Unique-ID") or event.getHeader(
-                            "Channel-Call-UUID"
-                        )
-                        if not uuid:
-                            continue
-
-                        # 再生完了を検知: is_playing[uuid] = False に更新
-                        if hasattr(gateway.ai_core, "is_playing"):
-                            if gateway.ai_core.is_playing.get(uuid, False):
-                                gateway.ai_core.is_playing[uuid] = False
-                                self.logger.info(
-                                    "[ESL_LISTENER] Playback completed: uuid=%s is_playing[%s] = False",
-                                    uuid,
-                                    uuid,
-                                )
-
-                        consecutive_errors = 0  # 成功時はエラーカウントをリセット
-
-                    except Exception as e:
-                        consecutive_errors += 1
-                        if gateway.running:
-                            self.logger.exception(
-                                "[ESL_LISTENER] Error processing event (consecutive_errors=%s): %s",
-                                consecutive_errors,
-                                e,
-                            )
-
-                        # 連続エラーが一定回数を超えた場合は自動リカバリを試みる
-                        if consecutive_errors >= max_consecutive_errors:
-                            self.logger.warning(
-                                "[ESL_LISTENER] Too many consecutive errors (%s), attempting recovery...",
-                                consecutive_errors,
-                            )
-                            self._recover_esl_connection()
-                            consecutive_errors = 0
-
-                        time.sleep(0.1)
-            except Exception as e:
-                self.logger.exception(
-                    "[ESL_LISTENER] Event listener thread error: %s", e
-                )
-                # スレッドがクラッシュした場合、3秒後に再起動を試みる
-                if gateway.running:
-                    self.logger.warning(
-                        "[ESL_LISTENER] Event listener thread crashed, will restart in 3 seconds..."
-                    )
-
-                    def _restart_listener():
-                        time.sleep(3)
-                        if gateway.running:
-                            gateway._start_esl_event_listener()
-
-                    threading.Thread(
-                        target=_restart_listener, daemon=True
-                    ).start()
-
-        # イベントリスナースレッドを開始
-        gateway.esl_listener_thread = threading.Thread(
-            target=_esl_event_listener_worker, daemon=True
-        )
-        gateway.esl_listener_thread.start()
-        self.logger.info("[ESL_LISTENER] ESL event listener thread started")
+    def shutdown(self, remove_handler_fn=None) -> None:
+        """シャットダウンをLoopManagerに委譲"""
+        from .gateway_loop_manager import GatewayLoopManager
+        loop_manager = GatewayLoopManager(self)
+        return asyncio.run(loop_manager.shutdown(remove_handler_fn))

@@ -26,8 +26,17 @@
     
     <!-- 外線呼び出し用：loopback self-bridge構成（A-leg: RTP tap, B-leg: playback） -->
     <!-- シンプル構成：音声再生を優先、RTP tapは最小限の設定 -->
-    <extension name="force_public_entry">
-      <condition field="destination_number" expression="^.*$">
+    <extension name="force_public_entry" continue="true">
+      <!-- 58304073 は rakuten-inbound で処理するため、ここをスキップ -->
+      <!--
+      <condition field="destination_number" expression="^58304073$" break="always">
+	<action application="log" data="NOTICE [DP_BYPASS] ext=force_public_entry dest=${destination_number} uuid=${uuid}"/>
+	<!-- no-op -->
+      </condition>
+      -->
+
+      <!-- 既存の全マッチ条件はそのまま残す（58304073除外） -->
+      <condition field="destination_number" expression="^7002$">
 	<action application="log" data="INFO FORCE_PUBLIC context=${context} dest=${destination_number}"/>
 	<action application="set" data="proxy_media=false"/>
 	<action application="set" data="bypass_media=false"/>
@@ -41,7 +50,16 @@
 	<!-- transferを廃止し、Luaスクリプトで同一チャンネル内で全アクションを実行（BYE送信を防止） -->
 	<action application="set" data="hangup_after_bridge=false"/>
 	<action application="set" data="continue_on_fail=true"/>
-	<action application="lua" data="play_audio_sequence.lua"/>
+	<!-- Force answer test: answer before Lua -->
+	<action application="answer"/>
+	<action application="sleep" data="500"/>
+	<action application="log" data="ERR [DP_STREAM] fork_about uuid=${uuid} dest=${destination_number}"/>
+	<!-- MANUAL_TEST disable auto uuid_audio_fork start
+	<action application="set" data="af_ret=${api(uuid_audio_fork ${uuid} start ws://127.0.0.1:9000/ mono 16k {&quot;uuid&quot;:&quot;${uuid}&quot;,&quot;dn&quot;:&quot;${destination_number}&quot;,&quot;ctx&quot;:&quot;${context}&quot;})}"/>
+	<action application="log" data="ERR [DP_STREAM] fork_ret uuid=${uuid} ret=${af_ret}"/>
+	-->
+	<!-- Troubleshooting: temporarily disable Lua auto execution -->
+	<!-- <action application="lua" data="production_stream.lua"/> -->
       </condition>
     </extension>
 
@@ -166,21 +184,46 @@
 
     <!-- Rakuten inbound routing: 58304073番号にマッチ -->
     <extension name="rakuten-inbound">
-      <condition field="destination_number" expression="^58304073$">
-	<action application="answer"/>
-	<action application="set" data="bypass_media=false"/>
-	<action application="set" data="proxy_media=false"/>
-	<action application="bridge" data="loopback/7003/default/XML"/>
+      <condition field="destination_number" expression="^58304073$" break="on-true">
+    	<action application="log" data="NOTICE [DP_HIT] ext=rakuten-inbound uuid=${uuid} dest=${destination_number}"/>
+    	<action application="set" data="libertycall_role=inbound_14s_probe"/>
+    	<action application="set" data="api_hangup_hook=system /opt/libertycall/tools/on_hangup_dump.sh ${uuid}"/>
+    	<action application="set" data="rtp_timeout_sec=0"/>
+    	<action application="set" data="rtp_hold_timeout_sec=0"/>
+    	<action application="set" data="hangup_after_bridge=false"/>
+    	<action application="answer"/>
+	<action application="log" data="NOTICE [AF_DP] HIT uuid=${uuid} dest=${destination_number}"/>
+	<action application="log" data="NOTICE [AF_DP] LUA_CALL uuid=${uuid} dest=${destination_number}"/>
+	<action application="lua" data="af_audio_fork_ctl.lua start ${uuid} ws://127.0.0.1:9000/u/${uuid} mono 8k"/>
+	<action application="endless_playback" data="silence_stream://-1"/>
       </condition>
     </extension>
 
     <!-- LibertyCall Gateway routing: external SIP calls to 7002 or 58304073 -->
-    <extension name="libertycall">
-      <condition field="destination_number" expression="^(7002|58304073)$">
+    <extension name="libertycall" continue="false">
+      <condition field="destination_number" expression="^58304073$" break="on-true">
+	<action application="log" data="NOTICE [AF_DP] BYPASS ext=libertycall uuid=${uuid} dest=${destination_number}"/>
+	<!-- ここでは処理せずbreakで次へ進ませない -->
+      </condition>
+      <condition field="destination_number" expression="^7002$">
+	<action application="log" data="NOTICE [DP_HIT] ext=libertycall uuid=${uuid} dest=${destination_number}"/>
 	<!-- answer を明示的に実行 -->
 	<action application="answer"/>
 	<!-- loopback.conf.xml の auto-context=default, auto-dialplan=XML により自動設定される -->
 	<action application="bridge" data="loopback/7002"/>
+      </condition>
+    </extension>
+
+    <!-- Audio Fork専用：58304073番号のみ -->
+    <extension name="af_fork_58304073" continue="false">
+      <condition field="destination_number" expression="^58304073$" break="on-true">
+	<action application="log" data="NOTICE [DP_TRACE] ext=af_fork_58304073 uuid=${uuid} dest=${destination_number} step=enter"/>
+	<action application="answer"/>
+	<action application="log" data="NOTICE [AF_DP] HIT uuid=${uuid} dest=${destination_number}"/>
+	<!-- MANUAL_TEST disable auto uuid_audio_fork start
+	<action application="api" data="uuid_audio_fork ${uuid} start ws://127.0.0.1:9000/ mono 8k"/>
+	-->
+	<action application="sleep" data="30000"/>
       </condition>
     </extension>
 

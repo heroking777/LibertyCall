@@ -25,6 +25,7 @@ end
 if not session:answered() then
     freeswitch.consoleLog("INFO", "[CALLFLOW] Answering call to enable audio playback\n")
     session:answer()
+  session:execute("external_rtp", "127.0.0.1:7002"); freeswitch.consoleLog("INFO", "[PATCH] Injected external_rtp to 127.0.0.1:7002\n");
     -- UUIDを変数に保存（Zombieセッションでも失わないように）
     call_uuid = session:get_uuid()
     freeswitch.consoleLog("INFO", "[CALLFLOW] Stored call UUID: " .. tostring(call_uuid) .. "\n")
@@ -104,6 +105,7 @@ end
 freeswitch.consoleLog("ERR", "[RTP_STREAM] BEFORE answer answered=" .. tostring(session:answered()) .. "\n")
 if not session:answered() then
     session:answer()
+  session:execute("external_rtp", "127.0.0.1:7002"); freeswitch.consoleLog("INFO", "[PATCH] Injected external_rtp to 127.0.0.1:7002\n");
 end
 freeswitch.consoleLog("ERR", "[RTP_STREAM] AFTER answer answered=" .. tostring(session:answered()) .. "\n")
 

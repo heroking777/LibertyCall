@@ -88,8 +88,8 @@ class ASRStreamHandler:
                     )
                     try:
                         new_asr = GoogleASR(
-                            language_code="ja",
-                            sample_rate=16000,
+                            language_code="ja-JP",
+                            sample_rate=16000,  # FreeSWITCHは16kHzで送信
                             phrase_hints=getattr(core, "_phrase_hints", []),
                             ai_core=core,
                             error_callback=core._on_asr_error,
@@ -217,6 +217,33 @@ class ASRStreamHandler:
         current_time = time.time()
         dt_ms = (current_time - manager._last_feed_time) * 1000
         manager._last_feed_time = current_time
+
+        # 【小出し送信】100ms（3200 bytes）ごとに刻んでリアルタイムにストリームへ流し込む
+        if not hasattr(manager, '_chunk_buffer'):
+            manager._chunk_buffer = bytearray()
+            manager._last_chunk_time = current_time
+        
+        # 現在のチャンクをバッファに追加
+        manager._chunk_buffer.extend(pcm16k_chunk)
+        buffer_duration_ms = (current_time - manager._last_chunk_time) * 1000
+        
+        self.logger.info(f"[CHUNKING_DEBUG] buffer_size={len(manager._chunk_buffer)} bytes, duration={buffer_duration_ms:.1f}ms")
+        
+        # 100ms以上溜まったら送信（16kHz * 2bytes * 0.1s = 3200 bytes）
+        if buffer_duration_ms >= 100 or len(manager._chunk_buffer) >= 3200:
+            # バッファから送信データを取得
+            chunked_data = bytes(manager._chunk_buffer[:3200])  # 最初の3200 bytesのみ
+            manager._chunk_buffer = manager._chunk_buffer[3200:]  # 残りを保持
+            manager._last_chunk_time = current_time
+            
+            self.logger.info(f"[CHUNK_SEND] Sending chunked data: {len(chunked_data)} bytes, {buffer_duration_ms:.1f}ms")
+            
+            # チャンクしたデータで元の処理を継続
+            pcm16k_chunk = chunked_data
+        else:
+            # まだバッファが溜まっていない場合は送信しない
+            self.logger.debug(f"[CHUNK_WAIT] Waiting for more data: {buffer_duration_ms:.1f}ms < 100ms")
+            return True
 
         # RMS記録（統計用）
         if manager.is_user_speaking:
@@ -356,7 +383,7 @@ class ASRStreamHandler:
                 # 音声データを送信
                 if handler and hasattr(handler, "on_audio_chunk"):
                     handler.on_audio_chunk(pcm16k_chunk)
-                    self.logger.debug(
+                    self.logger.info(
                         "[ASR_DEBUG] Audio chunk sent to ASR handler (len=%s)",
                         len(pcm16k_chunk),
                     )
@@ -370,6 +397,44 @@ class ASRStreamHandler:
             )
 
         return True
+
+    def handle_asr_final(self, call_uuid: str, final_text: str, confidence: float, source: str = "unknown") -> None:
+        """
+        ASR final結果を既存返答ルールへ接着する薄いラッパー
+        
+        Args:
+            call_uuid: FreeSWITCH UUID（またはcall_id）
+            final_text: ASR最終テキスト
+            confidence: 信頼度
+            source: ASRプロバイダ名（例: "google"）
+        """
+        manager = self.manager
+        
+        # 空振り防止
+        if not final_text or not final_text.strip():
+            manager.logger.debug("[ASR_FINAL_IN] Skipped empty text (uuid=%s source=%s)", call_uuid, source)
+            return
+        
+        # UUID照合用にeffective_call_idを取得してログ
+        effective_call_id = manager._get_effective_call_id()
+        manager.logger.info(
+            "[ASR_FINAL_IN] uuid_in=%s effective_call_id=%s text=\"%s\" conf=%.3f source=%s",
+            call_uuid,
+            effective_call_id,
+            final_text[:100],
+            confidence,
+            source
+        )
+        
+        # 既存handle_asr_resultを呼び出す（audio_duration等は0で仮）
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            loop.create_task(self.handle_asr_result(final_text, 0.0, 0.0, 0.0))
+        except RuntimeError:
+            # イベントループ未取得時はsync実行
+            import asyncio
+            asyncio.run(self.handle_asr_result(final_text, 0.0, 0.0, 0.0))
 
     async def handle_asr_result(
         self, text: str, audio_duration: float, inference_time: float, end_to_text_delay: float
@@ -523,7 +588,7 @@ class ASRStreamHandler:
             chunk_size = 160
             for i in range(0, len(ulaw_response), chunk_size):
                 manager.tts_queue.append(ulaw_response[i : i + chunk_size])
-            manager.logger.debug(">> TTS Queued")
+            manager.logger.info("[TTS] queued bytes=%d chunks=%d", len(ulaw_response), len(ulaw_response)//chunk_size + (1 if len(ulaw_response)%chunk_size else 0))
             manager.is_speaking_tts = True
 
         # 転送処理

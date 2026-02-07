@@ -141,7 +141,7 @@ class PlaybackHandler:
                     playback_success = True
                     manager._last_playback_success = True
                     self.logger.info(
-                        "[PLAYBACK] Playback started: call_id=%s file=%s uuid=%s",
+                        "[ESL] Playback started: call_id=%s file=%s uuid=%s",
                         call_id,
                         audio_file,
                         freeswitch_uuid,
@@ -230,7 +230,7 @@ class PlaybackHandler:
                                 # リトライ成功時はカウントをリセット
                                 manager._playback_retry_count[call_id] = 0
                                 self.logger.info(
-                                    "[PLAYBACK] Playback started (after remap): call_id=%s file=%s uuid=%s",
+                                    "[ESL] Playback started (after remap): call_id=%s file=%s uuid=%s",
                                     call_id,
                                     audio_file,
                                     freeswitch_uuid,
@@ -270,7 +270,7 @@ class PlaybackHandler:
                                             # リトライ成功時はカウントをリセット
                                             manager._playback_retry_count[call_id] = 0
                                             self.logger.info(
-                                                "[PLAYBACK] Playback started (final fallback): call_id=%s file=%s uuid=%s",
+                                                "[ESL] Playback started (final fallback): call_id=%s file=%s uuid=%s",
                                                 call_id,
                                                 audio_file,
                                                 freeswitch_uuid,
@@ -343,7 +343,7 @@ class PlaybackHandler:
                             # リトライ成功時はカウントをリセット
                             manager._playback_retry_count[call_id] = 0
                             self.logger.info(
-                                "[PLAYBACK] Playback started (fallback): call_id=%s file=%s uuid=%s",
+                                "[ESL] Playback started (fallback): call_id=%s file=%s uuid=%s",
                                 call_id,
                                 audio_file,
                                 freeswitch_uuid,
@@ -378,7 +378,7 @@ class PlaybackHandler:
                             playback_success = True
                             manager._last_playback_success = True
                             self.logger.info(
-                                "[PLAYBACK] Playback started (fallback): call_id=%s file=%s uuid=%s",
+                                "[ESL] Playback started (fallback): call_id=%s file=%s uuid=%s",
                                 call_id,
                                 audio_file,
                                 freeswitch_uuid,

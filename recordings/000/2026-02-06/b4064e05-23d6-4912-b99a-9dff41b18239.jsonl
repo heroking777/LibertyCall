@@ -1,0 +1,69 @@
+{"type": "call_start", "uuid": "b4064e05-23d6-4912-b99a-9dff41b18239", "client_id": "000", "time": "2026-02-06T17:48:23.797Z"}
+{"type": "asr_interim", "text": "まだまだ", "confidence": 0.0, "time": "2026-02-06T17:48:34.036Z"}
+{"type": "asr_interim", "text": "まだまだ人", "confidence": 0.0, "time": "2026-02-06T17:48:34.052Z"}
+{"type": "asr_interim", "text": "まだまだ 人力", "confidence": 0.0, "time": "2026-02-06T17:48:34.064Z"}
+{"type": "asr_interim", "text": "まだまだ 人力じゃ", "confidence": 0.0, "time": "2026-02-06T17:48:34.085Z"}
+{"type": "asr_interim", "text": "まだまだ 人力じゃない", "confidence": 0.0, "time": "2026-02-06T17:48:34.128Z"}
+{"type": "asr_interim", "text": "まだまだ", "confidence": 0.0, "time": "2026-02-06T17:48:34.146Z"}
+{"type": "asr_interim", "text": " 人力じゃない", "confidence": 0.0, "time": "2026-02-06T17:48:34.147Z"}
+{"type": "asr_interim", "text": "まだまだ 人力じゃない", "confidence": 0.0, "time": "2026-02-06T17:48:34.174Z"}
+{"type": "response", "text": "まだまだ 人力じゃない", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-06T17:48:34.260Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-06T17:48:34.261Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 2.205, "time": "2026-02-06T17:48:34.261Z"}
+{"type": "asr_final", "text": "まだまだ 人力じゃない", "confidence": 0.7418172359466553, "time": "2026-02-06T17:48:34.262Z"}
+{"type": "asr_interim", "text": "で", "confidence": 0.0, "time": "2026-02-06T17:48:41.447Z"}
+{"type": "asr_interim", "text": " でも", "confidence": 0.0, "time": "2026-02-06T17:48:41.519Z"}
+{"type": "asr_interim", "text": " でも なんか", "confidence": 0.0, "time": "2026-02-06T17:48:41.733Z"}
+{"type": "asr_interim", "text": " でも", "confidence": 0.0, "time": "2026-02-06T17:48:42.114Z"}
+{"type": "asr_interim", "text": " なんか", "confidence": 0.0, "time": "2026-02-06T17:48:42.115Z"}
+{"type": "asr_interim", "text": " でも なんか", "confidence": 0.0, "time": "2026-02-06T17:48:42.315Z"}
+{"type": "asr_interim", "text": " でもなんかばい", "confidence": 0.0, "time": "2026-02-06T17:48:42.424Z"}
+{"type": "asr_interim", "text": " でも なんか", "confidence": 0.0, "time": "2026-02-06T17:48:42.519Z"}
+{"type": "asr_interim", "text": " バイト", "confidence": 0.0, "time": "2026-02-06T17:48:42.519Z"}
+{"type": "asr_interim", "text": " でもなんかバイトは", "confidence": 0.0, "time": "2026-02-06T17:48:42.529Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう", "confidence": 0.0, "time": "2026-02-06T17:48:42.630Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう", "confidence": 0.0, "time": "2026-02-06T17:48:42.839Z"}
+{"type": "asr_interim", "text": " めっちゃ", "confidence": 0.0, "time": "2026-02-06T17:48:42.840Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう", "confidence": 0.0, "time": "2026-02-06T17:48:43.026Z"}
+{"type": "asr_interim", "text": " めっちゃ大変", "confidence": 0.0, "time": "2026-02-06T17:48:43.026Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう", "confidence": 0.0, "time": "2026-02-06T17:48:43.238Z"}
+{"type": "asr_interim", "text": " めっちゃ大変 らしい", "confidence": 0.0, "time": "2026-02-06T17:48:43.238Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変", "confidence": 0.0, "time": "2026-02-06T17:48:43.241Z"}
+{"type": "asr_interim", "text": " らしい", "confidence": 0.0, "time": "2026-02-06T17:48:43.241Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変", "confidence": 0.0, "time": "2026-02-06T17:48:43.428Z"}
+{"type": "asr_interim", "text": " らしいです", "confidence": 0.0, "time": "2026-02-06T17:48:43.428Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変", "confidence": 0.0, "time": "2026-02-06T17:48:43.531Z"}
+{"type": "asr_interim", "text": " らしいですよ", "confidence": 0.0, "time": "2026-02-06T17:48:43.532Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変", "confidence": 0.0, "time": "2026-02-06T17:48:43.733Z"}
+{"type": "asr_interim", "text": " らしいですよ なんか", "confidence": 0.0, "time": "2026-02-06T17:48:43.734Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ", "confidence": 0.0, "time": "2026-02-06T17:48:43.823Z"}
+{"type": "asr_interim", "text": " なんか", "confidence": 0.0, "time": "2026-02-06T17:48:43.824Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ なんか", "confidence": 0.0, "time": "2026-02-06T17:48:44.623Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ", "confidence": 0.0, "time": "2026-02-06T17:48:45.024Z"}
+{"type": "asr_interim", "text": " なんかもう", "confidence": 0.0, "time": "2026-02-06T17:48:45.024Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ なんかもう", "confidence": 0.0, "time": "2026-02-06T17:48:45.618Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ", "confidence": 0.0, "time": "2026-02-06T17:48:45.953Z"}
+{"type": "asr_interim", "text": " なんかもう立ち", "confidence": 0.0, "time": "2026-02-06T17:48:45.954Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ", "confidence": 0.0, "time": "2026-02-06T17:48:46.036Z"}
+{"type": "asr_interim", "text": " なんかもう買って", "confidence": 0.0, "time": "2026-02-06T17:48:46.037Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ", "confidence": 0.0, "time": "2026-02-06T17:48:46.142Z"}
+{"type": "asr_interim", "text": " なんかもう立ち止まっ", "confidence": 0.0, "time": "2026-02-06T17:48:46.143Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ", "confidence": 0.0, "time": "2026-02-06T17:48:46.254Z"}
+{"type": "asr_interim", "text": " なんかもう立ち止まって", "confidence": 0.0, "time": "2026-02-06T17:48:46.254Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ", "confidence": 0.0, "time": "2026-02-06T17:48:46.433Z"}
+{"type": "asr_interim", "text": " なんかもう立ち止まってすぐ", "confidence": 0.0, "time": "2026-02-06T17:48:46.434Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ", "confidence": 0.0, "time": "2026-02-06T17:48:46.555Z"}
+{"type": "asr_interim", "text": " なんかもう立ち止まってすぐわかる", "confidence": 0.0, "time": "2026-02-06T17:48:46.556Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ", "confidence": 0.0, "time": "2026-02-06T17:48:46.824Z"}
+{"type": "asr_interim", "text": " なんかもう立ち止まってすぐわかるみたい", "confidence": 0.0, "time": "2026-02-06T17:48:46.825Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ なんかもう立ち止まってすぐわかる", "confidence": 0.0, "time": "2026-02-06T17:48:47.024Z"}
+{"type": "asr_interim", "text": " みたいな", "confidence": 0.0, "time": "2026-02-06T17:48:47.024Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ なんかもう立ち止まってすぐわかる", "confidence": 0.0, "time": "2026-02-06T17:48:47.137Z"}
+{"type": "asr_interim", "text": " みたいなが", "confidence": 0.0, "time": "2026-02-06T17:48:47.138Z"}
+{"type": "asr_interim", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ なんかもう立ち止まってすぐわかる みたいな", "confidence": 0.0, "time": "2026-02-06T17:48:47.253Z"}
+{"type": "asr_interim", "text": " なんかつけ", "confidence": 0.0, "time": "2026-02-06T17:48:47.253Z"}
+{"type": "response", "text": "でもなんかバイトはもう めっちゃ大変 らしいですよ なんかもう立ち止まってすぐわかる みたいな がつけ", "audio_ids": ["0604"], "phase": "transfer_confirm", "time": "2026-02-06T17:48:47.363Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-06T17:48:47.364Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 5.44, "time": "2026-02-06T17:48:47.364Z"}
+{"type": "asr_final", "text": " でもなんかバイトはもう めっちゃ大変 らしいですよ なんかもう立ち止まってすぐわかる みたいな がつけ", "confidence": 0.21878467500209808, "time": "2026-02-06T17:48:47.365Z"}
+{"type": "call_end", "uuid": "b4064e05-23d6-4912-b99a-9dff41b18239", "duration": 23.6, "time": "2026-02-06T17:48:47.368Z"}
