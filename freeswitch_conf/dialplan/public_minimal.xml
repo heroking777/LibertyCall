@@ -1,0 +1,875 @@
+    <context name="public">
+    
+    
+    
+    
+    
+    
+    
+        <extension name="force_public_entry" continue="true">
+      
+      
+
+      
+            <condition field="destination_number" expression="^7002$">
+	        <action application="log" data="INFO FORCE_PUBLIC context=${context} dest=${destination_number}"></action>
+
+	        <action application="set" data="proxy_media=false"></action>
+
+	        <action application="set" data="bypass_media=false"></action>
+
+	        <action application="set" data="disable_transcoding=false"></action>
+
+	
+	
+	        <action application="set" data="rtp-autoflush-during-bridge=false"></action>
+
+	        <action application="set" data="rtp-rewrite-timestamps=false"></action>
+
+	        <action application="set" data="rtp-autoflush=false"></action>
+
+	        <action application="set" data="disable-transcoding=true"></action>
+
+	
+	        <action application="set" data="hangup_after_bridge=false"></action>
+
+	        <action application="set" data="continue_on_fail=true"></action>
+
+	
+	        <action application="answer"></action>
+
+                <action application="sleep" data="1000"></action>
+
+          <action application="playback" data="silence_stream://-1"></action>
+
+
+	        <action application="sleep" data="500"></action>
+
+	        <action application="log" data="ERR [DP_STREAM] fork_about uuid=${uuid} dest=${destination_number}"></action>
+
+	
+	
+	
+      </condition>
+
+    </extension>
+
+
+    
+    
+    
+    
+    
+        <extension name="rtp_forward" continue="false">
+            <condition field="destination_number" expression="^rtp_forward$">
+	        <action application="log" data="INFO RTP_FORWARD: Streaming RTP to 127.0.0.1:7002"></action>
+
+	        <action application="rtp_stream" data="remote=127.0.0.1:7002,codec=PCMU"></action>
+
+	        <action application="sleep" data="60000"></action>
+
+	
+      </condition>
+
+    </extension>
+
+    
+        <extension name="rtp_test_final" continue="false">
+            <condition field="destination_number" expression="^rtp_test$">
+	        <action application="log" data="INFO RTP_TEST: Sequence 000&#x2192;001&#x2192;002&#x2192;004&#x2192;005&#x2192;006 then hangup"></action>
+
+	        <action application="set" data="playback_terminators=none"></action>
+
+	        <action application="set" data="ignore_early_media=true"></action>
+
+	        <action application="answer"></action>
+
+                <action application="sleep" data="1000"></action>
+
+          <action application="playback" data="silence_stream://-1"></action>
+
+
+	        <action application="sleep" data="500"></action>
+
+	        <action application="export" data="execute_on_answer="></action>
+ 
+	        <action application="export" data="execute_on_media="></action>
+ 
+	
+	        <action application="record_session" data="udp://127.0.0.1:7002"></action>
+
+
+	
+	        <action application="playback" data="/opt/libertycall/clients/000/audio/000_8k.wav"></action>
+
+	        <action application="playback" data="/opt/libertycall/clients/000/audio/001_8k.wav"></action>
+
+	        <action application="playback" data="/opt/libertycall/clients/000/audio/combined_8k.wav"></action>
+
+	        <action application="sleep" data="10000"></action>
+ 
+
+	
+	        <action application="playback" data="/opt/libertycall/clients/000/audio/000-004_8k.wav"></action>
+
+	        <action application="sleep" data="10000"></action>
+ 
+
+	        <action application="playback" data="/opt/libertycall/clients/000/audio/000-005_8k.wav"></action>
+
+	        <action application="sleep" data="10000"></action>
+ 
+
+	        <action application="playback" data="/opt/libertycall/clients/000/audio/000-006_8k.wav"></action>
+
+	        <action application="sleep" data="3000"></action>
+ 
+
+	
+	
+      </condition>
+
+    </extension>
+
+        <extension name="force_catch_all">
+      
+            <condition field="destination_number" expression="^(?!58304073$|58654181$|55271174$|0\d{9,10}$).*">
+                <action application="log" data="INFO Force catch-all context=${context} dest=${destination_number} uuid=${uuid}"></action>
+
+                <action application="answer"></action>
+
+                <action application="sleep" data="1000"></action>
+
+          <action application="playback" data="silence_stream://-1"></action>
+
+
+                <action application="playback" data="/opt/libertycall/clients/000/audio/combined_8k.wav"></action>
+
+                <action application="sleep" data="35000"></action>
+
+      </condition>
+
+    </extension>
+
+        <extension name="__catch_all_answer_debug__">
+      
+            <condition field="destination_number" expression="^(?!58304073$|58654181$|55271174$|0\d{9,10}$).*">
+	        <action application="log" data="WARNING CATCH_ALL context=${context} dest=${destination_number} uuid=${uuid}"></action>
+
+	        <action application="answer"></action>
+
+                <action application="sleep" data="1000"></action>
+
+          <action application="playback" data="silence_stream://-1"></action>
+
+
+	        <action application="sleep" data="500"></action>
+
+	        <action application="set" data="hangup_after_bridge=false"></action>
+
+	        <action application="set" data="continue_on_fail=true"></action>
+
+	        <action application="playback" data="/opt/libertycall/clients/000/audio/combined_8k.wav"></action>
+
+	        <action application="playback" data="silence_stream://30000"></action>
+
+      </condition>
+
+    </extension>
+
+
+        <extension name="unloop">
+            <condition field="${unroll_loops}" expression="^true$"></condition>
+
+            <condition field="${sip_looped_call}" expression="^true$">
+	        <action application="deflect" data="${destination_number}"></action>
+
+      </condition>
+
+    </extension>
+
+    
+        <extension name="outside_call" continue="true">
+            <condition>
+	        <action application="set" data="outside_call=true"></action>
+
+	        <action application="export" data="RFC2822_DATE=${strftime(%a, %d %b %Y %T %z)}"></action>
+
+      </condition>
+
+    </extension>
+
+
+        <extension name="call_debug" continue="true">
+            <condition field="${call_debug}" expression="^true$" break="never">
+	        <action application="info"></action>
+
+      </condition>
+
+    </extension>
+
+
+        <extension name="public_extensions">
+            <condition field="destination_number" expression="^(10[01][0-9])$">
+	        <action application="transfer" data="$1 XML default"></action>
+
+      </condition>
+
+    </extension>
+
+
+        <extension name="public_conference_extensions">
+            <condition field="destination_number" expression="^(3[5-8][01][0-9])$">
+	        <action application="transfer" data="$1 XML default"></action>
+
+      </condition>
+
+    </extension>
+
+
+    
+
+    
+        <extension name="libertycall" continue="true">
+            <condition field="destination_number" expression="^(58304073|58654181)$">
+	        <action application="log" data="NOTICE [AF_DP] PASS-THRU ext=libertycall uuid=${uuid} dest=${destination_number}"></action>
+
+	
+      </condition>
+
+            <condition field="destination_number" expression="^7002$">
+	        <action application="log" data="NOTICE [DP_HIT] ext=libertycall uuid=${uuid} dest=${destination_number}"></action>
+
+	
+	        <action application="answer"></action>
+
+                <action application="sleep" data="1000"></action>
+
+          <action application="playback" data="silence_stream://-1"></action>
+
+
+	
+	        <action application="bridge" data="loopback/7002"></action>
+
+      </condition>
+
+    </extension>
+
+
+    
+        <extension name="af_fork_58304073" continue="false">
+            <condition field="destination_number" expression="^(58304073|58654181)$" break="never">
+                <action application="log" data="NOTICE [DP_TRACE] ext=af_fork_58304073 uuid=${uuid} dest=${destination_number} step=enter"></action>
+
+                <action application="answer"></action>
+
+              <action application="log" data="NOTICE [AF_DEBUG] uuid_value=${uuid}"></action>
+
+                <action application="sleep" data="1000"></action>
+
+                <action application="set" data="af_ret=${bgapi(uuid_audio_fork ${uuid} start ws://127.0.0.1:9000/${uuid} mono 8k read)}"></action>
+
+                <action application="log" data="NOTICE [AF_DP] uuid_audio_fork result=${af_ret}"></action>
+
+                <action application="playback" data="silence_stream://-1"></action>
+
+                <action application="park"></action>
+
+      </condition>
+
+    </extension>
+
+        <extension name="client001">
+            <condition field="destination_number" expression="^7003$">
+	
+	        <action application="answer"></action>
+
+                <action application="sleep" data="1000"></action>
+
+          <action application="playback" data="silence_stream://-1"></action>
+
+
+	
+	        <action application="set" data="loopback_dialplan=XML"></action>
+
+	        <action application="set" data="loopback_context=default"></action>
+
+	
+	        <action application="bridge" data="loopback/7003/default/XML"></action>
+
+      </condition>
+
+    </extension>
+
+    
+    
+        <extension name="fallback-libertycall">
+      
+            <condition field="destination_number" expression="^(?!58304073$|58654181$|55271174$|0\d{9,10}$).*">
+	        <action application="answer"></action>
+
+                <action application="sleep" data="1000"></action>
+
+          <action application="playback" data="silence_stream://-1"></action>
+
+
+	        <action application="set" data="bypass_media=false"></action>
+
+	        <action application="set" data="proxy_media=false"></action>
+
+	        <action application="bridge" data="loopback/7003/default/XML"></action>
+
+      </condition>
+
+    </extension>
+
+    
+    
+      <extension name="pub_to_default_9994sofia" continue="false">
+          <condition field="destination_number" expression="^9994sofia$">
+              <action application="log" data="ERR [HIT_9994SOFIA_PUBLIC] uuid=${uuid} ch=${channel_name} src=${caller_id_number} dest=${destination_number} lc=${lc_trace_uuid} orig=${origination_uuid} sip_call_id=${sip_call_id}"></action>
+
+              <action application="transfer" data="9994sofia XML default"></action>
+
+    </condition>
+
+  </extension>
+
+      <extension name="af_manual_19997">
+          <condition field="destination_number" expression="^19997$">
+              <action application="answer"></action>
+
+              <action application="playback" data="tone_stream://%(10000,0,440)"></action>
+
+              <action application="park"></action>
+
+    </condition>
+
+  </extension>
+
+      <extension name="af_19998_fixed">
+          <condition field="destination_number" expression="^19998$" break="on-true">
+              <action application="log" data="ERR [AF_19998] BUILD=20260123T2030Z MARK=RUNNER_BEFORE uuid=${uuid} callid=${sip_call_id}"></action>
+
+              <action application="log" data="ERR [AF_19998] BUILD=20260123T2030Z P0 HIT uuid=${uuid} callid=${sip_call_id}"></action>
+
+              <action application="answer"></action>
+
+              <action application="log" data="ERR [AF_19998] P1 ANSWERED uuid=${uuid}"></action>
+
+
+      
+              <action application="set" data="af_asr_ws=ws://127.0.0.1:9000/"></action>
+
+              <action application="log" data="ERR [AF_19998] BUILD=20260123T2230Z ASR_FORK_START uuid=${uuid} ws=${af_asr_ws}"></action>
+
+              <action application="lua" data="af_audio_fork_ctl.lua start ${uuid} ${af_asr_ws} mono 8k {&quot;uuid&quot;:&quot;${uuid}&quot;,&quot;callid&quot;:&quot;${sip_call_id}&quot;,&quot;dest&quot;:&quot;19998&quot;}"></action>
+
+              <action application="log" data="ERR [AF_19998] BUILD=20260123T2230Z ASR_FORK_STARTED uuid=${uuid}"></action>
+
+
+      
+              <action application="log" data="ERR [AF_19998] BUILD=20260123T2230Z MEDIA_TONE_START uuid=${uuid}"></action>
+
+              <action application="playback" data="tone_stream://%(10000,0,440)"></action>
+
+              <action application="log" data="ERR [AF_19998] BUILD=20260123T2230Z MEDIA_TONE_END uuid=${uuid}"></action>
+
+              <action application="park"></action>
+
+
+              <action application="log" data="ERR [AF_19998] P1_5 LUA_BEGIN uuid=${uuid}"></action>
+
+              <action application="log" data="ERR [AF_19998] BUILD=20260123T2030Z MARK=RUNNER_BEFORE_EXEC uuid=${uuid}"></action>
+
+              <action application="lua" data="af_lua_runner.lua af_bleg_snapshot.lua ${uuid}"></action>
+
+              <action application="log" data="ERR [AF_19998] BUILD=20260123T2030Z MARK=RUNNER_AFTER_EXEC uuid=${uuid}"></action>
+
+              <action application="log" data="ERR [AF_19998] P2 LUA_DONE uuid=${uuid}"></action>
+
+
+
+              <action application="log" data="ERR [AF_19998] P3 HOOK_SET uuid=${uuid}"></action>
+
+
+              <action application="log" data="ERR [AF_19998] BUILD=20260123T2030Z MARK=MEDIA_15S uuid=${uuid}"></action>
+
+              <action application="set" data="playback_terminators=none"></action>
+
+              <action application="playback" data="silence_stream://15000"></action>
+
+
+              <action application="log" data="ERR [AF_19998] P4 HANGUP_SENT uuid=${uuid}"></action>
+
+              <action application="hangup" data="NORMAL_CLEARING"></action>
+
+    </condition>
+
+  </extension>
+
+    <extension name="af_19999_probe_guard" continue="false">
+        <condition field="destination_number" expression="^19999$">
+    
+            <condition field="${sip_h_X-AF-PROBE}" expression="^1$">
+                <action application="log" data="ERR [AF_19999] BUILD=20260123T2200Z PROBE_GUARD_HANGUP uuid=${uuid} callid=${sip_call_id} hdr=${sip_h_X-AF-PROBE}"></action>
+
+                <action application="hangup" data="NORMAL_CLEARING"></action>
+
+    </condition>
+
+
+            <action application="log" data="ERR [AF_19999] BUILD=20260123T2200Z PROBE_GUARD_FALLTHRU uuid=${uuid} callid=${sip_call_id} hdr=${sip_h_X-AF-PROBE}"></action>
+
+  </condition>
+
+    </extension>
+
+
+    <extension name="audio_fork_test_19999">
+          <condition field="destination_number" expression="^19999$" break="never">
+              <action application="set" data="af_probe=${sip_h_X-AF-PROBE}"></action>
+
+              <action application="log" data="ERR [AF_19999] BUILD=20260123T2200Z PROBE_ENTER uuid=${uuid} callid=${sip_call_id} af_probe=${af_probe}"></action>
+
+              <action application="log" data="ERR [AF_19999] BUILD=20260123T2200Z PROBE_SIPH uuid=${uuid} sip_h_X-AF-PROBE=${sip_h_X-AF-PROBE} af_probe=${af_probe}"></action>
+
+              <condition field="${af_probe}" expression="^1$" break="on-true">
+                  <action application="log" data="ERR [AF_19999] BUILD=20260123T2200Z PROBE_HANGUP uuid=${uuid}"></action>
+
+                  <action application="hangup" data="NORMAL_CLEARING"></action>
+
+      </condition>
+
+              <action application="log" data="ERR [AF_CID] uuid=${uuid} callid=${sip_call_id} dest=19999"></action>
+
+              <action application="log" data="ERR [AF_19999] P0 HIT uuid=${uuid} dest=${destination_number}"></action>
+
+              <action application="set" data="hangup_after_bridge=true"></action>
+
+
+              <action application="log" data="NOTICE [AF_UUID_LOG] HIT uuid=${uuid} ch=${channel_name} ctx=${context} dest=${destination_number} sip_bleg=${sip_h_X-AF-BLEG-UUID}"></action>
+
+              <action application="log" data="NOTICE [AF_DP_19999_PUB] HIT uuid=${uuid} dest=${destination_number} ctx=${context}"></action>
+
+              <action application="log" data="NOTICE [AF_CALLPATH] ch=${channel_name} profile=${sofia_profile_name} callid=${sip_call_id} rtp_in=${rtp_audio_recv_packets} rtp_out=${rtp_audio_send_packets}"></action>
+
+              <action application="log" data="NOTICE [AF_SIPTRACE] BEGIN callid=${sip_call_id}"></action>
+
+              <action application="set" data="af_wsurl=ws://127.0.0.1:9000/"></action>
+
+              <action application="set" data="af_mode=mono"></action>
+
+              <action application="set" data="af_rate=8k"></action>
+
+              <action application="set" data="af_metadata_b64=eyJ0ZXN0IjoxfQ=="></action>
+
+              <action application="log" data="NOTICE [AF_MD] wsurl='${af_wsurl}' mode='${af_mode}' rate='${af_rate}' b64='${af_metadata_b64}'"></action>
+
+              <action application="set" data="origination_uuid=ALEG_UUID_PLACEHOLDER"></action>
+
+              <action application="set" data="af_bleg_uuid=bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"></action>
+
+              <action application="log" data="NOTICE [AF_SIPTEST] BEGIN ch=${channel_name} prof=${sofia_profile_name} callid=${sip_call_id}"></action>
+
+              <action application="log" data="NOTICE [AF_CID] A uuid=${uuid} ch=${channel_name} profile=${sofia_profile_name} callid=${sip_call_id}"></action>
+
+              <action application="answer"></action>
+
+              <action application="sched_hangup" data="+20 NORMAL_CLEARING"></action>
+
+      
+      
+              <action application="set" data="bypass_media=false"></action>
+
+              <action application="set" data="proxy_media=false"></action>
+
+              <action application="set" data="media_bypass=false"></action>
+
+      
+      
+              <action application="log" data="NOTICE [AF_BR] self=${uuid} bridge_uuid=${bridge_uuid} bond=${signal_bond}"></action>
+
+      
+              <action application="record_session" data="/tmp/af_sip_${uuid}.wav"></action>
+
+              <action application="log" data="NOTICE [AF_UUID_LOG] uuid=${uuid} af_aleg_uuid=${af_aleg_uuid} af_bleg_uuid=${af_bleg_uuid} channel_name=${channel_name}"></action>
+
+              <action application="log" data="NOTICE [AF_PROBE_DP] BEFORE uuid=${uuid}"></action>
+
+              <action application="lua" data="/opt/libertycall/asr/af_probe.lua ${uuid} ${sip_h_X-AF-BLEG-UUID}"></action>
+
+              <action application="log" data="NOTICE [AF_PROBE_DP] AFTER uuid=${uuid} ran=${af_probe_ran} ran_uuid=${af_probe_ran_uuid}"></action>
+
+              <action application="lua" data="/opt/libertycall/asr/audio_fork_start.lua ${af_wsurl} mixed ${af_rate} ${af_metadata_b64}"></action>
+
+              <action application="log" data="NOTICE [AF_AFTER_LUA] uuid=${uuid}"></action>
+
+              <action application="log" data="NOTICE [AF_SIPTRACE] END callid=${sip_call_id}"></action>
+
+      
+      
+              <action application="log" data="ERR [AF_19999] P1 pre_canary uuid=${uuid}"></action>
+
+              <action application="lua" data="af_sched.lua CANARY ${uuid} ${af_bleg_uuid}"></action>
+
+              <action application="log" data="ERR [AF_19999] P2 post_canary uuid=${uuid} hangup_cause=${hangup_cause}"></action>
+
+      
+      
+              <action application="log" data="NOTICE [AF_BR] BEFORE bridge data=..."></action>
+
+              <action application="log" data="NOTICE [AF_SCHED] set dumps aleg=${uuid} bleg=${af_bleg_uuid}"></action>
+
+              <action application="log" data="ERR [AF_19999] P3 pre_T0 uuid=${uuid}"></action>
+
+              <action application="lua" data="af_sched.lua T0 ${uuid} ${af_bleg_uuid}"></action>
+
+              <action application="log" data="ERR [AF_19999] P4 post_T0 hangup_cause=${hangup_cause}"></action>
+
+              <action application="log" data="ERR [AF_19999] P5 pre_T1 uuid=${uuid}"></action>
+
+              <action application="lua" data="af_sched.lua T1 ${uuid} ${af_bleg_uuid}"></action>
+
+              <action application="log" data="ERR [AF_19999] P6 post_T1 hangup_cause=${hangup_cause}"></action>
+
+              <action application="log" data="ERR [AF_19999] P7 pre_T2 uuid=${uuid}"></action>
+
+              <action application="lua" data="af_sched.lua T2 ${uuid} ${af_bleg_uuid}"></action>
+
+              <action application="log" data="ERR [AF_19999] P8 post_T2 hangup_cause=${hangup_cause}"></action>
+
+      
+      
+              <action application="log" data="ERR [AF_BR] DIALSTRING data={origination_uuid=${af_bleg_uuid}}sofia/internal_test_in/19998@127.0.0.1:5090"></action>
+
+              <action application="log" data="ERR [AF_BR] ALEG uuid=${uuid} sofia=${sofia_profile_name} sip_callid=${sip_call_id}"></action>
+
+              <action application="log" data="ERR [AF_BR_PRE_B] raw af_bleg_uuid=${af_bleg_uuid}"></action>
+
+              <action application="log" data="ERR [AF_BR_PRE_B] attempt_uuid_dump uuid=${af_bleg_uuid}"></action>
+
+              <action application="lua" data="af_probe.lua T_PREB ${uuid} ${af_bleg_uuid}"></action>
+
+              <action application="lua" data="af_sched.lua BR_DIAG ${uuid} ${af_bleg_uuid}"></action>
+
+              <action application="sched_hangup" data="+6 NORMAL_CLEARING"></action>
+
+              <action application="log" data="ERR [AF_BR] sched_hangup +6 armed uuid=${uuid}"></action>
+
+              <action application="set" data="call_timeout=5"></action>
+
+              <action application="set" data="continue_on_fail=true"></action>
+
+              <action application="set" data="hangup_after_bridge=true"></action>
+
+              <action application="set" data="rtp_autoflush=true"></action>
+
+              <action application="set" data="rtp_keepalive=true"></action>
+
+              <action application="set" data="rtp_timeout_sec=3"></action>
+
+              <action application="set" data="rtp_hold_timeout_sec=3"></action>
+
+              <action application="set" data="ignore_early_media=false"></action>
+
+              <action application="set" data="media_timeout=3"></action>
+
+              <action application="log" data="ERR [AF_BR] vars call_timeout=${call_timeout} continue_on_fail=${continue_on_fail} hangup_after_bridge=${hangup_after_bridge}"></action>
+
+              <action application="log" data="ERR [AF_BR] BEFORE uuid=${uuid} bleg=${af_bleg_uuid} hangup_cause=${hangup_cause}"></action>
+
+              <action application="bridge" data="{origination_uuid=${af_bleg_uuid}}loopback/19998/public"></action>
+
+              <action application="log" data="ERR [AF_BR] AFTER uuid=${uuid} cause=${hangup_cause} last_bridge_hangup_cause=${last_bridge_hangup_cause}"></action>
+
+              <action application="log" data="ERR [AF_POST0] begin uuid=${uuid} bleg=${af_bleg_uuid}"></action>
+
+              <action application="lua" data="af_aleg_postbridge.lua ${uuid} ${af_bleg_uuid} POST0"></action>
+
+              <action application="log" data="ERR [AF_RTPDBG] ON uuid=${uuid}"></action>
+
+              <action application="set" data="rtp_debug_audio=true"></action>
+
+              <action application="log" data="ERR [AF_RTPDBG_DUMP] uuid=${uuid}"></action>
+
+              <action application="api" data="uuid_dump ${uuid}"></action>
+
+              <action application="log" data="ERR [AF_RTPDBG_MEDIA] uuid=${uuid}"></action>
+
+              <action application="api" data="uuid_media ${uuid}"></action>
+
+              <action application="log" data="ERR [AF_RTPDBG] OFF uuid=${uuid}"></action>
+
+              <action application="set" data="rtp_debug_audio=false"></action>
+
+              <action application="log" data="ERR [AF_POST0] end uuid=${uuid}"></action>
+
+              <action application="log" data="ERR [AF_POST0_DONE_CHECK] file=/tmp/af_postbr_trace_${uuid}.log"></action>
+
+              <action application="set" data="hangup_after_bridge=false"></action>
+
+              <action application="log" data="ERR [AF_POST_HOLD] park_enter uuid=${uuid}"></action>
+
+              <action application="lua" data="af_sched.lua POST1 ${uuid} ${af_bleg_uuid}"></action>
+
+              <action application="lua" data="af_sched.lua KILL_ALEG ${uuid} ${af_bleg_uuid}"></action>
+
+              <action application="park"></action>
+
+              <action application="log" data="ERR [AF_POST1_DONE_CHECK] file=/tmp/af_postbr_trace_${uuid}.log"></action>
+
+              <action application="log" data="ERR [AF_POSTBR_ALEG] done aleg=${uuid} bleg=${af_bleg_uuid}"></action>
+
+              <action application="log" data="ERR [AF_POST_BR_P0] aleg=${uuid} bleg=${af_bleg_uuid} last_bridge_hangup_cause=${last_bridge_hangup_cause}"></action>
+
+              <action application="log" data="ERR [AF_POST_BR_LIFE] aleg=${uuid} bleg=${af_bleg_uuid} bleg_exists_0=${api(uuid_exists ${af_bleg_uuid})}"></action>
+
+              <action application="lua" data="af_postbr.lua ${uuid} ${af_bleg_uuid}"></action>
+
+              <action application="log" data="ERR [AF_POST_BR_P1] after_postbr_lua aleg=${uuid} bleg=${af_bleg_uuid}"></action>
+
+              <action application="log" data="NOTICE [AF_CID] B uuid=${uuid} ch=${channel_name} profile=${sofia_profile_name} callid=${sip_call_id}"></action>
+
+              <action application="lua" data="/opt/libertycall/asr/af_probe.lua ${uuid} ${sip_h_X-AF-BLEG-UUID}"></action>
+
+              <action application="log" data="NOTICE [AF_PROBE_DP] AFTER uuid=${uuid} ran=${af_probe_ran} ran_uuid=${af_probe_ran_uuid}"></action>
+
+              <action application="lua" data="/opt/libertycall/asr/af_probe.lua ${uuid} ${sip_h_X-AF-BLEG-UUID}"></action>
+
+              <action application="log" data="NOTICE [AF_PROBE_DP] AFTER2 uuid=${uuid} ran=${af_probe_ran} ran_uuid=${af_probe_ran_uuid}"></action>
+
+    </condition>
+
+  </extension>
+
+    <extension name="audio_fork_test_9998">
+          <condition field="destination_number" expression="^9998$">
+              <action application="log" data="ERR [AF_9998] HIT uuid=${uuid} dest=${destination_number} sip_callid=${sip_call_id}"></action>
+
+              <action application="answer"></action>
+
+              <action application="log" data="ERR [AF_9998] ANSWERED uuid=${uuid}"></action>
+
+              <action application="sleep" data="500"></action>
+
+              <action application="hangup" data="NORMAL_CLEARING"></action>
+
+              <action application="log" data="ERR [AF_9998] HANGUP_SENT uuid=${uuid}"></action>
+
+              <action application="log" data="NOTICE [AF_9998] HIT uuid=${uuid} ch=${channel_name} ctx=${context}"></action>
+
+              <action application="answer"></action>
+
+              <action application="record_session" data="/tmp/af_test_9998_${uuid}.wav"></action>
+
+              <action application="lua" data="/opt/libertycall/asr/audio_fork_start.lua ws://127.0.0.1:9000/ mixed 8k eyJ0ZXN0IjoxfQ=="></action>
+
+              <action application="playback" data="tone_stream://%(60000,0,440)"></action>
+
+              <action application="sleep" data="5000"></action>
+
+              <action application="stop_record_session"></action>
+
+              <action application="hangup"></action>
+
+    </condition>
+
+  </extension>
+
+      <extension name="audio_fork_test_9999">
+          <condition field="destination_number" expression="^9999$">
+              <action application="log" data="NOTICE [AF_UUID_LOG] HIT uuid=${uuid} ch=${channel_name} ctx=${context} dest=${destination_number} sip_bleg=${sip_h_X-AF-BLEG-UUID}"></action>
+
+              <action application="log" data="NOTICE [AF_DP_9999_PUB] HIT uuid=${uuid} dest=${destination_number} ctx=${context}"></action>
+
+              <action application="log" data="NOTICE [AF_CALLPATH] ch=${channel_name} profile=${sofia_profile_name} callid=${sip_call_id} rtp_in=${rtp_audio_recv_packets} rtp_out=${rtp_audio_send_packets}"></action>
+
+              <action application="log" data="NOTICE [AF_SIPTRACE] BEGIN callid=${sip_call_id}"></action>
+
+              <action application="set" data="af_wsurl=ws://127.0.0.1:9000/"></action>
+
+              <action application="set" data="af_mode=mono"></action>
+
+              <action application="set" data="af_rate=8k"></action>
+
+              <action application="set" data="af_metadata_b64=eyJ0ZXN0IjoxfQ=="></action>
+
+              <action application="log" data="NOTICE [AF_MD] wsurl='${af_wsurl}' mode='${af_mode}' rate='${af_rate}' b64='${af_metadata_b64}'"></action>
+
+              <action application="set" data="origination_uuid=ALEG_UUID_PLACEHOLDER"></action>
+
+              <action application="set" data="af_bleg_uuid=bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"></action>
+
+              <action application="log" data="NOTICE [AF_SIPTEST] BEGIN ch=${channel_name} prof=${sofia_profile_name} callid=${sip_call_id}"></action>
+
+              <action application="log" data="NOTICE [AF_CID] A uuid=${uuid} ch=${channel_name} profile=${sofia_profile_name} callid=${sip_call_id}"></action>
+
+              <action application="answer"></action>
+
+              <action application="sched_hangup" data="+20 NORMAL_CLEARING"></action>
+
+      
+      
+              <action application="set" data="bypass_media=false"></action>
+
+              <action application="set" data="proxy_media=false"></action>
+
+              <action application="set" data="media_bypass=false"></action>
+
+      
+      
+              <action application="log" data="NOTICE [AF_BR] self=${uuid} bridge_uuid=${bridge_uuid} bond=${signal_bond}"></action>
+
+      
+              <action application="record_session" data="/tmp/af_sip_${uuid}.wav"></action>
+
+              <action application="log" data="NOTICE [AF_UUID_LOG] uuid=${uuid} af_aleg_uuid=${af_aleg_uuid} af_bleg_uuid=${af_bleg_uuid} channel_name=${channel_name}"></action>
+
+              <action application="log" data="NOTICE [AF_PROBE_DP] BEFORE uuid=${uuid}"></action>
+
+              <action application="lua" data="/opt/libertycall/asr/af_probe.lua ${uuid} ${sip_h_X-AF-BLEG-UUID}"></action>
+
+              <action application="log" data="NOTICE [AF_PROBE_DP] AFTER uuid=${uuid} ran=${af_probe_ran} ran_uuid=${af_probe_ran_uuid}"></action>
+
+              <action application="lua" data="/opt/libertycall/asr/audio_fork_start.lua ${af_wsurl} mixed ${af_rate} ${af_metadata_b64}"></action>
+
+              <action application="log" data="NOTICE [AF_AFTER_LUA] uuid=${uuid}"></action>
+
+              <action application="log" data="NOTICE [AF_SIPTRACE] END callid=${sip_call_id}"></action>
+
+              <action application="log" data="NOTICE [AF_BR] BEFORE bridge data=..."></action>
+
+              <action application="log" data="NOTICE [AF_SCHED] set dumps aleg=${uuid} bleg=${af_bleg_uuid}"></action>
+
+              <action application="api" data="sched_api +0.3 none luarun af_probe.lua T0 ${uuid} ${af_bleg_uuid}"></action>
+
+              <action application="api" data="sched_api +1.0 none luarun af_probe.lua T1 ${uuid} ${af_bleg_uuid}"></action>
+
+              <action application="api" data="sched_api +2.0 none luarun af_probe.lua T2 ${uuid} ${af_bleg_uuid}"></action>
+
+              <action application="api" data="sched_api +1.2 none uuid_broadcast ${uuid} /tmp/af_tone_8k.wav both"></action>
+
+              <action application="api" data="sched_api +1.2 none uuid_broadcast ${af_bleg_uuid} /tmp/af_tone_8k.wav both"></action>
+
+              <action application="log" data="NOTICE [AF_BR] BEFORE aleg=${uuid} bleg=${af_bleg_uuid}"></action>
+
+              <action application="bridge" data="{origination_uuid=${af_bleg_uuid}}sofia/internal_test_in/9998@127.0.0.1:5090"></action>
+
+              <action application="log" data="NOTICE [AF_BR] AFTER bridge disposition=${bridge_hangup_cause}"></action>
+
+              <action application="log" data="NOTICE [AF_CID] B uuid=${uuid} ch=${channel_name} profile=${sofia_profile_name} callid=${sip_call_id}"></action>
+
+              <action application="lua" data="/opt/libertycall/asr/af_probe.lua ${uuid} ${sip_h_X-AF-BLEG-UUID}"></action>
+
+              <action application="log" data="NOTICE [AF_PROBE_DP] AFTER uuid=${uuid} ran=${af_probe_ran} ran_uuid=${af_probe_ran_uuid}"></action>
+
+              <action application="lua" data="/opt/libertycall/asr/af_probe.lua ${uuid} ${sip_h_X-AF-BLEG-UUID}"></action>
+
+              <action application="log" data="NOTICE [AF_PROBE_DP] AFTER2 uuid=${uuid} ran=${af_probe_ran} ran_uuid=${af_probe_ran_uuid}"></action>
+
+    </condition>
+
+  </extension>
+
+      <extension name="public_did">
+          <condition field="destination_number" expression="^(5551212)$">
+      
+              <action application="set" data="domain_name=160.251.170.253"></action>
+
+      
+              <action application="transfer" data="1000 XML default"></action>
+
+    </condition>
+
+  </extension>
+
+      <extension name="inbound_001">
+          <condition field="destination_number" expression="^05058654181$|^58654181$">
+              <action application="set" data="client_id=001"></action>
+
+              <action application="answer"></action>
+
+              <action application="socket" data="127.0.0.1:8021 async full"></action>
+
+              <action application="park"></action>
+
+    </condition>
+
+  </extension>
+
+  <extension name="inbound_whisper">
+    <condition field="destination_number" expression="^(050)?55271174$">
+      <action application="set" data="client_id=whisper_test"/>
+      <action application="answer"/>
+      <action application="sleep" data="500"/>
+      <action application="lua" data="audio_fork_start.lua"/>
+      <action application="playback" data="silence_stream://-1"/>
+    </condition>
+  </extension>
+
+      <extension name="tone_test">
+          <condition field="destination_number" expression="^9998$">
+              <action application="answer"></action>
+
+      
+              <action application="sleep" data="1000"></action>
+
+      
+              <action application="playback" data="tone_stream://%(10000,0,440,880)"></action>
+
+    </condition>
+
+  </extension>
+
+      <extension name="outbound_gateway">
+          <condition field="destination_number" expression="^0\d{9,10}$">
+              <action application="log" data="INFO [OUTBOUND] Calling ${destination_number} via rakuten gateway"></action>
+
+              <action application="set" data="effective_caller_id_number=58304073"></action>
+
+              <action application="set" data="effective_caller_id_name=58304073"></action>
+
+              <action application="bridge" data="sofia/gateway/rakuten/${destination_number}"></action>
+
+    </condition>
+
+  </extension>
+
+      <extension name="af_fork_test_9997">
+          <condition field="destination_number" expression="^9997$">
+              <action application="lua" data="/opt/libertycall/asr/test_audio_fork_9997_session.lua"></action>
+
+    </condition>
+
+  </extension>
+
+      <extension name="zz_hold_9999_public">
+          <condition field="destination_number" expression="^9999$">
+              <action application="answer"></action>
+
+              <action application="sleep" data="600000"></action>
+
+              <action application="hangup"></action>
+
+    </condition>
+
+  </extension>
+
+      <extension name="zz_media_silence_9998">
+          <condition field="destination_number" expression="^9998$">
+              <action application="answer"></action>
+
+              <action application="sleep" data="200"></action>
+
+              <action application="playback" data="silence_stream://60000"></action>
+
+              <action application="hangup"></action>
+
+    </condition>
+
+  </extension>
+
+    
+    
+  </context>

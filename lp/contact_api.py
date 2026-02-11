@@ -46,7 +46,7 @@ def handle_contact_form():
         data = request.get_json()
         
         # 必須項目のチェック
-        required_fields = ["company", "name", "email", "type"]
+        required_fields = ["company", "name", "email"]
         missing_fields = [field for field in required_fields if not data.get(field)]
         
         if missing_fields:
@@ -86,7 +86,6 @@ def handle_contact_form():
 担当者名: {name}
 メールアドレス: {email}
 電話番号: {tel}
-お問い合わせ種別: {inquiry_type}
 ご相談内容:
 {message if message else '(未記入)'}
 """
@@ -98,83 +97,33 @@ def handle_contact_form():
             print(f"管理者宛メール送信エラー: {e}")
         
         # 自動返信メールを送信
-        if inquiry_type == "資料請求":
-            # 資料請求の場合
-            template_path = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)),
-                "email_sender",
-                "templates",
-                "material_request_reply.txt"
+        template_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "email_sender",
+            "templates",
+            "auto_reply.txt"
+        )
+
+        if os.path.exists(template_path):
+            with open(template_path, "r", encoding="utf-8") as f:
+                template_content = f.read()
+
+            body_text = template_content.replace("{name}", name)
+            body_text = body_text.replace("{email}", email)
+
+            subject = "お問い合わせありがとうございます - LibertyCall"
+
+            success = send_email(
+                recipient_email=email,
+                subject=subject,
+                body_text=body_text,
             )
-            
-            if os.path.exists(template_path):
-                with open(template_path, "r", encoding="utf-8") as f:
-                    template_content = f.read()
-                
-                # テンプレート内の変数を置換
-                body_text = template_content.replace("{name}", name)
-                body_text = body_text.replace("{email}", email)
-                
-                subject = "資料請求ありがとうございます - LibertyCallの詳細資料をお送りします"
-                
-                # PDFファイルのパスを取得
-                pdf_path = get_pdf_path()
-                attachments = None
-                if pdf_path:
-                    # 添付ファイル名は「LibertyCall_資料.pdf」に統一
-                    attachments = [{"filename": "LibertyCall_資料.pdf", "path": pdf_path}]
-                    success = send_email_with_attachment(
-                        recipient_email=email,
-                        subject=subject,
-                        body_text=body_text,
-                        attachments=attachments,
-                    )
-                else:
-                    # PDFがない場合は通常のメール送信
-                    print("警告: PDFファイルが見つかりません。添付なしで送信します。")
-                    success = send_email(
-                        recipient_email=email,
-                        subject=subject,
-                        body_text=body_text,
-                    )
-                
-                if not success:
-                    return jsonify({
-                        "success": False,
-                        "error": "自動返信メールの送信に失敗しました。"
-                    }), 500
-        
-        elif inquiry_type == "導入相談":
-            # 導入相談の場合
-            template_path = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)),
-                "email_sender",
-                "templates",
-                "consultation_reply.txt"
-            )
-            
-            if os.path.exists(template_path):
-                with open(template_path, "r", encoding="utf-8") as f:
-                    template_content = f.read()
-                
-                # テンプレート内の変数を置換
-                body_text = template_content.replace("{name}", name)
-                body_text = body_text.replace("{email}", email)
-                
-                subject = "導入相談ありがとうございます - 次のステップをご案内します"
-                
-                # 導入相談はPDF添付なしで送信
-                success = send_email(
-                    recipient_email=email,
-                    subject=subject,
-                    body_text=body_text,
-                )
-                
-                if not success:
-                    return jsonify({
-                        "success": False,
-                        "error": "自動返信メールの送信に失敗しました。"
-                    }), 500
+
+            if not success:
+                return jsonify({
+                    "success": False,
+                    "error": "自動返信メールの送信に失敗しました。"
+                }), 500
         
         return jsonify({
             "success": True,

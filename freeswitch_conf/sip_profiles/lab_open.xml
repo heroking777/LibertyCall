@@ -1,0 +1,18 @@
+<profile name="lab_open">
+  <settings>
+    <param name="context" value="public"/>
+    <param name="dialplan" value="XML"/>
+    <param name="sip-ip" value="$${local_ip_v4}"/>
+    <param name="sip-port" value="5072"/>
+    <param name="rtp-ip" value="$${local_ip_v4}"/>
+    <param name="ext-rtp-ip" value="$${external_rtp_ip}"/>
+    <param name="ext-sip-ip" value="$${external_sip_ip}"/>
+    <param name="codec-prefs" value="PCMU,PCMA"/>
+    <param name="inbound-codec-negotiation" value="generous"/>
+    <param name="manage-presence" value="false"/>
+    <param name="auth-calls" value="false"/>
+  </settings>
+  <gateways>
+    <X-PRE-PROCESS cmd="include" data="lab_open/*.xml"/>
+  </gateways>
+</profile>

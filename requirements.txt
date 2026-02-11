@@ -18,4 +18,9 @@ pydantic-settings>=2.0.0
 sqlalchemy>=2.0.0
 requests>=2.31.0
 aiohttp>=3.9.0
+# 認証関連
+alembic
+passlib[bcrypt]
+python-jose[cryptography]
 
+websockets==10.4

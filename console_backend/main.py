@@ -13,6 +13,9 @@ from .routers.sendgrid_webhook import router as sendgrid_webhook_router
 from .routers import audio_tests
 from .routers import calls
 from .routers import flow
+from .routers.auth import router as auth_router
+from .routers.clients import router as clients_router
+from .routers.users import router as users_router
 
 settings = get_settings()
 
@@ -39,6 +42,9 @@ app.include_router(sendgrid_webhook_router, prefix=settings.api_prefix, tags=["s
 app.include_router(audio_tests.router, prefix=settings.api_prefix)
 app.include_router(calls.router, prefix=settings.api_prefix)
 app.include_router(flow.router, prefix=settings.api_prefix)
+app.include_router(auth_router, prefix=settings.api_prefix)
+app.include_router(clients_router, prefix=settings.api_prefix)
+app.include_router(users_router, prefix=settings.api_prefix)
 
 
 @app.get("/")

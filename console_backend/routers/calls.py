@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..services.call_service import list_calls
-from ..models import Call
+from ..models import Call, User
+from ..auth import get_current_user as auth_get_current_user
 
 # MongoDBはオプショナル（インストールされていない場合もある）
 try:
@@ -28,6 +29,14 @@ router = APIRouter(prefix="/calls", tags=["calls"])
 
 # ファイルベースのログパス
 CALL_EVENTS_LOG_PATH = Path("/opt/libertycall/logs/call_events.log")
+
+
+def check_call_access(current_user: User, client_id: str) -> bool:
+    if current_user.role == "super_admin":
+        return True
+    if current_user.role == "client_admin" and current_user.client_id == client_id:
+        return True
+    return False
 
 # SSE購読者管理（リアルタイム更新用）
 sse_subscribers: Set[asyncio.Queue] = set()
@@ -87,12 +96,23 @@ def get_calls_history(
     limit: int = Query(100, ge=1, le=1000, description="取得件数"),
     offset: int = Query(0, ge=0, description="オフセット"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(auth_get_current_user),
 ):
     """
     通話履歴を取得（event_type / payload を含む）.
     
     MongoDBのcall_eventsコレクションから最新のイベントをJOINして返す。
     """
+    # 権限チェック
+    if not client_id:
+        if current_user.role == "client_admin":
+            client_id = current_user.client_id
+        else:
+            raise HTTPException(status_code=400, detail="client_idが必要です")
+    
+    if not check_call_access(current_user, client_id):
+        raise HTTPException(status_code=403, detail="アクセス権限がありません")
+    
     # 通話一覧を取得
     calls, total = list_calls(
         db,

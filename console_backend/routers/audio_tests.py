@@ -3,9 +3,11 @@
 import json
 from pathlib import Path
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from pydantic import BaseModel
 from datetime import datetime
+
+from ..auth import get_current_user
 
 router = APIRouter(prefix="/audio_tests", tags=["audio_tests"])
 
@@ -41,7 +43,7 @@ class ASREvalResponse(BaseModel):
 
 
 @router.get("/latest", response_model=ASREvalResponse)
-async def get_latest_results():
+async def get_latest_results(current_user=Depends(get_current_user)):
     """最新のASR評価結果を取得."""
     if not ASR_EVAL_RESULTS.exists():
         raise HTTPException(
@@ -61,7 +63,7 @@ async def get_latest_results():
 
 
 @router.get("/history")
-async def get_history(limit: int = 10):
+async def get_history(limit: int = 10, current_user=Depends(get_current_user)):
     """ASR評価履歴を取得."""
     history_files = []
     

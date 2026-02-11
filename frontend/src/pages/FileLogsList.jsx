@@ -1,31 +1,43 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import axios from 'axios'
-import { API_BASE } from '../config'
+import api from '../api'
 import './FileLogsList.css'
 
-function FileLogsList() {
+function FileLogsList({ user }) {
   const [calls, setCalls] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [clientId, setClientId] = useState('000')
+  const [clientId, setClientId] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const navigate = useNavigate()
 
+  // ユーザーの権限に応じてclient_idを設定
   useEffect(() => {
-    fetchCalls()
+    if (user?.role === 'super_admin') {
+      setClientId('000') // スーパー管理者はデフォルトで000
+    } else if (user?.role === 'client_admin' && user?.client_id) {
+      setClientId(user.client_id) // クライアント管理者は自分のclient_id
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (clientId) {
+      fetchCalls()
+    }
   }, [clientId, date])
 
   const fetchCalls = async () => {
+    if (!clientId) return
+    
     setLoading(true)
     setError(null)
     try {
-      // 両方のAPIを並列で取得
+      // 認証付きAPIを使用
       const [respLogs, respCalls] = await Promise.all([
-        axios.get(`${API_BASE}/logs`, {
+        api.get('/logs', {
           params: { client_id: clientId, date },
         }),
-        axios.get(`${API_BASE}/calls/history`, {
+        api.get('/calls/history', {
           params: { client_id: clientId },
         }),
       ])
@@ -103,16 +115,24 @@ function FileLogsList() {
       <div className="file-logs-header">
         <h2>通話ログ一覧</h2>
         <div className="file-logs-filters">
-          <div className="filter-group">
-            <label htmlFor="client-id">クライアントID:</label>
-            <input
-              id="client-id"
-              type="text"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="000"
-            />
-          </div>
+          {user?.role === 'super_admin' && (
+            <div className="filter-group">
+              <label htmlFor="client-id">クライアントID:</label>
+              <input
+                id="client-id"
+                type="text"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder="000"
+              />
+            </div>
+          )}
+          {user?.role === 'client_admin' && (
+            <div className="filter-group">
+              <label>クライアントID:</label>
+              <div className="client-id-display">{clientId}</div>
+            </div>
+          )}
           <div className="filter-group">
             <label htmlFor="date">日付:</label>
             <input
@@ -122,7 +142,7 @@ function FileLogsList() {
               onChange={(e) => setDate(e.target.value)}
             />
           </div>
-          <button onClick={fetchCalls} className="refresh-btn">
+          <button onClick={fetchCalls} className="refresh-btn" disabled={!clientId}>
             更新
           </button>
         </div>

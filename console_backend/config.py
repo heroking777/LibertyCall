@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     
     # 認証設定
     auth_enabled: bool = False
-    jwt_secret_key: str = "change-this-secret-key-in-production"
+    JWT_SECRET_KEY: str = "change-this-secret-key-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expire_hours: int = 24
     

@@ -15,7 +15,7 @@ from apscheduler.triggers.cron import CronTrigger
 from typing import List, Dict, Optional
 
 from .csv_repository_prod import load_recipients, save_recipients
-from .sendgrid_client import send_email_html, send_notification_email, send_daily_report_email
+from .sendgrid_client import send_email, send_email_html, send_notification_email, send_daily_report_email
 
 # ロギング設定
 logging.basicConfig(
@@ -62,7 +62,7 @@ def simulation_send_email(recipient_email: str, subject: str, body_text: str) ->
 def select_recipients_for_today(recipients: List[Dict], limit: int = None) -> List[Dict]:
     """
     今日送信すべきレシピエントを選択
-    初回送信日からの経過日数で判定
+    優先順位：1. フォロー対象 2. 初回送信対象
     
     Args:
         recipients: 全レシピエントのリスト
@@ -72,8 +72,11 @@ def select_recipients_for_today(recipients: List[Dict], limit: int = None) -> Li
         今日送信すべきレシピエントのリスト
     """
     today = datetime.now().date()
-    send_targets = []
     max_limit = limit if limit is not None else MAX_SEND_PER_DAY
+    
+    # フォロー対象と初回対象を分けて収集
+    follow_targets = []
+    initial_targets = []
     
     for r in recipients:
         stage = r.get("stage", "initial")
@@ -84,50 +87,56 @@ def select_recipients_for_today(recipients: List[Dict], limit: int = None) -> Li
         
         # 初回送信日を取得
         initial_sent_str = r.get("initial_sent_date", "")
+        last_sent_str = r.get("last_sent_date", "")
+        
         initial_sent = None
+        last_sent = None
         if initial_sent_str:
             try:
                 initial_sent = datetime.strptime(initial_sent_str, "%Y-%m-%d").date()
             except ValueError:
                 pass
+        if last_sent_str:
+            try:
+                last_sent = datetime.strptime(last_sent_str, "%Y-%m-%d").date()
+            except ValueError:
+                pass
         
         # 初回送信前（initialステージでinitial_sent_dateが未設定）
         if stage == "initial" and not initial_sent:
-            send_targets.append(r)
-            if len(send_targets) >= max_limit:
-                break
+            initial_targets.append(r)
             continue
         
         # 初回送信日が設定されていない場合はスキップ
         if not initial_sent:
             continue
         
-        # 初回送信日からの経過日数を計算
-        days_since_initial = (today - initial_sent).days
-        
-        # ステージごとの送信条件をチェック
+        # フォロー対象の条件チェック
         should_send = False
-        if stage == "initial":
-            # 初回は即座に送信（既に送信済みの場合は次へ）
-            should_send = False  # initial_sentが設定されている場合は既に送信済み
-        elif stage == "follow1":
-            # 初回から3日後
-            should_send = days_since_initial >= FOLLOWUP1_DAYS
+        if stage == "follow1":
+            # follow1: initial_sent_dateから3日以上経過
+            if initial_sent and (today - initial_sent).days >= FOLLOWUP1_DAYS:
+                should_send = True
         elif stage == "follow2":
-            # 初回から8日後
-            should_send = days_since_initial >= FOLLOWUP2_DAYS
+            # follow2: last_sent_dateから5日以上経過
+            if last_sent and (today - last_sent).days >= 5:
+                should_send = True
         elif stage == "follow3":
-            # 初回から15日後
-            should_send = days_since_initial >= FOLLOWUP3_DAYS
+            # follow3: last_sent_dateから7日以上経過
+            if last_sent and (today - last_sent).days >= 7:
+                should_send = True
         
         if should_send:
-            send_targets.append(r)
-        
-        # 上限に達したら終了
-        if len(send_targets) >= max_limit:
-            break
+            follow_targets.append(r)
     
-    return send_targets
+    # 優先順位で結合：フォロー対象を優先し、残り枠で初回対象
+    send_targets = follow_targets.copy()
+    remaining_limit = max_limit - len(follow_targets)
+    
+    if remaining_limit > 0 and initial_targets:
+        send_targets.extend(initial_targets[:remaining_limit])
+    
+    return send_targets[:max_limit]
 
 
 def get_email_subject_and_template_path(stage: str, recipient: Dict) -> tuple:
@@ -139,26 +148,26 @@ def get_email_subject_and_template_path(stage: str, recipient: Dict) -> tuple:
         recipient: レシピエント情報
     
     Returns:
-        (subject, html_template_path) のタプル
+        (subject, text_template_path) のタプル
     """
     company_name = recipient.get("company_name", "")
     
     subject_map = {
-        "initial": "【人件費削減】電話対応コストを大幅削減する方法",
-        "follow1": "【人件費削減のご提案】電話対応コストの見直しについて",
-        "follow2": "【人件費削減のご提案】電話対応コストを見直しませんか？",
-        "follow3": "【最終のご案内】電話対応コスト削減のご提案（LibertyCall）",
+        "initial": "電話対応、AIに任せる会社が増えています",
+        "follow1": "Re: 電話対応、AIに任せる会社が増えています",
+        "follow2": "Re: 電話対応、AIに任せる会社が増えています",
+        "follow3": "Re: 電話対応、AIに任せる会社が増えています",
     }
     
     template_map = {
-        "initial": "initial.html",
-        "follow1": "follow1.html",
-        "follow2": "follow2.html",
-        "follow3": "follow3.html",
+        "initial": "initial_new.txt",
+        "follow1": "follow1_new.txt",
+        "follow2": "follow2_new.txt",
+        "follow3": "follow3_new.txt",
     }
     
     subject = subject_map.get(stage, f"【LibertyCall】ご案内 - {company_name}様")
-    template_filename = template_map.get(stage, "initial.html")
+    template_filename = template_map.get(stage, "initial.txt")
     
     # テンプレートディレクトリのパス
     template_dir = os.path.join(os.path.dirname(__file__), "templates")
@@ -197,12 +206,35 @@ def send_email_to_recipient(recipient: Dict, use_simulation: bool = False) -> tu
     
     try:
         if use_simulation:
-            logger.info(f"[SIMULATION] Would send HTML email to {email}")
+            logger.info(f"[SIMULATION] Would send text email to {email}")
             logger.info(f"[SIMULATION] Subject: {subject}")
             logger.info(f"[SIMULATION] Template: {html_template_path}")
             return True, ""
         else:
-            success, error_msg = send_email_html(email, subject, html_template_path, replacements)
+            # プレーンテキストテンプレートを読み込んで件名と本文を分離
+            with open(html_template_path, 'r', encoding='utf-8') as f:
+                template_content = f.read()
+            
+            # テンプレートから件名と本文を分離
+            lines = template_content.split('\n')
+            template_subject_line = next((line for line in lines if line.startswith('件名：')), None)
+            if template_subject_line:
+                template_subject = template_subject_line.replace('件名：', '').strip()
+                # 本文の開始位置を探す（「本文：」の次の行から）
+                body_start_idx = next((i for i, line in enumerate(lines) if line.startswith('本文：')), 1) + 1
+                template_body = '\n'.join(lines[body_start_idx:]).strip()
+                logger.info(f"Template processing: body_start_idx={body_start_idx}, first_body_line='{lines[body_start_idx] if body_start_idx < len(lines) else 'EOF'}'")
+            else:
+                # 件名が見つからない場合のフォールバック
+                template_subject = subject
+                template_body = template_content
+            
+            # テンプレート内の変数を置換
+            for key, value in replacements.items():
+                template_body = template_body.replace(key, str(value))
+            
+            success = send_email(email, template_subject, template_body)
+            error_msg = "" if success else "送信失敗"
             return success, error_msg
     except Exception as e:
         error_msg = f"予期しないエラー: {str(e)}"
@@ -237,6 +269,7 @@ def send_batch(simulation: bool = False, limit: int = None):
         logger.info(f"=== {mode_str} Starting daily send batch ===")
         
         # ロックファイルにPIDを記録
+        import os
         lock_file.write(str(os.getpid()))
         lock_file.flush()
         
@@ -250,11 +283,11 @@ def send_batch(simulation: bool = False, limit: int = None):
         return
     
     try:
+        # SendGrid APIキーの確認
+        import os
         if simulation:
             logger.info("Running in SIMULATION mode (no emails will be sent)")
         else:
-            # SendGrid APIキーの確認
-            import os
             if not os.getenv("SENDGRID_API_KEY"):
                 logger.error("SENDGRID_API_KEYが設定されていません")
                 return

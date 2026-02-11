@@ -1,8 +1,11 @@
 """会話フロー管理APIルーター."""
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from typing import Optional
 import logging
+
+from ..auth import get_current_user as auth_get_current_user
+from ..models import User
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +15,8 @@ router = APIRouter(prefix="/flow", tags=["flow"])
 @router.post("/reload")
 async def reload_flow(
     client_id: str = Query(..., description="クライアントID"),
-    request: Request = None
+    request: Request = None,
+    current_user: User = Depends(auth_get_current_user)
 ):
     """
     会話フローを保存してホットリロードする
@@ -21,6 +25,12 @@ async def reload_flow(
     :param request: リクエストボディ（flow_dataを含む場合、保存してからリロード）
     :return: リロード結果
     """
+    # 権限チェック
+    if current_user.role == "client_admin" and current_user.client_id != client_id:
+        raise HTTPException(status_code=403, detail="自分のクライアントIDのフローのみ操作できます")
+    
+    if current_user.role not in ["super_admin", "client_admin"]:
+        raise HTTPException(status_code=403, detail="権限がありません")
     import json
     from pathlib import Path
     from datetime import datetime

@@ -91,6 +91,12 @@ if not session or not session:ready() then
 end
 
 local wsurl = session:getVariable("af_ws_url") or ""
+-- Whisper test: override wsurl for client_id=whisper_test
+local client_id = session:getVariable("client_id") or "000"
+if client_id == "whisper_test" then
+    wsurl = "ws://127.0.0.1:8083/" .. (session:get_uuid() or "")
+    lua_log("whisper_test detected, using port 8083: " .. wsurl)
+end
 local mode  = session:getVariable("af_mode") or "mono"
 local rate  = session:getVariable("af_rate") or "16k"
 local metadata_b64 = session:getVariable("af_metadata") or "{}"

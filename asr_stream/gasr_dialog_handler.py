@@ -13,7 +13,7 @@ class GASRDialogHandlerMixin:
     def _start_silence_timer(self):
         if self._silence_timer:
             self._silence_timer.cancel()
-        self._silence_timer = threading.Timer(0.7, self._on_silence_timeout)
+        self._silence_timer = threading.Timer(0.4, self._on_silence_timeout)
         self._silence_timer.start()
 
     def _on_silence_timeout(self):
@@ -42,7 +42,7 @@ class GASRDialogHandlerMixin:
                     self.uuid, new_text, offset, full_text)
         if len(new_text) < 4 and not getattr(self, '_extended_once', False):
             self._extended_once = True
-            self._silence_timer = threading.Timer(0.7, self._on_silence_timeout)
+            self._silence_timer = threading.Timer(0.4, self._on_silence_timeout)
             self._silence_timer.start()
             logger.info("[EXTEND_WAIT] uuid=%s text=%r len=%d", self.uuid, new_text, len(new_text))
             return
@@ -52,6 +52,7 @@ class GASRDialogHandlerMixin:
         self._accumulated_text = ""
         logger.info("[OFFSET_UPDATE] uuid=%s offset=%d", self.uuid, self._responded_offset)
         logger.info("[SILENCE_RESPONSE] uuid=%s text=%r", self.uuid, new_text)
+        self._interim_responded = True
         if hasattr(self, 'silence_handler') and self.silence_handler:
             self.silence_handler.reset_timer()
         self._handle_dialog(new_text)

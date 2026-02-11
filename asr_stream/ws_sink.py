@@ -34,12 +34,12 @@ handler = RotatingFileHandler(
 )
 handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
 
-logging.basicConfig(level=logging.DEBUG, handlers=[handler])
+logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger_ws = logging.getLogger('websockets')
 logger_ws.setLevel(logging.WARNING)
 logger_ws.addHandler(logging.StreamHandler(sys.stdout))
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 GASR_SAMPLE_RATE = int(os.environ.get("GASR_SAMPLE_RATE", "8000"))
 GASR_LANGUAGE = os.environ.get("GASR_LANGUAGE", "ja-JP")
@@ -103,7 +103,7 @@ class WSSinkServer:
             return "000"
 
     async def handle_client(self, websocket):
-        path = getattr(websocket, "path", None)
+        path = getattr(websocket, "path", None) or getattr(getattr(websocket, "request", None), "path", None)
         call_uuid = _extract_uuid_from_path(path)
         conn_id = str(id(websocket))
         logger.error(f"[AF_WS] connected conn={conn_id} path={path}")

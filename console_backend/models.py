@@ -41,3 +41,29 @@ class CallLog(Base):
     # リレーション
     call = relationship("Call", back_populates="logs")
 
+
+class User(Base):
+    """ユーザーモデル."""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(256), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(256), nullable=False)
+    role = Column(String(32), nullable=False, default="client_admin")
+    client_id = Column(String(128), nullable=True, index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+
+
+class Client(Base):
+    """クライアントモデル."""
+    __tablename__ = "clients"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(String(128), unique=True, nullable=False, index=True)
+    name = Column(String(256), nullable=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+

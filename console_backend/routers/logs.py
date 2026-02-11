@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..schemas import CallLogListResponse, CallLogDetailResponse, CallSummary, CallLogEntry
 from ..services.log_reader_service import LogReaderService
+from ..auth import get_current_user as auth_get_current_user
+from ..models import User
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
@@ -29,36 +31,13 @@ def get_log_reader_service() -> LogReaderService:
     return _log_reader_service
 
 
-# TODO: 認証・権限チェックの依存関数を実装
-# 現在は認証なしで動作（後で統合予定）
-def get_current_user():
-    """現在のユーザーを取得（認証用）."""
-    # 仮実装：常にadminとして扱う
-    return {"role": "admin", "client_id": None}
 
 
-def check_access(user: dict, client_id: str) -> bool:
-    """
-    アクセス権限をチェック.
-    
-    Args:
-        user: ユーザー情報（role, client_id）
-        client_id: アクセスしようとしているクライアントID
-        
-    Returns:
-        アクセス可能な場合True
-    """
-    user_role = user.get("role")
-    user_client_id = user.get("client_id")
-    
-    # adminは全クライアントにアクセス可能
-    if user_role == "admin":
+def check_client_access(current_user: User, client_id: str) -> bool:
+    if current_user.role == "super_admin":
         return True
-    
-    # clientは自分のクライアントIDのみアクセス可能
-    if user_role == "client" and user_client_id == client_id:
+    if current_user.role == "client_admin" and current_user.client_id == client_id:
         return True
-    
     return False
 
 
@@ -67,7 +46,7 @@ def list_call_logs(
     client_id: str = Query(..., description="クライアントID"),
     date: Optional[str] = Query(None, description="日付（YYYY-MM-DD形式、デフォルトは今日）"),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(auth_get_current_user),
 ):
     """
     通話ログ一覧を取得.
@@ -82,7 +61,7 @@ def list_call_logs(
         通話ログ一覧
     """
     # アクセス権限チェック
-    if not check_access(current_user, client_id):
+    if not check_client_access(current_user, client_id):
         raise HTTPException(status_code=403, detail="Access denied")
     
     # 日付をパース
@@ -117,7 +96,7 @@ def get_call_log_detail(
     client_id: str,
     call_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(auth_get_current_user),
 ):
     """
     通話ログ詳細を取得.
@@ -132,7 +111,7 @@ def get_call_log_detail(
         通話ログ詳細
     """
     # アクセス権限チェック
-    if not check_access(current_user, client_id):
+    if not check_client_access(current_user, client_id):
         raise HTTPException(status_code=403, detail="Access denied")
     
     # ログリーダーサービスを使用してログを取得

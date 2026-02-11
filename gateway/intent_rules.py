@@ -104,6 +104,8 @@ TEMPLATE_CONFIG: dict[str, dict] = {
     "0602": {"text": "恐れ入ります、少し聞き取りづらかったようです。もう一度お願いできますでしょうか？", "voice": "ja-JP-Neural2-B", "rate": 1.1},
     "0603": {"text": "初期設定はこちらで代行いたしますので、お店側の作業はほとんどございません。スマホだけでもご利用いただけますのでご安心ください。", "voice": "ja-JP-Neural2-B", "rate": 1.1},
     "0604": {"text": "私では詳細のご案内が難しい内容のため、担当者におつなぎしてもよろしいでしょうか？", "voice": "ja-JP-Neural2-B", "rate": 1.1},
+    "0605": {"text": "ありがとうございます。当店の営業時間は、平日が朝10時から夜7時まで、土曜日は夕方5時まででございます。日曜・祝日はお休みをいただいております。", "voice": "ja-JP-Neural2-B", "rate": 1.1},
+    "0606": {"text": "承知いたしました。ご希望の日時はございますでしょうか？お客様のお名前とご連絡先をお伺いしてもよろしいでしょうか？", "voice": "ja-JP-Neural2-B", "rate": 1.1},
 }
 
 GREETING_KEYWORDS = ["もしもし", "こんにちは", "こんばんは", "おはよう", "はじめまして"]
@@ -241,8 +243,21 @@ def classify_intent(text: str) -> str:
         return "SYSTEM_INQUIRY"
 
     # 営業電話の判定（YES/NOより優先）
-    if any(k in t for k in ["営業", "ご提案", "サービスのご提案", "新しいサービス"]):
+    # 「営業時間」「営業日」などの正当な問い合わせを除外
+    sales_call_keywords = ["営業", "ご提案", "サービスのご提案", "新しいサービス"]
+    business_hours_keywords = ["営業時間", "営業日", "営業時間を", "営業日の"]
+    
+    if any(k in t for k in sales_call_keywords) and not any(k in t for k in business_hours_keywords):
         return "SALES_CALL"
+    
+    # 営業時間・営業日に関する問い合わせの判定
+    if any(k in t for k in business_hours_keywords):
+        return "BUSINESS_HOURS"
+
+    # 予約関連の判定（HANDOFF_YESより優先）
+    reservation_request_keywords = ["予約をお願い", "予約したい", "予約してください", "予約お願い"]
+    if any(k in t for k in reservation_request_keywords):
+        return "RESERVATION_REQUEST"
 
     # HANDOFF確認のYES/NO
     if any(k in t for k in YES_KEYWORDS):
@@ -417,6 +432,14 @@ def select_template_ids(intent: str, text: str) -> list[str]:
     # HANDOFF_REQUEST の場合、0604を返す
     if intent == "HANDOFF_REQUEST":
         return ["0604"]
+    
+    # 営業時間に関する問い合わせ
+    if intent == "BUSINESS_HOURS":
+        return ["0605"]
+    
+    # 予約リクエスト
+    if intent == "RESERVATION_REQUEST":
+        return ["0606"]
     
     # UNKNOWN intent の場合
     if intent == "UNKNOWN":

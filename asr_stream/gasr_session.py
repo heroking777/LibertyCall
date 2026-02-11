@@ -45,6 +45,7 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
         self._responded_offset = 0
         self._extended_once = False
         self._last_responded_text = ""
+        self._interim_responded = False
         self.client = speech.SpeechClient()
 
         # voice_mapを事前読み込み
@@ -59,6 +60,9 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
 
         # クライアント設定からphrase hintsを構築
         phrase_hints = self._load_phrase_hints()
+        self._instant_keywords = set(phrase_hints) if phrase_hints else set()
+        logger.info("[GASR] instant_keywords loaded count=%d uuid=%s",
+                   len(self._instant_keywords), self.uuid)
 
         speech_contexts = []
         if phrase_hints:
@@ -135,6 +139,10 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
         if self._stop_requested.is_set() or not chunk:
             return
         if self.muted:
+            return
+
+        # unmute直後のバッファ済み古い音声を捨てる
+        if hasattr(self, '_flush_until') and time.time() < self._flush_until:
             return
 
         # 最初のチャンク受信時刻を記録
@@ -262,7 +270,10 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
 
     def unmute(self):
         self.muted = False
-        logger.info("[GASR] unmuted uuid=%s", self.uuid)
+        self._unmute_time = time.time()
+        # unmute後、最初の0.5秒分のバッファ済み音声を捨てるためのフラグ
+        self._flush_until = self._unmute_time + 0.2
+        logger.info("[GASR] unmuted uuid=%s flush_until=%.3f", self.uuid, self._flush_until)
         if not hasattr(self, '_stream_started'):
             self._stream_started = True
             self._thread = threading.Thread(
@@ -280,13 +291,35 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
         cleaned = transcript.strip()
         logger.info("[ACCUMULATE] uuid=%s text=%r is_final=%s",
                    self.uuid, cleaned, is_final)
-        self._accumulated_text = cleaned
 
         if is_final:
+            # interim+タイマーで既に応答済みなら、finalでは応答しない
+            if hasattr(self, '_interim_responded') and self._interim_responded:
+                logger.info("[SKIP_FINAL] uuid=%s already responded via interim, text=%r",
+                           self.uuid, cleaned)
+                self._interim_responded = False
+                self._accumulated_text = ""
+                self._responded_offset = 0
+                self._extended_once = False
+                if self._silence_timer:
+                    self._silence_timer.cancel()
+                return
+            self._accumulated_text = cleaned
             self._responded_offset = 0
             self._extended_once = False
             if self._silence_timer:
                 self._silence_timer.cancel()
             self._on_silence_timeout()
         else:
+            self._accumulated_text = cleaned
+            # 即応答判定：キーワードが部分一致 かつ 未応答ならタイマー待ちなしで即応答
+            if self._instant_keywords and not self._interim_responded:
+                for kw in self._instant_keywords:
+                    if kw in cleaned:
+                        logger.info("[INSTANT_RESPONSE] uuid=%s text=%r matched_kw=%r",
+                                   self.uuid, cleaned, kw)
+                        if self._silence_timer:
+                            self._silence_timer.cancel()
+                        self._on_silence_timeout()
+                        return
             self._start_silence_timer()

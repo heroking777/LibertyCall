@@ -57,3 +57,8 @@ $TMPTXT
 cleanup_snapshot_*.txt
 bak_archive_*.tar.gz
 dialplan_backup_archive.tar.gz
+# SIP passwords - exclude from Git
+freeswitch_conf/sip_profiles/lab_open/rakuten.xml
+freeswitch_conf/sip_profiles/lab_open/rakuten_001.xml
+freeswitch_conf/sip_profiles/lab_open/rakuten_whisper_test.xml
+config/google-speech-key.json

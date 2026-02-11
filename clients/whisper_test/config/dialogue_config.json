@@ -1,0 +1,24 @@
+{
+  "client_name": "サンプル株式会社",
+  "greeting_sequence": [
+    {"audio": "000", "delay": 4}
+  ],
+  "timeout_sequence": [
+    {"audio": "003", "delay": 10},
+    {"audio": "003", "delay": 10},
+    {"audio": "003", "delay": 10}
+  ],
+  "patterns": [
+    {
+      "keywords": ["もしもし", "モシモシ"],
+      "response": "001"
+    },
+    {
+      "keywords": ["こんにちは", "こんにちわ"],
+      "response": "002"
+    }
+  ],
+  "default_response": "002",
+  "timeout_response": "003",
+  "no_input_count_limit": 2
+}
