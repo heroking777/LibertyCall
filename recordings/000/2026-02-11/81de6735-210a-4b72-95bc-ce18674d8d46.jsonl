@@ -1,0 +1,37 @@
+{"type": "call_start", "uuid": "81de6735-210a-4b72-95bc-ce18674d8d46", "client_id": "000", "time": "2026-02-11T17:45:18.912Z"}
+{"type": "asr_interim", "text": "もし", "confidence": 0.0, "time": "2026-02-11T17:45:29.864Z"}
+{"type": "response", "text": "もしもし", "audio_ids": ["004"], "phase": "QA", "time": "2026-02-11T17:45:29.973Z"}
+{"type": "playback_start", "audio_id": "004", "path": "/opt/libertycall/clients/000/audio/004.wav", "time": "2026-02-11T17:45:29.974Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-02-11T17:45:29.974Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-02-11T17:45:30.536Z"}
+{"type": "asr_final", "text": "もしもし", "confidence": 0.7407186627388, "time": "2026-02-11T17:45:31.237Z"}
+{"type": "playback_end", "audio_id": "004", "duration": 0.0, "time": "2026-02-11T17:45:31.276Z"}
+{"type": "asr_interim", "text": " 料金", "confidence": 0.0, "time": "2026-02-11T17:45:32.772Z"}
+{"type": "asr_interim", "text": " 料金に", "confidence": 0.0, "time": "2026-02-11T17:45:33.063Z"}
+{"type": "asr_interim", "text": " 料金について", "confidence": 0.0, "time": "2026-02-11T17:45:33.088Z"}
+{"type": "asr_interim", "text": " 料金について教え", "confidence": 0.0, "time": "2026-02-11T17:45:33.363Z"}
+{"type": "asr_interim", "text": " 料金について教えて", "confidence": 0.0, "time": "2026-02-11T17:45:33.465Z"}
+{"type": "asr_interim", "text": " 料金について教えてください", "confidence": 0.0, "time": "2026-02-11T17:45:33.571Z"}
+{"type": "response", "text": "料金について教えてください", "audio_ids": ["122", "085"], "phase": "QA", "time": "2026-02-11T17:45:33.972Z"}
+{"type": "playback_start", "audio_id": "122", "path": "/opt/libertycall/clients/000/audio/122.wav", "time": "2026-02-11T17:45:33.973Z"}
+{"type": "playback_start", "audio_id": "085", "path": "/opt/libertycall/clients/000/audio/085.wav", "time": "2026-02-11T17:45:33.973Z"}
+{"type": "asr_interim", "text": " 料金について教えてください", "confidence": 0.0, "time": "2026-02-11T17:45:34.663Z"}
+{"type": "asr_final", "text": " 料金について教えてください", "confidence": 0.9749457836151123, "time": "2026-02-11T17:45:34.668Z"}
+{"type": "playback_end", "audio_id": "122", "duration": 0.0, "time": "2026-02-11T17:45:36.677Z"}
+{"type": "playback_end", "audio_id": "085", "duration": 0.0, "time": "2026-02-11T17:45:36.677Z"}
+{"type": "asr_interim", "text": " 教えて", "confidence": 0.0, "time": "2026-02-11T17:45:37.790Z"}
+{"type": "asr_interim", "text": " 教えてください", "confidence": 0.0, "time": "2026-02-11T17:45:37.984Z"}
+{"type": "response", "text": "教えてください", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-11T17:45:38.385Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-11T17:45:38.386Z"}
+{"type": "asr_final", "text": " 教えてください", "confidence": 0.45403021574020386, "time": "2026-02-11T17:45:39.085Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-11T17:45:40.690Z"}
+{"type": "asr_interim", "text": " システム", "confidence": 0.0, "time": "2026-02-11T17:45:42.306Z"}
+{"type": "asr_interim", "text": " システムに", "confidence": 0.0, "time": "2026-02-11T17:45:42.604Z"}
+{"type": "asr_interim", "text": " システムについて", "confidence": 0.0, "time": "2026-02-11T17:45:42.722Z"}
+{"type": "asr_interim", "text": " システムについて教え", "confidence": 0.0, "time": "2026-02-11T17:45:42.918Z"}
+{"type": "asr_interim", "text": " システムについて教えて", "confidence": 0.0, "time": "2026-02-11T17:45:43.008Z"}
+{"type": "asr_interim", "text": " システムについて教えてください", "confidence": 0.0, "time": "2026-02-11T17:45:43.206Z"}
+{"type": "response", "text": "システムについて教えてください", "audio_ids": ["006_SYS"], "phase": "QA", "time": "2026-02-11T17:45:43.607Z"}
+{"type": "playback_start", "audio_id": "006_SYS", "path": "/opt/libertycall/clients/000/audio/006_SYS.wav", "time": "2026-02-11T17:45:43.609Z"}
+{"type": "asr_final", "text": " システムについて教えてください", "confidence": 0.9637459516525269, "time": "2026-02-11T17:45:44.209Z"}
+{"type": "call_end", "uuid": "81de6735-210a-4b72-95bc-ce18674d8d46", "duration": 28.8, "time": "2026-02-11T17:45:47.689Z"}

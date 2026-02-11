@@ -60,7 +60,7 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
 
         # クライアント設定からphrase hintsを構築
         phrase_hints = self._load_phrase_hints()
-        self._instant_keywords = set(self._load_instant_keywords()) if self._load_instant_keywords() else set()
+        self._instant_keywords = set(phrase_hints) if phrase_hints else set()
         logger.info("[GASR] instant_keywords loaded count=%d uuid=%s",
                    len(self._instant_keywords), self.uuid)
 
@@ -113,14 +113,6 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
                 hints.add(kw)
         return list(hints)
 
-
-    def _load_instant_keywords(self):
-        """dialogue_config.jsonのinstant_keywordsから即応答キーワードを構築"""
-        config = self._dialogue_config
-        if not config:
-            logger.warning("[GASR] instant_keywords config not available uuid=%s", self.uuid)
-            return []
-        return config.get('instant_keywords', [])
     def _load_voice_list(self):
         """voice_list_000.tsvを読み込んでID→文言のマッピングを返す"""
         if hasattr(self, '_voice_map'):
