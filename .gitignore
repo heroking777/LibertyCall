@@ -62,3 +62,4 @@ freeswitch_conf/sip_profiles/lab_open/rakuten.xml
 freeswitch_conf/sip_profiles/lab_open/rakuten_001.xml
 freeswitch_conf/sip_profiles/lab_open/rakuten_whisper_test.xml
 config/google-speech-key.json
+models/

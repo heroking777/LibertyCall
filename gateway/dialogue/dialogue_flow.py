@@ -3,6 +3,7 @@
 """
 import json
 import logging
+from gateway.dialogue.llm_handler import LLMDialogueHandler
 import os
 from typing import Tuple, List, Dict, Any
 
@@ -48,6 +49,18 @@ def get_response(
     
     logger.info(f"[DIALOGUE] get_response client={client_id} phase={phase} text={text_clean}")
     
+    # LLM応答処理
+    use_llm = kwargs.get("use_llm", False)
+    if use_llm and text_clean:
+        try:
+            llm_handler = LLMDialogueHandler.get_instance()
+            llm_response = llm_handler.get_response(text_clean, client_id)
+            if llm_response:
+                logger.info(f"[DIALOGUE] LLM response: {llm_response}")
+                return [llm_response], phase, state
+        except Exception as e:
+            logger.error(f"[DIALOGUE] LLM error: {e}")
+
     # 無入力回数チェック
     no_input_count = state.get('no_input_count', 0)
     if not text_clean:
