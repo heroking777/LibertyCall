@@ -1,0 +1,4 @@
+{"type": "call_start", "uuid": "65681309-5868-46d5-8b28-f57a0fcb65b4", "client_id": "whisper_test", "time": "2026-02-14T16:29:27.634Z"}
+{"type": "asr_final", "text": "ご視聴頂待ちしてもらおすいません。", "confidence": 0.0, "time": "2026-02-14T16:29:40.918Z"}
+{"type": "asr_final", "text": "お客様とのようなものを 出てくるのが 全てにもらっているのです。", "confidence": 0.0, "time": "2026-02-14T16:29:44.758Z"}
+{"type": "call_end", "uuid": "65681309-5868-46d5-8b28-f57a0fcb65b4", "duration": 68.6, "time": "2026-02-14T16:30:36.246Z"}

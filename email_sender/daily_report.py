@@ -18,7 +18,7 @@ sys.path.insert(0, str(project_root))
 
 from email_sender.sendgrid_client import send_notification_email
 from email_sender.csv_repository_prod import load_recipients
-from email_sender.sendgrid_analytics import get_yesterday_stats
+from email_sender.sendgrid_analytics import get_today_stats
 
 # ロギング設定
 logging.basicConfig(
@@ -38,9 +38,9 @@ def load_daily_limit():
         return {"daily_limit": 50, "date": str(date.today())}
 
 def get_sendgrid_stats() -> Optional[Dict]:
-    """SendGrid APIから昨日の統計を取得"""
+    """SendGrid APIから今日の統計を取得"""
     try:
-        stats_dict, bounce_rate, spam_rate = get_yesterday_stats()
+        stats_dict, bounce_rate, spam_rate = get_today_stats()
         
         # 追加の統計を取得（opens, clicks, blocks, unsubscribes）
         from sendgrid import SendGridAPIClient
@@ -48,9 +48,9 @@ def get_sendgrid_stats() -> Optional[Dict]:
         
         sg = SendGridAPIClient(SENDGRID_API_KEY)
         
-        # 昨日の日付範囲
-        yesterday = datetime.now().date() - timedelta(days=1)
-        start_date = yesterday.strftime("%Y-%m-%d")
+        # 今日の日付範囲
+        today = datetime.now().date().strftime("%Y-%m-%d")
+        start_date = today
         
         # 詳細統計取得
         detailed_stats = {

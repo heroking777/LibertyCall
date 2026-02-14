@@ -200,6 +200,8 @@ class SilenceHandler:
         self._connect_esl()
         if gasr_session:
             gasr_session.unmute()
+            # Set flag for WhisperSession to reset speaking state
+            gasr_session._greeting_complete = True
         self.start_timer()
 
     def start_timer(self):

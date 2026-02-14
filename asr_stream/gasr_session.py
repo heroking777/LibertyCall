@@ -206,13 +206,20 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
         self._closed.wait(timeout=5)
 
     def _request_generator(self):
+        logger.info("[GASR] _request_generator started uuid=%s", self.uuid)
         while True:
-            chunk = self.queue.get()
-            if chunk is None:
-                break
-            if not chunk:
+            try:
+                chunk = self.queue.get(timeout=1.0)  # 1秒タイムアウト
+                logger.debug("[GASR] _request_generator got chunk uuid=%s size=%d", self.uuid, len(chunk) if chunk else 0)
+                if chunk is None:
+                    logger.info("[GASR] _request_generator received None, breaking uuid=%s", self.uuid)
+                    break
+                if not chunk:
+                    continue
+                yield speech.StreamingRecognizeRequest(audio_content=chunk)
+            except queue.Empty:
+                logger.debug("[GASR] _request_generator queue empty, continuing uuid=%s", self.uuid)
                 continue
-            yield speech.StreamingRecognizeRequest(audio_content=chunk)
 
     def _consume_responses(self):
         logger.info("[GASR] _consume_responses started uuid=%s", self.uuid)

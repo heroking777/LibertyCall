@@ -1,0 +1,3 @@
+{"type": "call_start", "uuid": "6c5bdda6-4650-497c-b834-2500efd60c27", "client_id": "whisper_test", "time": "2026-02-14T12:11:52.143Z"}
+{"type": "asr_final", "text": "いつもいつ行き出をしている。", "confidence": 0.0, "time": "2026-02-14T12:12:01.275Z"}
+{"type": "call_end", "uuid": "6c5bdda6-4650-497c-b834-2500efd60c27", "duration": 72.6, "time": "2026-02-14T12:13:04.704Z"}

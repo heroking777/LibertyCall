@@ -18,6 +18,81 @@ load_dotenv(dotenv_path=env_path)
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 
 
+def get_today_stats() -> Tuple[Dict[str, int], float, float]:
+    """
+    今日のSendGrid統計を取得
+    
+    Returns:
+        (stats_dict, bounce_rate, spam_rate) のタプル
+        stats_dict: 各種統計数値
+        bounce_rate: バウンス率（%）
+        spam_rate: スパムレポート率（%）
+    """
+    if not SENDGRID_API_KEY:
+        raise ValueError("SENDGRID_API_KEYが設定されていません")
+    
+    try:
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        
+        # 今日の日付範囲を取得
+        today = datetime.now().date().strftime("%Y-%m-%d")
+        start_date = today
+        end_date = today  # 1日分のみ
+        
+        # SendGrid Statistics APIを呼び出し
+        query_params = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "aggregated_by": "day"
+        }
+        
+        response = sg.client.stats.get(query_params=query_params)
+        
+        if response.status_code != 200:
+            raise Exception(f"SendGrid APIエラー: {response.status_code}")
+        
+        data = json.loads(response.body)
+        
+        if not data or len(data) == 0:
+            # データがない場合
+            return {
+                "delivered": 0,
+                "bounces": 0,
+                "spam_reports": 0,
+                "requests": 0
+            }, 0.0, 0.0
+        
+        # 最新日の統計を取得
+        today_stats = data[0]["stats"][0]["metrics"]
+        
+        delivered = today_stats.get("delivered", 0)
+        bounces = today_stats.get("bounces", 0)
+        spam_reports = today_stats.get("spam_reports", 0)
+        requests = today_stats.get("requests", 0)
+        
+        stats_dict = {
+            "delivered": delivered,
+            "bounces": bounces,
+            "spam_reports": spam_reports,
+            "requests": requests
+        }
+        
+        # バウンス率とスパムレポート率を計算
+        if delivered > 0:
+            bounce_rate = (bounces / requests) * 100 if requests > 0 else 0.0
+            spam_rate = (spam_reports / delivered) * 100 if delivered > 0 else 0.0
+        else:
+            bounce_rate = 0.0
+            spam_rate = 0.0
+        
+        return stats_dict, bounce_rate, spam_rate
+        
+    except Exception as e:
+        print(f"SendGrid統計取得エラー: {e}")
+        # エラー時は例外をそのままraise
+        raise
+
+
 def get_yesterday_stats() -> Tuple[Dict[str, int], float, float]:
     """
     昨日のSendGrid統計を取得

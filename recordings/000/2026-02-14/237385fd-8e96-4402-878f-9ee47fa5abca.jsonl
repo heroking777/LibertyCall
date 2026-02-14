@@ -1,0 +1,14 @@
+{"type": "call_start", "uuid": "237385fd-8e96-4402-878f-9ee47fa5abca", "client_id": "000", "time": "2026-02-14T17:26:48.874Z"}
+{"type": "asr_interim", "text": "L", "confidence": 0.0, "time": "2026-02-14T17:26:59.394Z"}
+{"type": "asr_interim", "text": "LP", "confidence": 0.0, "time": "2026-02-14T17:26:59.598Z"}
+{"type": "asr_interim", "text": "LD", "confidence": 0.0, "time": "2026-02-14T17:26:59.608Z"}
+{"type": "asr_interim", "text": "LPG", "confidence": 0.0, "time": "2026-02-14T17:26:59.894Z"}
+{"type": "asr_interim", "text": "LPG もし", "confidence": 0.0, "time": "2026-02-14T17:27:00.093Z"}
+{"type": "response", "text": "もしもし", "audio_ids": ["004"], "phase": "QA", "time": "2026-02-14T17:27:00.212Z"}
+{"type": "playback_start", "audio_id": "004", "path": "/opt/libertycall/clients/000/audio/004.wav", "time": "2026-02-14T17:27:00.215Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-02-14T17:27:00.216Z"}
+{"type": "asr_interim", "text": "LPG もしもし", "confidence": 0.0, "time": "2026-02-14T17:27:00.297Z"}
+{"type": "asr_interim", "text": "LPG もしもし", "confidence": 0.0, "time": "2026-02-14T17:27:00.889Z"}
+{"type": "playback_end", "audio_id": "004", "duration": 0.0, "time": "2026-02-14T17:27:01.517Z"}
+{"type": "asr_final", "text": "LPG もしもし", "confidence": 0.5226224660873413, "time": "2026-02-14T17:27:01.919Z"}
+{"type": "call_end", "uuid": "237385fd-8e96-4402-878f-9ee47fa5abca", "duration": 14.7, "time": "2026-02-14T17:27:03.605Z"}

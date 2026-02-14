@@ -1,0 +1,5 @@
+{"type": "call_start", "uuid": "bb461cf9-e546-404d-9575-e4178b22f8a9", "client_id": "whisper_test", "time": "2026-02-14T09:35:54.867Z"}
+{"type": "asr_final", "text": "このように取り取り取り出", "confidence": 0.0, "time": "2026-02-14T09:36:03.389Z"}
+{"type": "response", "text": "このように取り取り取り出", "audio_ids": ["002"], "phase": "QA", "time": "2026-02-14T09:36:19.071Z"}
+{"type": "playback_start", "audio_id": "002", "path": "/opt/libertycall/clients/whisper_test/audio/002.wav", "time": "2026-02-14T09:36:19.073Z"}
+{"type": "call_end", "uuid": "bb461cf9-e546-404d-9575-e4178b22f8a9", "duration": 24.3, "time": "2026-02-14T09:36:19.161Z"}
