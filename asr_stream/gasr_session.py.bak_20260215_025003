@@ -54,14 +54,6 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
         # dialogue_configを事前読み込み
         self._dialogue_config = self._load_dialogue_config()
 
-        # アナウンス再生中にSTT接続を事前確立
-        self._unmute_event = threading.Event()
-        self._stream_started = True
-        self._thread = threading.Thread(
-            target=self._consume_responses, daemon=True)
-        self._thread.start()
-        logger.info("[GASR] pre-starting STT connection uuid=%s", self.uuid)
-
         # ESL接続を事前に作成
         self._esl = None
         self._connect_esl()
@@ -231,10 +223,6 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
 
     def _consume_responses(self):
         logger.info("[GASR] _consume_responses started uuid=%s", self.uuid)
-        logger.info("[GASR] _consume_responses started, waiting for unmute uuid=%s", self.uuid)
-        # アナウンス再生中にここで待機。unmute()が呼ばれたら開始
-        self._unmute_event.wait(timeout=30)
-        logger.info("[GASR] unmute received, starting STT uuid=%s", self.uuid)
         try:
             responses = self.client.streaming_recognize(
                 self.streaming_config, requests=self._request_generator())
@@ -298,10 +286,15 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
     def unmute(self):
         self.muted = False
         self._unmute_time = time.time()
+        # unmute後、最初の0.5秒分のバッファ済み音声を捨てるためのフラグ
         self._flush_until = self._unmute_time + 0.2
         logger.info("[GASR] unmuted uuid=%s flush_until=%.3f", self.uuid, self._flush_until)
-        self._unmute_event.set()
-        logger.info("[GASR] unmute_event set uuid=%s", self.uuid)
+        if not hasattr(self, '_stream_started'):
+            self._stream_started = True
+            self._thread = threading.Thread(
+                target=self._consume_responses, daemon=True)
+            self._thread.start()
+            logger.info("[GASR] streaming_started_fallback uuid=%s", self.uuid)
 
     # ------------------------------------------------------------------ #
     #  Transcript accumulation
