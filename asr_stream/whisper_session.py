@@ -238,6 +238,7 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
                 best_of=1,
                 vad_filter=False,
                 without_timestamps=True,
+                no_speech_threshold=None,
             )
 
             # Collect results
@@ -274,6 +275,35 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
         samples_16k = np.interp(indices_16k, np.arange(n), samples_8k)
 
         return samples_16k.astype(np.float32)
+
+    def _append_transcript(self, is_final, transcript, confidence):
+        """音声認識結果を蓄積し、必要に応じて応答"""
+        if not transcript or not transcript.strip():
+            return
+        
+        cleaned = transcript.strip()
+        logger.info("[ACCUMULATE] uuid=%s text=%r is_final=%s",
+                    self.uuid, cleaned, is_final)
+        
+        if is_final:
+            # interim+タイマーで既に応答済みなら、finalでは応答しない
+            if hasattr(self, '_interim_responded') and self._interim_responded:
+                logger.info("[SKIP_FINAL] uuid=%s already responded via interim, text=%r",
+                           self.uuid, cleaned)
+                self._interim_responded = False
+                self._accumulated_text = ""
+                self._responded_offset = 0
+                self._extended_once = False
+                if self._silence_timer:
+                    self._silence_timer.cancel()
+                return
+            
+            self._accumulated_text = cleaned
+            self._responded_offset = 0
+            self._extended_once = False
+            if self._silence_timer:
+                self._silence_timer.cancel()
+            self._on_silence_timeout()
 
     # ------------------------------------------------------------------ #
     #  Session lifecycle

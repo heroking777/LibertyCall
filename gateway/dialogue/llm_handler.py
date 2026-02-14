@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 class LLMDialogueHandler:
     _instance = None
     _llm = None
+    _loaded = False
 
     @classmethod
     def get_instance(cls):
@@ -19,23 +20,23 @@ class LLMDialogueHandler:
 
     def __init__(self):
         self._model_path = "/opt/libertycall/models/qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf"
-        self._loaded = False
         self._response_map = {}
 
-    def _ensure_loaded(self):
-        if self._loaded:
+    @classmethod
+    def _ensure_loaded(cls):
+        if cls._loaded:
             return True
         try:
             from llama_cpp import Llama
             logger.info("[LLM] Loading model...")
             start = time.time()
             LLMDialogueHandler._llm = Llama(
-                model_path=self._model_path,
+                model_path=cls._instance._model_path,
                 n_ctx=2048,
                 n_threads=4,
                 verbose=False
             )
-            self._loaded = True
+            LLMDialogueHandler._loaded = True
             logger.info("[LLM] Model loaded in %.1fs", time.time() - start)
             return True
         except Exception as e:

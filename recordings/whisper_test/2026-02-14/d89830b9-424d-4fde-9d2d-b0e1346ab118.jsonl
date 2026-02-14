@@ -1,0 +1,2 @@
+{"type": "call_start", "uuid": "d89830b9-424d-4fde-9d2d-b0e1346ab118", "client_id": "whisper_test", "time": "2026-02-14T08:32:44.469Z"}
+{"type": "call_end", "uuid": "d89830b9-424d-4fde-9d2d-b0e1346ab118", "duration": 76.5, "time": "2026-02-14T08:34:00.939Z"}

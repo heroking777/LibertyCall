@@ -71,11 +71,16 @@ class GASRDialogHandlerMixin:
         logger.info("[DIALOG_START] uuid=%s transcript=%r", self.uuid, transcript)
         try:
             voice_map = self._voice_map
+            # LLM有効化：whisper_testクライアントの場合のみuse_llm=Trueを渡す
+            use_llm = (self.client_id == "whisper_test")
+            if use_llm:
+                logger.info("[LLM_ENABLED] uuid=%s client_id=%s", self.uuid, self.client_id)
             audio_ids, phase, state = get_response(
                 text=transcript,
                 phase=self._current_phase,
                 state=self._dialog_state,
-                client_id=self.client_id
+                client_id=self.client_id,
+                use_llm=use_llm
             )
             logger.info("[DIALOG_AFTER_RESPONSE] uuid=%s audio_ids=%s phase=%s",
                          self.uuid, audio_ids, phase)

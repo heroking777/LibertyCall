@@ -173,6 +173,20 @@ async def main():
     get_whisper_model()
     logger.info("[STARTUP] Whisper model ready")
 
+    # Pre-load LLM model for whisper_test client
+    try:
+        from gateway.dialogue.llm_handler import LLMDialogueHandler
+        logger.info("[STARTUP] Pre-loading LLM model...")
+        llm_handler = LLMDialogueHandler.get_instance()
+        # Trigger model loading and ensure _loaded flag is set
+        if llm_handler._ensure_loaded():
+            LLMDialogueHandler._loaded = True  # Ensure the class-level flag is properly set
+            logger.info("[STARTUP] LLM model ready")
+        else:
+            logger.warning("[STARTUP] LLM model failed to load")
+    except Exception as e:
+        logger.error("[STARTUP] LLM preload error: %s", e)
+
     server = WhisperWSSinkServer()
     server_instance = await websockets.serve(
         server.handle_client, host="0.0.0.0", port=8083,

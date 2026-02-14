@@ -1,0 +1,7 @@
+{"type": "call_start", "uuid": "1a842dc8-31ff-4686-ad24-5c5e84fdd3f5", "client_id": "whisper_test", "time": "2026-02-12T14:23:51.171Z"}
+{"type": "asr_final", "text": "この動画を見てくれてありがとう!", "confidence": 0.0, "time": "2026-02-12T14:23:59.488Z"}
+{"type": "asr_final", "text": "んんんんんんん", "confidence": 0.0, "time": "2026-02-12T14:24:04.168Z"}
+{"type": "asr_final", "text": "で、もう。", "confidence": 0.0, "time": "2026-02-12T14:24:12.011Z"}
+{"type": "asr_final", "text": "ご視聴ありがとうございました", "confidence": 0.0, "time": "2026-02-12T14:24:24.094Z"}
+{"type": "asr_final", "text": "ご視聴ありがとうございました", "confidence": 0.0, "time": "2026-02-12T14:24:24.516Z"}
+{"type": "call_end", "uuid": "1a842dc8-31ff-4686-ad24-5c5e84fdd3f5", "duration": 33.3, "time": "2026-02-12T14:24:24.517Z"}

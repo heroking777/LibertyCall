@@ -4,6 +4,7 @@ SendGrid APIからバウンス・スパムレポートを取得してリスト�
 """
 
 import json
+import csv
 import logging
 import sys
 from datetime import datetime, timedelta
@@ -36,73 +37,53 @@ class ListCleaner:
         self.spam_reported_emails = set()
         self.unsubscribed_emails = set()
     
-    def get_suppressed_emails(self, days_back: int = 7) -> Dict[str, Set[str]]:
+    def get_suppressed_emails(self, days_back: int = None) -> Set[str]:
         """
-        SendGridからサプレッションリストを取得
+        SendGridからサプレッションリストを取得（全期間）
         
         Args:
-            days_back: 何日前まで遡るか
+            days_back: 無視（全期間取得）
         
         Returns:
-            各種サプレッションメールアドレスの辞書
+            サプレッションメールアドレスのセット
         """
         if not self.sg:
             logger.error("SendGrid APIキーが設定されていません")
-            return {"bounces": set(), "spam_reports": set(), "unsubscribes": set()}
+            return set()
         
-        suppressed = {
-            "bounces": set(),
-            "spam_reports": set(), 
-            "unsubscribes": set()
-        }
+        suppress_emails = set()
         
+        # バウンス
         try:
-            # バウンスリストを取得
             response = self.sg.client.suppression.bounces.get()
-            if response.status_code == 200:
-                bounces = json.loads(response.body)
-                for bounce in bounces:
-                    email = bounce.get("email", "")
-                    created = bounce.get("created", "")
-                    
-                    # 日付フィルタリング
-                    if self._is_within_days(created, days_back):
-                        suppressed["bounces"].add(email)
-                        logger.debug(f"バウンス検出: {email} ({created})")
-            
-            # スパムレポートを取得
-            response = self.sg.client.suppression.spam_reports.get()
-            if response.status_code == 200:
-                spam_reports = json.loads(response.body)
-                for spam in spam_reports:
-                    email = spam.get("email", "")
-                    created = spam.get("created", "")
-                    
-                    if self._is_within_days(created, days_back):
-                        suppressed["spam_reports"].add(email)
-                        logger.debug(f"スパムレポート検出: {email} ({created})")
-            
-            # 配信停止リストを取得
-            response = self.sg.client.suppression.unsubscribes.get()
-            if response.status_code == 200:
-                unsubscribes = json.loads(response.body)
-                for unsubscribe in unsubscribes:
-                    email = unsubscribe.get("email", "")
-                    created = unsubscribe.get("created", "")
-                    
-                    if self._is_within_days(created, days_back):
-                        suppressed["unsubscribes"].add(email)
-                        logger.debug(f"配信停止検出: {email} ({created})")
-            
-            logger.info(f"サプレッションリスト取得完了: "
-                       f"バウンス={len(suppressed['bounces'])}, "
-                       f"スパム={len(suppressed['spam_reports'])}, "
-                       f"配信停止={len(suppressed['unsubscribes'])}")
-            
+            bounces = json.loads(response.body)
+            for b in bounces:
+                suppress_emails.add(b["email"])
+            print(f"バウンス: {len(bounces)}件")
         except Exception as e:
-            logger.error(f"サプレッションリスト取得エラー: {e}")
+            print(f"バウンス取得エラー: {e}")
         
-        return suppressed
+        # ブロック
+        try:
+            response = self.sg.client.suppression.blocks.get()
+            blocks = json.loads(response.body)
+            for b in blocks:
+                suppress_emails.add(b["email"])
+            print(f"ブロック: {len(blocks)}件")
+        except Exception as e:
+            print(f"ブロック取得エラー: {e}")
+        
+        # スパム報告
+        try:
+            response = self.sg.client.suppression.spam_reports.get()
+            spams = json.loads(response.body)
+            for s in spams:
+                suppress_emails.add(s["email"])
+            print(f"スパム報告: {len(spams)}件")
+        except Exception as e:
+            print(f"スパム報告取得エラー: {e}")
+        
+        return suppress_emails
     
     def _is_within_days(self, date_input, days: int) -> bool:
         """
@@ -148,54 +129,59 @@ class ListCleaner:
             logger.warning(f"日付解析エラー: {date_input}, エラー: {e}")
             return False
     
-    def clean_recipient_list(self, recipients: List[Dict], 
-                           suppressed: Dict[str, Set[str]]) -> List[Dict]:
+    def flag_suppressed_emails_in_master(self, suppressed_emails: Set[str]) -> int:
         """
-        レシピエントリストからサプレッションメールを除外
+        master_leads.csvのサプレッション対象メールに除外フラグを立てる
         
         Args:
-            recipients: レシピエントリスト
-            suppressed: サプレッションメールアドレスの辞書
+            suppressed_emails: サプレッションメールアドレスのセット
         
         Returns:
-        クリーンアップ後のレシピエントリスト
+            フラグを立てた件数
         """
-        cleaned_recipients = []
-        removed_count = 0
+        master_path = Path("/opt/libertycall/email_sender/data/master_leads.csv")
         
-        # すべてのサプレッションメールを統合
-        all_suppressed = set()
-        all_suppressed.update(suppressed["bounces"])
-        all_suppressed.update(suppressed["spam_reports"])
-        all_suppressed.update(suppressed["unsubscribes"])
+        if not master_path.exists():
+            logger.error(f"master_leads.csvが見つかりません: {master_path}")
+            return 0
         
-        for recipient in recipients:
-            email = recipient.get("email", "").strip().lower()
-            
-            if email in all_suppressed:
-                removed_count += 1
+        try:
+            # CSV読み込み
+            rows = []
+            with open(master_path, "r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                fieldnames = reader.fieldnames
                 
-                # 除外理由をログ
-                if email in suppressed["bounces"]:
-                    reason = "バウンス"
-                elif email in suppressed["spam_reports"]:
-                    reason = "スパムレポート"
-                elif email in suppressed["unsubscribes"]:
-                    reason = "配信停止"
-                else:
-                    reason = "不明"
+                # 除外列がなければ追加
+                if "除外" not in fieldnames:
+                    fieldnames = list(fieldnames) + ["除外"]
                 
-                logger.info(f"除外: {email} ({reason})")
-                continue
+                for row in reader:
+                    email = row.get("email", "").strip()
+                    
+                    # サプレッション対象なら除外フラグを立てる
+                    if email.lower() in [e.lower() for e in suppressed_emails]:
+                        if not row.get("除外", "").strip():  # 既にフラグがなければ
+                            row["除外"] = "サプレッション"
+                            self.cleaned_count += 1
+                            logger.info(f"除外フラグ: {email}")
+                    
+                    rows.append(row)
             
-            cleaned_recipients.append(recipient)
-        
-        self.cleaned_count = removed_count
-        logger.info(f"リストクリーニング完了: {removed_count}件を除外、{len(cleaned_recipients)}件を残存")
-        
-        return cleaned_recipients
+            # CSV書き戻し
+            with open(master_path, "w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+            
+            logger.info(f"除外フラグ設定完了: {self.cleaned_count}件")
+            return self.cleaned_count
+            
+        except Exception as e:
+            logger.error(f"除外フラグ設定エラー: {e}")
+            return 0
     
-    def generate_cleaning_report(self, suppressed: Dict[str, Set[str]]) -> Dict:
+    def generate_cleaning_report(self, suppressed: Set[str]) -> Dict:
         """
         クリーニングレポートを生成
         
@@ -208,13 +194,8 @@ class ListCleaner:
         report = {
             "date": datetime.now().strftime("%Y-%m-%d"),
             "cleaned_count": self.cleaned_count,
-            "bounces_count": len(suppressed["bounces"]),
-            "spam_reports_count": len(suppressed["spam_reports"]),
-            "unsubscribes_count": len(suppressed["unsubscribes"]),
-            "total_suppressed": len(suppressed["bounces"]) + len(suppressed["spam_reports"]) + len(suppressed["unsubscribes"]),
-            "bounced_emails": list(suppressed["bounces"]),
-            "spam_reported_emails": list(suppressed["spam_reports"]),
-            "unsubscribed_emails": list(suppressed["unsubscribes"])
+            "total_suppressed": len(suppressed),
+            "suppressed_emails": list(suppressed)
         }
         
         return report
@@ -243,30 +224,23 @@ class ListCleaner:
     
     def run_cleaning(self, days_back: int = 7, save_report: bool = True) -> int:
         """
-        リストクリーニングを実行
+        リストクリーニングを実行（除外フラグ方式）
         
         Args:
-            days_back: 何日前まで遡るか
+            days_back: 何日前まで遡るか（全期間取得のため無視）
             save_report: レポートを保存するか
         
         Returns:
-            クリーンアップした件数
+            フラグを立てた件数
         """
-        logger.info(f"=== リストクリーニング開始（{days_back}日前まで） ===")
-        
-        # レシピエントリストを読み込み
-        recipients = load_recipients()
-        original_count = len(recipients)
-        logger.info(f"元のリスト件数: {original_count}")
+        logger.info(f"=== リストクリーニング開始（除外フラグ方式） ===")
         
         # サプレッションリストを取得
-        suppressed = self.get_suppressed_emails(days_back)
+        suppressed = self.get_suppressed_emails()
+        logger.info(f"サプレッション対象: {len(suppressed)}件")
         
-        # リストをクリーニング
-        cleaned_recipients = self.clean_recipient_list(recipients, suppressed)
-        
-        # クリーンアップしたリストを保存
-        save_recipients(cleaned_recipients)
+        # master_leads.csvに除外フラグを立てる
+        flagged_count = self.flag_suppressed_emails_in_master(suppressed)
         
         # レポートを生成・保存
         if save_report:
@@ -274,9 +248,9 @@ class ListCleaner:
             self.save_cleaning_report(report)
         
         logger.info(f"=== リストクリーニング完了 ===")
-        logger.info(f"結果: {original_count} → {len(cleaned_recipients)} (除外: {self.cleaned_count})")
+        logger.info(f"結果: {flagged_count}件に除外フラグを設定")
         
-        return self.cleaned_count
+        return flagged_count
 
 
 def run_daily_cleaning() -> None:

@@ -110,6 +110,10 @@ class ProductionCSVRepository:
                     if not email:
                         continue
                     
+                    # 除外フラグがある場合はスキップ
+                    if row.get("除外", "").strip():
+                        continue
+                    
                     # 配信停止済みを除外
                     if email.lower() in unsubscribed:
                         continue
