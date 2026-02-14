@@ -54,24 +54,12 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
         # dialogue_configを事前読み込み
         self._dialogue_config = self._load_dialogue_config()
 
-        # アナウンス再生中にSTT接続を事前確立
-        self._unmute_event = threading.Event()
-        self._stream_started = True
-        self._thread = threading.Thread(
-            target=self._consume_responses, daemon=True)
-        self._thread.start()
-        logger.info("[GASR] pre-starting STT connection uuid=%s", self.uuid)
-
-        # ESL接続を事前に作成
-        self._esl = None
-        self._connect_esl()
-
         # クライアント設定からphrase hintsを構築
         phrase_hints = self._load_phrase_hints()
         self._instant_keywords = set(self._load_instant_keywords()) if self._load_instant_keywords() else set()
         logger.info("[GASR] instant_keywords loaded count=%d uuid=%s",
-                   len(self._instant_keywords), self.uuid)
-
+                       len(self._instant_keywords), self.uuid)
+        
         speech_contexts = []
         if phrase_hints:
             speech_contexts = [speech.SpeechContext(phrases=phrase_hints, boost=5.0)]
@@ -91,6 +79,18 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
         )
         logger.info("[GASR] session_open uuid=%s config=LINEAR16/%s/%s",
                     self.uuid, self.sample_rate, self.language)
+
+        # アナウンス再生中にSTT接続を事前確立
+        self._unmute_event = threading.Event()
+        self._stream_started = True
+        self._thread = threading.Thread(
+            target=self._consume_responses, daemon=True)
+        self._thread.start()
+        logger.info("[GASR] pre-starting STT connection uuid=%s", self.uuid)
+
+        # ESL接続を事前に作成
+        self._esl = None
+        self._connect_esl()
 
     # ------------------------------------------------------------------ #
     #  Config loaders
@@ -215,6 +215,7 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
 
     def _request_generator(self):
         logger.info("[GASR] _request_generator started uuid=%s", self.uuid)
+        first_empty = True
         while True:
             try:
                 chunk = self.queue.get(timeout=1.0)  # 1秒タイムアウト
@@ -227,14 +228,15 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
                 yield speech.StreamingRecognizeRequest(audio_content=chunk)
             except queue.Empty:
                 logger.debug("[GASR] _request_generator queue empty, continuing uuid=%s", self.uuid)
+                if first_empty:
+                    logger.info("[GASR] _request_generator sending empty request to establish STT connection uuid=%s", self.uuid)
+                    yield speech.StreamingRecognizeRequest(audio_content=b'')
+                    first_empty = False
                 continue
 
     def _consume_responses(self):
         logger.info("[GASR] _consume_responses started uuid=%s", self.uuid)
-        logger.info("[GASR] _consume_responses started, waiting for unmute uuid=%s", self.uuid)
-        # アナウンス再生中にここで待機。unmute()が呼ばれたら開始
-        self._unmute_event.wait(timeout=30)
-        logger.info("[GASR] unmute received, starting STT uuid=%s", self.uuid)
+        logger.info("[GASR] _consume_responses started, connecting STT immediately uuid=%s", self.uuid)
         try:
             responses = self.client.streaming_recognize(
                 self.streaming_config, requests=self._request_generator())
