@@ -1,0 +1,16 @@
+{"type": "call_start", "uuid": "703d745b-3640-42a1-ba68-697fda838651", "client_id": "000", "time": "2026-02-25T11:50:49.749Z"}
+{"type": "response", "text": "005", "audio_ids": ["005"], "phase": "IMMEDIATE", "time": "2026-02-25T11:51:13.394Z"}
+{"type": "response", "text": "121", "audio_ids": ["121"], "phase": "IMMEDIATE", "time": "2026-02-25T11:51:29.051Z"}
+{"type": "response", "text": "125", "audio_ids": ["125"], "phase": "IMMEDIATE", "time": "2026-02-25T11:51:47.567Z"}
+{"type": "response", "text": "005", "audio_ids": ["005"], "phase": "IMMEDIATE", "time": "2026-02-25T11:52:06.023Z"}
+{"type": "response", "text": "005", "audio_ids": ["005"], "phase": "IMMEDIATE", "time": "2026-02-25T11:52:12.358Z"}
+{"type": "response", "text": "004", "audio_ids": ["004"], "phase": "IMMEDIATE", "time": "2026-02-25T11:52:18.323Z"}
+{"type": "response", "text": "005", "audio_ids": ["005"], "phase": "IMMEDIATE", "time": "2026-02-25T11:52:22.263Z"}
+{"type": "response", "text": "005", "audio_ids": ["005"], "phase": "IMMEDIATE", "time": "2026-02-25T11:52:28.911Z"}
+{"type": "response", "text": "005", "audio_ids": ["005"], "phase": "IMMEDIATE", "time": "2026-02-25T11:52:53.166Z"}
+{"type": "response", "text": "0606", "audio_ids": ["0606"], "phase": "IMMEDIATE", "time": "2026-02-25T11:52:59.919Z"}
+{"type": "response", "text": "005", "audio_ids": ["005"], "phase": "IMMEDIATE", "time": "2026-02-25T11:53:11.589Z"}
+{"type": "response", "text": "005", "audio_ids": ["005"], "phase": "IMMEDIATE", "time": "2026-02-25T11:53:18.287Z"}
+{"type": "response", "text": "125", "audio_ids": ["125"], "phase": "IMMEDIATE", "time": "2026-02-25T11:53:24.683Z"}
+{"type": "response", "text": "121", "audio_ids": ["121"], "phase": "IMMEDIATE", "time": "2026-02-25T11:53:39.942Z"}
+{"type": "call_end", "uuid": "703d745b-3640-42a1-ba68-697fda838651", "duration": 175.4, "time": "2026-02-25T11:53:45.166Z"}

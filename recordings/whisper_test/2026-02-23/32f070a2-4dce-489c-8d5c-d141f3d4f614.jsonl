@@ -1,0 +1,4 @@
+{"type": "call_start", "uuid": "32f070a2-4dce-489c-8d5c-d141f3d4f614", "client_id": "whisper_test", "time": "2026-02-23T11:22:38.420Z"}
+{"type": "asr_final", "text": "私は、私は、私は、私は、", "confidence": 0.0, "time": "2026-02-23T11:22:50.361Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T11:22:50.362Z"}
+{"type": "call_end", "uuid": "32f070a2-4dce-489c-8d5c-d141f3d4f614", "duration": 38.8, "time": "2026-02-23T11:23:17.236Z"}

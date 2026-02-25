@@ -1,0 +1,4 @@
+{"type": "call_start", "uuid": "42646855-c837-4537-a761-637d18030e60", "client_id": "whisper_test", "time": "2026-02-24T02:55:06.434Z"}
+{"type": "response", "text": "004", "audio_ids": ["004"], "phase": "IMMEDIATE", "time": "2026-02-24T02:55:19.082Z"}
+{"type": "response", "text": "122", "audio_ids": ["122"], "phase": "IMMEDIATE", "time": "2026-02-24T02:55:23.697Z"}
+{"type": "call_end", "uuid": "42646855-c837-4537-a761-637d18030e60", "duration": 26.9, "time": "2026-02-24T02:55:33.291Z"}

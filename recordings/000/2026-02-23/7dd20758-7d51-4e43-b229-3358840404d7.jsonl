@@ -1,0 +1,15 @@
+{"type": "call_start", "uuid": "7dd20758-7d51-4e43-b229-3358840404d7", "client_id": "000", "time": "2026-02-23T07:56:14.248Z"}
+{"type": "asr_interim", "text": "料金", "confidence": 0.0, "time": "2026-02-23T07:56:26.162Z"}
+{"type": "asr_interim", "text": "料金に", "confidence": 0.0, "time": "2026-02-23T07:56:26.465Z"}
+{"type": "asr_interim", "text": "料金について", "confidence": 0.0, "time": "2026-02-23T07:56:26.565Z"}
+{"type": "asr_interim", "text": "料金について行き", "confidence": 0.0, "time": "2026-02-23T07:56:26.670Z"}
+{"type": "asr_interim", "text": "料金について行きたい", "confidence": 0.0, "time": "2026-02-23T07:56:26.769Z"}
+{"type": "asr_interim", "text": "料金について行きたいんです", "confidence": 0.0, "time": "2026-02-23T07:56:26.864Z"}
+{"type": "asr_interim", "text": "料金について行きたいんですけど", "confidence": 0.0, "time": "2026-02-23T07:56:26.961Z"}
+{"type": "response", "text": "料金について行きたいんですけど", "audio_ids": ["122", "085"], "phase": "QA", "time": "2026-02-23T07:56:27.362Z"}
+{"type": "playback_start", "audio_id": "122", "path": "/opt/libertycall/clients/000/audio/122.wav", "time": "2026-02-23T07:56:27.850Z"}
+{"type": "playback_start", "audio_id": "085", "path": "/opt/libertycall/clients/000/audio/085.wav", "time": "2026-02-23T07:56:27.981Z"}
+{"type": "asr_final", "text": "料金について行きたいんですけど", "confidence": 0.8570778369903564, "time": "2026-02-23T07:56:28.060Z"}
+{"type": "playback_end", "audio_id": "122", "duration": 0.0, "time": "2026-02-23T07:56:36.955Z"}
+{"type": "playback_end", "audio_id": "085", "duration": 0.0, "time": "2026-02-23T07:56:36.955Z"}
+{"type": "call_end", "uuid": "7dd20758-7d51-4e43-b229-3358840404d7", "duration": 25.4, "time": "2026-02-23T07:56:39.636Z"}

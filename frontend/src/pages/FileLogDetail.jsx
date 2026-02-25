@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import axios from 'axios'
+import api from '../api'
 import { API_BASE } from '../config'
 import './FileLogDetail.css'
 
@@ -74,7 +74,7 @@ function FileLogDetail() {
     setCallerNumber(null)
     setStartedAt(null)
     try {
-      const response = await axios.get(`${API_BASE}/logs/${clientId}/${callId}`)
+      const response = await api.get(`/logs/${clientId}/${callId}`)
       setLogs(response.data.logs || [])
       setCallerNumber(response.data.caller_number || null)
       setStartedAt(response.data.started_at || null)
@@ -87,13 +87,16 @@ function FileLogDetail() {
   }
 
   const formatTime = (datetime) => {
-    const d = new Date(datetime)
+    if (!datetime) return ""
+    const iso = String(datetime).endsWith("Z") ? datetime : datetime + "Z"
+    const d = new Date(iso)
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
   }
 
   const formatDateTime = (datetime) => {
     if (!datetime) return ''
-    const d = new Date(datetime)
+    const iso = String(datetime).endsWith('Z') ? datetime : datetime + 'Z'
+    const d = new Date(iso)
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   }
 

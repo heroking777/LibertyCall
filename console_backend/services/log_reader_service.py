@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from collections import defaultdict
 
@@ -48,7 +48,10 @@ class LogReaderService:
         
         # timestampをパース
         try:
-            timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+            # ログファイルの時刻はJSTなので、UTC に変換
+            JST = timezone(timedelta(hours=9))
+            jst_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=JST)
+            timestamp = jst_time.astimezone(timezone.utc).replace(tzinfo=None)
         except ValueError:
             return None
         
@@ -120,6 +123,8 @@ class LogReaderService:
                         logs.append(parsed)
             
             # タイムスタンプでソート（昇順）
+            # ファイル内の出現順を維持（timestampのみでソート、同一時刻は元の順序を保持）
+            # sorted は安定ソートなので同一キーの場合は元の順序が維持される
             logs.sort(key=lambda x: x["timestamp"])
         except Exception as e:
             # エラーログを出力（実際の実装ではloggerを使用）

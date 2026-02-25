@@ -1,0 +1,8 @@
+{"type": "call_start", "uuid": "a55d72e8-7bce-46c9-adba-2ac7f36a7d57", "client_id": "whisper_test", "time": "2026-02-23T13:01:46.796Z"}
+{"type": "asr_final", "text": "またマスティーです。", "confidence": 0.0, "time": "2026-02-23T13:02:00.400Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T13:02:00.401Z"}
+{"type": "asr_final", "text": "ご視聴ありがとうございました。", "confidence": 0.0, "time": "2026-02-23T13:02:06.953Z"}
+{"type": "response", "text": "086", "audio_ids": ["086"], "phase": "IMMEDIATE", "time": "2026-02-23T13:02:06.955Z"}
+{"type": "asr_final", "text": "ご視聴ありがとうございました。", "confidence": 0.0, "time": "2026-02-23T13:02:15.790Z"}
+{"type": "response", "text": "086", "audio_ids": ["086"], "phase": "IMMEDIATE", "time": "2026-02-23T13:02:15.791Z"}
+{"type": "call_end", "uuid": "a55d72e8-7bce-46c9-adba-2ac7f36a7d57", "duration": 33.3, "time": "2026-02-23T13:02:20.113Z"}

@@ -1,0 +1,16 @@
+{"type": "call_start", "uuid": "c5ca0f2d-d259-402a-9e11-e7fa8292377a", "client_id": "whisper_test", "time": "2026-02-23T11:48:35.326Z"}
+{"type": "asr_final", "text": "申しましい。", "confidence": 0.0, "time": "2026-02-23T11:48:47.659Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T11:48:47.660Z"}
+{"type": "asr_final", "text": "申し上げます。", "confidence": 0.0, "time": "2026-02-23T11:48:53.837Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T11:48:53.838Z"}
+{"type": "asr_final", "text": "ご視聴ありがとうございました。", "confidence": 0.0, "time": "2026-02-23T11:49:01.291Z"}
+{"type": "response", "text": "086", "audio_ids": ["086"], "phase": "IMMEDIATE", "time": "2026-02-23T11:49:01.292Z"}
+{"type": "asr_final", "text": "またまし", "confidence": 0.0, "time": "2026-02-23T11:49:08.802Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T11:49:08.802Z"}
+{"type": "asr_final", "text": "東京についてしたいですけど。", "confidence": 0.0, "time": "2026-02-23T11:49:16.168Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T11:49:16.169Z"}
+{"type": "asr_final", "text": "夜気についてきたんですけど", "confidence": 0.0, "time": "2026-02-23T11:49:22.155Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T11:49:22.155Z"}
+{"type": "asr_final", "text": "では、電話での応援にすることができます。", "confidence": 0.0, "time": "2026-02-23T11:49:28.234Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T11:49:28.235Z"}
+{"type": "call_end", "uuid": "c5ca0f2d-d259-402a-9e11-e7fa8292377a", "duration": 55.4, "time": "2026-02-23T11:49:30.735Z"}

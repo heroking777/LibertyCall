@@ -1,0 +1,18 @@
+{"type": "call_start", "uuid": "5acd89ab-7806-489a-a811-e0eb666a1071", "client_id": "000", "time": "2026-02-22T08:22:39.616Z"}
+{"type": "asr_interim", "text": "メール", "confidence": 0.0, "time": "2026-02-22T08:22:50.444Z"}
+{"type": "asr_interim", "text": "メールが", "confidence": 0.0, "time": "2026-02-22T08:22:50.742Z"}
+{"type": "asr_interim", "text": "メールが来て", "confidence": 0.0, "time": "2026-02-22T08:22:50.771Z"}
+{"type": "asr_interim", "text": "メールが来てた", "confidence": 0.0, "time": "2026-02-22T08:22:50.947Z"}
+{"type": "asr_interim", "text": "メールが来てたんで", "confidence": 0.0, "time": "2026-02-22T08:22:51.063Z"}
+{"type": "asr_interim", "text": "メールが来てたんで 電話", "confidence": 0.0, "time": "2026-02-22T08:22:51.251Z"}
+{"type": "asr_interim", "text": "メールが来てたんで", "confidence": 0.0, "time": "2026-02-22T08:22:51.346Z"}
+{"type": "asr_interim", "text": " 電話", "confidence": 0.0, "time": "2026-02-22T08:22:51.347Z"}
+{"type": "asr_interim", "text": "メールが来てたんで電話した", "confidence": 0.0, "time": "2026-02-22T08:22:51.450Z"}
+{"type": "asr_interim", "text": "メールが来てたんで電話したんです", "confidence": 0.0, "time": "2026-02-22T08:22:51.479Z"}
+{"type": "asr_interim", "text": "メールが来てたんで電話したんですけど", "confidence": 0.0, "time": "2026-02-22T08:22:51.642Z"}
+{"type": "response", "text": "メールが来てたんで電話したんですけど", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-22T08:22:52.043Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-22T08:22:52.045Z"}
+{"type": "asr_interim", "text": "メールが来てたんで電話したんですけど", "confidence": 0.0, "time": "2026-02-22T08:22:52.731Z"}
+{"type": "asr_final", "text": "メールが来てたんで電話したんですけど", "confidence": 0.9558944702148438, "time": "2026-02-22T08:22:52.755Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-22T08:22:54.350Z"}
+{"type": "call_end", "uuid": "5acd89ab-7806-489a-a811-e0eb666a1071", "duration": 17.2, "time": "2026-02-22T08:22:56.779Z"}

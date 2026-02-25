@@ -123,7 +123,7 @@ class GASRDialogHandlerMixin:
                                          self.uuid, template, audio_path, audio_duration)
                             broadcast_start = time.time()
                             if hasattr(self, 'call_logger') and self.call_logger:
-                                self.call_logger.log_playback_start(template, audio_path)
+                                self.call_logger.log_playback_start(template, audio_path, phrase=voice_map.get(template, template))
                             result = self._esl.api(
                                 f"uuid_broadcast {self.uuid} {audio_path} aleg")
                             broadcast_end = time.time()

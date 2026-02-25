@@ -10,6 +10,20 @@ from sqlalchemy.orm import Session
 from ..schemas import CallListResponse, CallDetailResponse, AppendLogRequest
 from ..models import Call, CallLog
 from ..websocket.dispatcher import call_event_dispatcher
+import os as _os
+import requests as _requests
+
+def _push_event_http(call_id: str, event_type: str, data: dict) -> None:
+    """uvicornプロセスにHTTP経由でSSEイベントを送信."""
+    base = _os.getenv("LIBERTYCALL_CONSOLE_API_BASE_URL", "http://localhost:8001")
+    try:
+        _requests.post(
+            f"{base}/api/live/calls/{call_id}/push_event",
+            json={"event": event_type, "data": data},
+            timeout=2,
+        )
+    except Exception:
+        pass  # 配信失敗は握りつぶす
 from ..config import get_settings
 from .file_log_service import append_log as append_file_log
 
@@ -85,6 +99,15 @@ def append_log(
     
     # WebSocketイベントを送信
     call_event_dispatcher.send_log(call_id, log)
+    
+    # SSEイベントを送信（ライブ通話画面用）
+    _push_event_http(call_id, "new_log", {
+        "id": log.id,
+        "role": log.role,
+        "text": log.text,
+        "state": log.state,
+        "timestamp": log.timestamp.isoformat() + "Z" if log.timestamp else None,
+    })
     
     # ファイルログに追記（例外は握りつぶす）
     try:

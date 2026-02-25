@@ -1,0 +1,6 @@
+{"type": "call_start", "uuid": "64f9fa00-b4a1-4732-9172-9593f87574c3", "client_id": "whisper_test", "time": "2026-02-23T14:01:19.381Z"}
+{"type": "response", "text": "122", "audio_ids": ["122"], "phase": "IMMEDIATE", "time": "2026-02-23T14:01:32.952Z"}
+{"type": "response", "text": "122", "audio_ids": ["122"], "phase": "IMMEDIATE", "time": "2026-02-23T14:01:44.400Z"}
+{"type": "response", "text": "122", "audio_ids": ["122"], "phase": "IMMEDIATE", "time": "2026-02-23T14:01:55.156Z"}
+{"type": "response", "text": "004", "audio_ids": ["004"], "phase": "IMMEDIATE", "time": "2026-02-23T14:02:06.361Z"}
+{"type": "call_end", "uuid": "64f9fa00-b4a1-4732-9172-9593f87574c3", "duration": 50.4, "time": "2026-02-23T14:02:09.770Z"}

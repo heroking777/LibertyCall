@@ -361,7 +361,8 @@ def send_notification_email(
     failed_count: int,
     sent_emails: List[str] = None,
     failed_emails: List[str] = None,
-    error_message: str = None
+    error_message: str = None,
+    custom_body: str = None
 ) -> bool:
     """
     メール送信結果の通知メールを送信
@@ -372,6 +373,7 @@ def send_notification_email(
         sent_emails: 送信成功したメールアドレスのリスト（オプション）
         failed_emails: 送信失敗したメールアドレスのリスト（オプション）
         error_message: エラーメッセージ（オプション）
+        custom_body: カスタム本文（オプション、指定された場合は本文を置き換え）
     
     Returns:
         送信成功時True、失敗時False
@@ -393,29 +395,33 @@ def send_notification_email(
     # 件名
     subject = f"【LibertyCall】メール送信結果報告 - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     
-    # 本文を作成（シンプルに）
-    total_count = sent_count + failed_count
-    body_lines = [
-        "LibertyCall メール送信システム",
-        "",
-        f"送信日時: {datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}",
-        "",
-        "=== 送信結果 ===",
-        f"送信件数: {total_count}件",
-        f"成功: {sent_count}件",
-        f"失敗: {failed_count}件",
-        "",
-        "---",
-        "LibertyCall メール送信システム"
-    ]
-    
-    # エラーメッセージ（システムエラーの場合のみ）
-    if error_message:
-        body_lines.insert(-2, "")
-        body_lines.insert(-2, "=== システムエラー ===")
-        body_lines.insert(-2, error_message)
-    
-    body_text = "\n".join(body_lines)
+    # 本文を生成（custom_bodyが指定されている場合はそれを使用）
+    if custom_body:
+        body_text = custom_body
+    else:
+        # 本文を作成（シンプルに）
+        total_count = sent_count + failed_count
+        body_lines = [
+            "LibertyCall メール送信システム",
+            "",
+            f"送信日時: {datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}",
+            "",
+            "=== 送信結果 ===",
+            f"送信件数: {total_count}件",
+            f"成功: {sent_count}件",
+            f"失敗: {failed_count}件",
+            "",
+            "---",
+            "LibertyCall メール送信システム"
+        ]
+        
+        # エラーメッセージ（システムエラーの場合のみ）
+        if error_message:
+            body_lines.insert(-2, "")
+            body_lines.insert(-2, "=== システムエラー ===")
+            body_lines.insert(-2, error_message)
+        
+        body_text = "\n".join(body_lines)
     
     # メール送信
     from_email = f"LibertyCall サポート <{SENDER_EMAIL}>"

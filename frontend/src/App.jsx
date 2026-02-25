@@ -8,6 +8,8 @@ import FlowEditor from './pages/FlowEditor'
 import Login from './pages/Login'
 import ClientManagement from './pages/ClientManagement'
 import UserManagement from './pages/UserManagement'
+import LiveCalls from './pages/LiveCalls'
+import LiveCallDetail from './pages/LiveCallDetail'
 import './App.css'
 
 function App() {
@@ -50,6 +52,8 @@ function App() {
           <Route path="/console/users" element={<UserManagement />} />
           <Route path="/console/audio-tests" element={<AudioTestDashboard />} />
           <Route path="/console/flow-editor" element={<FlowEditor />} />
+          <Route path="/console/live" element={<LiveCalls user={user} />} />
+          <Route path="/console/live/:callId" element={<LiveCallDetail user={user} />} />
         </Routes>
       </ConsoleLayout>
     </BrowserRouter>

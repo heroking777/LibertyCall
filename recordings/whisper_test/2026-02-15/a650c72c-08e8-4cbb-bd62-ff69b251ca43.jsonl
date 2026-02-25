@@ -1,0 +1,4 @@
+{"type": "call_start", "uuid": "a650c72c-08e8-4cbb-bd62-ff69b251ca43", "client_id": "whisper_test", "time": "2026-02-15T04:58:09.867Z"}
+{"type": "asr_final", "text": "引っ越ないというわけでございます。", "confidence": 0.0, "time": "2026-02-15T04:58:24.930Z"}
+{"type": "asr_final", "text": "お客様です。", "confidence": 0.0, "time": "2026-02-15T04:58:26.694Z"}
+{"type": "call_end", "uuid": "a650c72c-08e8-4cbb-bd62-ff69b251ca43", "duration": 160.5, "time": "2026-02-15T05:00:50.358Z"}

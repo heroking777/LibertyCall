@@ -19,7 +19,7 @@ function ClientManagement() {
   const fetchClients = async () => {
     try {
       const response = await api.get('/clients')
-      setClients(response.data)
+      setClients(response.data.clients || response.data || [])
     } catch (error) {
       console.error('Failed to fetch clients:', error)
     } finally {

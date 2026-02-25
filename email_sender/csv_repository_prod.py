@@ -110,9 +110,6 @@ class ProductionCSVRepository:
                     if not email:
                         continue
                     
-                    # 除外フラグがある場合はスキップ
-                    if row.get("除外", "").strip():
-                        continue
                     
                     # 配信停止済みを除外
                     if email.lower() in unsubscribed:
@@ -181,6 +178,7 @@ class ProductionCSVRepository:
         try:
             # 既存のmaster_leads.csvを読み込んで、address、last_sent_date、initial_sent_dateフィールドを保持
             existing_data = {}
+            excluded_rows = []
             if self.recipients_file.exists():
                 with open(self.recipients_file, "r", encoding="utf-8", newline="") as f:
                     reader = csv.DictReader(f)
@@ -190,12 +188,14 @@ class ProductionCSVRepository:
                             existing_data[email] = {
                                 "address": row.get("address", "").strip(),
                                 "last_sent_date": row.get("last_sent_date", "").strip(),
-                                "initial_sent_date": row.get("initial_sent_date", "").strip()
+                                "initial_sent_date": row.get("initial_sent_date", "").strip(), "除外": row.get("除外", "").strip()
                             }
+                            if row.get("除外", "").strip():
+                                excluded_rows.append(row)
             
             with open(self.recipients_file, "w", encoding="utf-8", newline="") as f:
-                fieldnames = ["email", "company_name", "address", "stage", "last_sent_date", "initial_sent_date"]
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                fieldnames = ["email", "company_name", "address", "stage", "last_sent_date", "initial_sent_date", "除外"]
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
                 writer.writeheader()
                 for recipient in recipients_dict.values():
                     email_lower = recipient.get("email", "").strip().lower()
@@ -207,7 +207,8 @@ class ProductionCSVRepository:
                         "address": recipient.get("address", "") or existing.get("address", ""),  # 既存のaddressを保持
                         "stage": recipient.get("stage", "initial"),
                         "last_sent_date": recipient.get("last_sent_date", "") or existing.get("last_sent_date", ""),  # 既存のlast_sent_dateを保持
-                        "initial_sent_date": recipient.get("initial_sent_date", "") or existing.get("initial_sent_date", "")  # 既存のinitial_sent_dateを保持
+                        "initial_sent_date": recipient.get("initial_sent_date", "") or existing.get("initial_sent_date", ""),
+                        "除外": existing.get("除外", "") or recipient.get("除外", ""),
                     }
                     writer.writerow(row)
         except Exception as e:
@@ -240,7 +241,7 @@ class ProductionCSVRepository:
         # 削除後のレコードを保存
         if fieldnames:
             with open(self.recipients_file, "w", encoding="utf-8", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
                 writer.writeheader()
                 writer.writerows(existing_records)
         

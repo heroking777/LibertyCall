@@ -1,0 +1,18 @@
+{"type": "call_start", "uuid": "be0d3578-f8ca-47db-b382-60ce7ba10d86", "client_id": "000", "time": "2026-02-22T08:14:56.625Z"}
+{"type": "asr_interim", "text": "もし", "confidence": 0.0, "time": "2026-02-22T08:15:08.206Z"}
+{"type": "response", "text": "もしもし", "audio_ids": ["004"], "phase": "QA", "time": "2026-02-22T08:15:08.329Z"}
+{"type": "playback_start", "audio_id": "004", "path": "/opt/libertycall/clients/000/audio/004.wav", "time": "2026-02-22T08:15:08.330Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-02-22T08:15:08.332Z"}
+{"type": "asr_final", "text": "もしもし", "confidence": 0.7342537641525269, "time": "2026-02-22T08:15:09.581Z"}
+{"type": "playback_end", "audio_id": "004", "duration": 0.0, "time": "2026-02-22T08:15:09.634Z"}
+{"type": "asr_interim", "text": "ホーム", "confidence": 0.0, "time": "2026-02-22T08:15:12.489Z"}
+{"type": "asr_interim", "text": "ホームページ", "confidence": 0.0, "time": "2026-02-22T08:15:12.690Z"}
+{"type": "asr_interim", "text": "ホームページ見", "confidence": 0.0, "time": "2026-02-22T08:15:12.903Z"}
+{"type": "asr_interim", "text": "ホームページ見た", "confidence": 0.0, "time": "2026-02-22T08:15:13.010Z"}
+{"type": "asr_interim", "text": "ホームページ見たんです", "confidence": 0.0, "time": "2026-02-22T08:15:13.033Z"}
+{"type": "asr_interim", "text": "ホームページ見たんですけど", "confidence": 0.0, "time": "2026-02-22T08:15:13.192Z"}
+{"type": "response", "text": "ホームページ見たんですけど", "audio_ids": ["0600"], "phase": "QA", "time": "2026-02-22T08:15:13.593Z"}
+{"type": "playback_start", "audio_id": "0600", "path": "/opt/libertycall/clients/000/audio/0600.wav", "time": "2026-02-22T08:15:13.594Z"}
+{"type": "asr_final", "text": "ホームページ見たんですけど", "confidence": 0.8838737607002258, "time": "2026-02-22T08:15:14.177Z"}
+{"type": "playback_end", "audio_id": "0600", "duration": 0.0, "time": "2026-02-22T08:15:17.301Z"}
+{"type": "call_end", "uuid": "be0d3578-f8ca-47db-b382-60ce7ba10d86", "duration": 23.0, "time": "2026-02-22T08:15:19.652Z"}

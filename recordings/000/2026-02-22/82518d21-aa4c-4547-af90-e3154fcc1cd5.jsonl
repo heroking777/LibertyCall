@@ -1,0 +1,18 @@
+{"type": "call_start", "uuid": "82518d21-aa4c-4547-af90-e3154fcc1cd5", "client_id": "000", "time": "2026-02-22T06:34:38.733Z"}
+{"type": "asr_interim", "text": "て", "confidence": 0.0, "time": "2026-02-22T06:34:59.394Z"}
+{"type": "asr_interim", "text": "テスト", "confidence": 0.0, "time": "2026-02-22T06:34:59.591Z"}
+{"type": "asr_interim", "text": "テストで", "confidence": 0.0, "time": "2026-02-22T06:34:59.707Z"}
+{"type": "asr_interim", "text": "テストで電話", "confidence": 0.0, "time": "2026-02-22T06:34:59.891Z"}
+{"type": "response", "text": "テストで電話", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-22T06:35:00.293Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-22T06:35:00.294Z"}
+{"type": "asr_interim", "text": "テストで電話 差", "confidence": 0.0, "time": "2026-02-22T06:35:00.319Z"}
+{"type": "asr_interim", "text": "テストで電話", "confidence": 0.0, "time": "2026-02-22T06:35:00.355Z"}
+{"type": "asr_interim", "text": " 差", "confidence": 0.0, "time": "2026-02-22T06:35:00.356Z"}
+{"type": "asr_interim", "text": "テストで電話を立ち", "confidence": 0.0, "time": "2026-02-22T06:35:00.389Z"}
+{"type": "asr_interim", "text": "テストで電話差し上げ", "confidence": 0.0, "time": "2026-02-22T06:35:00.527Z"}
+{"type": "asr_interim", "text": "テストで電話差し上げて", "confidence": 0.0, "time": "2026-02-22T06:35:00.557Z"}
+{"type": "asr_interim", "text": "テストで電話差し上げており", "confidence": 0.0, "time": "2026-02-22T06:35:00.711Z"}
+{"type": "asr_interim", "text": "テストで電話差し上げております", "confidence": 0.0, "time": "2026-02-22T06:35:00.913Z"}
+{"type": "asr_final", "text": "テストで電話差し上げております", "confidence": 0.8611655235290527, "time": "2026-02-22T06:35:01.811Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-22T06:35:02.599Z"}
+{"type": "call_end", "uuid": "82518d21-aa4c-4547-af90-e3154fcc1cd5", "duration": 34.5, "time": "2026-02-22T06:35:13.203Z"}

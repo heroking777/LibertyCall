@@ -59,6 +59,24 @@ class WhisperWSSinkServer:
         self.esl = None
         self._connect_esl()
 
+    def _esl_api(self, cmd):
+        """ESL API call with auto-reconnect on Broken pipe"""
+        for attempt in range(2):
+            try:
+                if not self.esl or not self.esl.connected():
+                    self._connect_esl()
+                if self.esl and self.esl.connected():
+                    result = self.esl.api(cmd)
+                    return result
+            except BrokenPipeError:
+                logger.warning("[ESL] Broken pipe, reconnecting (attempt %d)", attempt + 1)
+                self.esl = None
+                self._connect_esl()
+            except Exception as e:
+                logger.error("[ESL] api error: %s", e)
+                return None
+        return None
+
     def _connect_esl(self):
         try:
             self.esl = ESLconnection("127.0.0.1", "8021", "ClueCon")
@@ -73,7 +91,7 @@ class WhisperWSSinkServer:
         try:
             if not self.esl or not self.esl.connected():
                 return "whisper_test"
-            result = self.esl.api(f"uuid_getvar {uuid} destination_number")
+            result = self._esl_api(f"uuid_getvar {uuid} destination_number")
             dest_number = result.getBody() if result else "unknown"
             logger.info("[WS_SERVER] destination_number=%s uuid=%s", dest_number, uuid)
 
@@ -105,13 +123,22 @@ class WhisperWSSinkServer:
         recording_started = False
         try:
             client_id = self._get_client_id_from_uuid(call_uuid)
-            call_logger = CallLogger(call_uuid, client_id)
+            # Get caller number for call log
+            caller_number = ""
+            try:
+                cn_result = self._esl_api(f"uuid_getvar {call_uuid} caller_id_number")
+                if cn_result:
+                    caller_number = cn_result.getBody().strip() if cn_result.getBody() else ""
+                logger.info("[WS_SERVER] caller_number=%s uuid=%s", caller_number, call_uuid)
+            except Exception as e:
+                logger.warning("[WS_SERVER] failed to get caller_number: %s", e)
+            call_logger = CallLogger(call_uuid, client_id, caller_number=caller_number)
 
             # Recording
             rec_path = call_logger.get_recording_path()
             if self.esl and self.esl.connected():
-                self.esl.api(f"uuid_setvar {call_uuid} RECORD_STEREO true")
-                rec_result = self.esl.api(f"uuid_record {call_uuid} start {rec_path}")
+                self._esl_api(f"uuid_setvar {call_uuid} RECORD_STEREO true")
+                rec_result = self._esl_api(f"uuid_record {call_uuid} start {rec_path}")
                 rec_body = rec_result.getBody() if rec_result else "NO_RESULT"
                 if rec_result and "+OK" in str(rec_body):
                     recording_started = True
@@ -146,7 +173,7 @@ class WhisperWSSinkServer:
             logger.error("[AF_WS] disconnected conn=%s total=%d", conn_id, total)
             self.connections.pop(call_uuid, None)
             if recording_started and self.esl and self.esl.connected():
-                self.esl.api(f"uuid_record {call_uuid} stop all")
+                self._esl_api(f"uuid_record {call_uuid} stop all")
             if recording_started and call_logger:
                 try:
                     rec_file = call_logger.get_recording_path()

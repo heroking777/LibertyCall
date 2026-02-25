@@ -1,0 +1,18 @@
+{"type": "call_start", "uuid": "860eab43-7297-491c-99b7-a518225bb90e", "client_id": "000", "time": "2026-02-25T11:26:36.847Z"}
+{"type": "response", "text": "0606", "audio_ids": ["0606"], "phase": "IMMEDIATE", "time": "2026-02-25T11:26:50.832Z"}
+{"type": "response", "text": "0606", "audio_ids": ["0606"], "phase": "IMMEDIATE", "time": "2026-02-25T11:27:08.681Z"}
+{"type": "response", "text": "004", "audio_ids": ["004"], "phase": "IMMEDIATE", "time": "2026-02-25T11:27:21.767Z"}
+{"type": "response", "text": "122", "audio_ids": ["122"], "phase": "IMMEDIATE", "time": "2026-02-25T11:27:26.305Z"}
+{"type": "response", "text": "0606", "audio_ids": ["0606"], "phase": "IMMEDIATE", "time": "2026-02-25T11:27:42.202Z"}
+{"type": "response", "text": "125", "audio_ids": ["125"], "phase": "IMMEDIATE", "time": "2026-02-25T11:27:55.144Z"}
+{"type": "response", "text": "0606", "audio_ids": ["0606"], "phase": "IMMEDIATE", "time": "2026-02-25T11:28:12.097Z"}
+{"type": "response", "text": "0606", "audio_ids": ["0606"], "phase": "IMMEDIATE", "time": "2026-02-25T11:28:24.356Z"}
+{"type": "response", "text": "0606", "audio_ids": ["0606"], "phase": "IMMEDIATE", "time": "2026-02-25T11:28:36.977Z"}
+{"type": "response", "text": "0606", "audio_ids": ["0606"], "phase": "IMMEDIATE", "time": "2026-02-25T11:28:49.229Z"}
+{"type": "response", "text": "0606", "audio_ids": ["0606"], "phase": "IMMEDIATE", "time": "2026-02-25T11:29:01.671Z"}
+{"type": "response", "text": "0606", "audio_ids": ["0606"], "phase": "IMMEDIATE", "time": "2026-02-25T11:29:16.962Z"}
+{"type": "response", "text": "081", "audio_ids": ["081"], "phase": "IMMEDIATE", "time": "2026-02-25T11:29:27.241Z"}
+{"type": "response", "text": "004", "audio_ids": ["004"], "phase": "IMMEDIATE", "time": "2026-02-25T11:29:38.816Z"}
+{"type": "response", "text": "0606", "audio_ids": ["0606"], "phase": "IMMEDIATE", "time": "2026-02-25T11:29:44.321Z"}
+{"type": "response", "text": "0606", "audio_ids": ["0606"], "phase": "IMMEDIATE", "time": "2026-02-25T11:29:57.311Z"}
+{"type": "call_end", "uuid": "860eab43-7297-491c-99b7-a518225bb90e", "duration": 200.5, "time": "2026-02-25T11:29:57.342Z"}

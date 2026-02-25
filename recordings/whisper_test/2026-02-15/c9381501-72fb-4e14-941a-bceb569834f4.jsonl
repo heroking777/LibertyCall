@@ -1,0 +1,5 @@
+{"type": "call_start", "uuid": "c9381501-72fb-4e14-941a-bceb569834f4", "client_id": "whisper_test", "time": "2026-02-15T05:02:54.653Z"}
+{"type": "asr_final", "text": "シーンスマニツイドをして", "confidence": 0.0, "time": "2026-02-15T05:03:03.574Z"}
+{"type": "response", "text": "シーンスマニツイドをして", "audio_ids": ["023_AI_IDENTITY"], "phase": "QA", "time": "2026-02-15T05:03:46.866Z"}
+{"type": "playback_start", "audio_id": "023_AI_IDENTITY", "path": "/opt/libertycall/clients/whisper_test/audio/023_AI_IDENTITY.wav", "time": "2026-02-15T05:03:46.873Z"}
+{"type": "call_end", "uuid": "c9381501-72fb-4e14-941a-bceb569834f4", "duration": 52.5, "time": "2026-02-15T05:03:47.127Z"}

@@ -31,6 +31,7 @@ ExecStart=${PROJECT_ROOT}/.venv/bin/python -m email_sender.continuous_sender 500
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=10
+TimeoutStopSec=60
 StandardOutput=append:${LOG_FILE}
 StandardError=append:${LOG_FILE}
 

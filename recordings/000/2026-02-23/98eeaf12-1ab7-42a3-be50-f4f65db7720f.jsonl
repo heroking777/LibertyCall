@@ -1,0 +1,42 @@
+{"type": "call_start", "uuid": "98eeaf12-1ab7-42a3-be50-f4f65db7720f", "client_id": "000", "time": "2026-02-23T06:27:37.162Z"}
+{"type": "asr_interim", "text": "予約", "confidence": 0.0, "time": "2026-02-23T06:27:51.839Z"}
+{"type": "asr_interim", "text": "予約を", "confidence": 0.0, "time": "2026-02-23T06:27:52.041Z"}
+{"type": "asr_interim", "text": "予約をお願い", "confidence": 0.0, "time": "2026-02-23T06:27:52.147Z"}
+{"type": "asr_interim", "text": "予約をお願いし", "confidence": 0.0, "time": "2026-02-23T06:27:52.339Z"}
+{"type": "asr_interim", "text": "予約をお願いしたい", "confidence": 0.0, "time": "2026-02-23T06:27:52.535Z"}
+{"type": "response", "text": "予約をお願いしたい", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-23T06:27:52.936Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-23T06:27:52.937Z"}
+{"type": "asr_final", "text": "予約をお願いしたい", "confidence": 0.9701160192489624, "time": "2026-02-23T06:27:53.624Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-23T06:27:55.201Z"}
+{"type": "asr_interim", "text": " 予約", "confidence": 0.0, "time": "2026-02-23T06:27:58.858Z"}
+{"type": "asr_interim", "text": " 予約を", "confidence": 0.0, "time": "2026-02-23T06:27:59.164Z"}
+{"type": "asr_interim", "text": " 予約をお願い", "confidence": 0.0, "time": "2026-02-23T06:27:59.275Z"}
+{"type": "asr_interim", "text": " 予約をお願いし", "confidence": 0.0, "time": "2026-02-23T06:27:59.560Z"}
+{"type": "asr_interim", "text": " 予約をお願いしたい", "confidence": 0.0, "time": "2026-02-23T06:27:59.763Z"}
+{"type": "response", "text": "予約をお願いしたい", "audio_ids": ["0604"], "phase": "transfer_confirm", "time": "2026-02-23T06:28:00.164Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-23T06:28:00.165Z"}
+{"type": "asr_final", "text": " 予約をお願いしたい", "confidence": 0.9796731472015381, "time": "2026-02-23T06:28:00.856Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-23T06:28:05.617Z"}
+{"type": "asr_interim", "text": " 営業", "confidence": 0.0, "time": "2026-02-23T06:28:08.381Z"}
+{"type": "asr_interim", "text": " 営業時間", "confidence": 0.0, "time": "2026-02-23T06:28:08.480Z"}
+{"type": "response", "text": "営業時間", "audio_ids": ["114"], "phase": "transfer_confirm", "time": "2026-02-23T06:28:08.880Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-23T06:28:08.881Z"}
+{"type": "asr_interim", "text": " 営業 時間を", "confidence": 0.0, "time": "2026-02-23T06:28:08.984Z"}
+{"type": "asr_interim", "text": " 営業時間を教え", "confidence": 0.0, "time": "2026-02-23T06:28:09.076Z"}
+{"type": "asr_interim", "text": " 営業時間を教えて", "confidence": 0.0, "time": "2026-02-23T06:28:09.182Z"}
+{"type": "asr_interim", "text": " 営業時間を教えてください", "confidence": 0.0, "time": "2026-02-23T06:28:09.385Z"}
+{"type": "asr_interim", "text": " 営業時間を教えてください", "confidence": 0.0, "time": "2026-02-23T06:28:09.975Z"}
+{"type": "asr_final", "text": " 営業時間を教えてください", "confidence": 0.6836748123168945, "time": "2026-02-23T06:28:10.569Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-23T06:28:11.182Z"}
+{"type": "asr_interim", "text": " 営業", "confidence": 0.0, "time": "2026-02-23T06:28:12.816Z"}
+{"type": "asr_interim", "text": " 営業時間", "confidence": 0.0, "time": "2026-02-23T06:28:12.903Z"}
+{"type": "response", "text": "営業時間", "audio_ids": ["0604"], "phase": "transfer_confirm", "time": "2026-02-23T06:28:13.304Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-23T06:28:13.305Z"}
+{"type": "asr_interim", "text": " 営業 時間を", "confidence": 0.0, "time": "2026-02-23T06:28:13.404Z"}
+{"type": "asr_interim", "text": " 営業時間を教え", "confidence": 0.0, "time": "2026-02-23T06:28:13.505Z"}
+{"type": "asr_interim", "text": " 営業時間を教えて", "confidence": 0.0, "time": "2026-02-23T06:28:13.526Z"}
+{"type": "asr_interim", "text": " 営業時間を教えてください", "confidence": 0.0, "time": "2026-02-23T06:28:13.900Z"}
+{"type": "asr_interim", "text": " 営業時間を教えてください", "confidence": 0.0, "time": "2026-02-23T06:28:14.490Z"}
+{"type": "asr_final", "text": " 営業時間を教えてください", "confidence": 0.974654495716095, "time": "2026-02-23T06:28:15.189Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-23T06:28:18.790Z"}
+{"type": "call_end", "uuid": "98eeaf12-1ab7-42a3-be50-f4f65db7720f", "duration": 43.6, "time": "2026-02-23T06:28:20.761Z"}

@@ -1,0 +1,288 @@
+{
+    "client_name": "リバティーコール",
+    "greeting_sequence": [
+        {
+            "audio": "000",
+            "delay": 5
+        },
+        {
+            "audio": "001",
+            "delay": 2
+        },
+        {
+            "audio": "002",
+            "delay": 2
+        }
+    ],
+    "timeout_sequence": [
+        {
+            "audio": "prompt_001_8k",
+            "delay": 10
+        },
+        {
+            "audio": "prompt_002_8k",
+            "delay": 10
+        },
+        {
+            "audio": "prompt_003_8k",
+            "delay": 17
+        }
+    ],
+    "patterns": [
+        {
+            "keywords": [
+                "もしもし",
+                "モシモシ"
+            ],
+            "response": "004"
+        },
+        {
+            "keywords": [
+                "こんにちは",
+                "こんにちわ"
+            ],
+            "response": "005"
+        },
+        {
+            "keywords": [
+                "ホームページ",
+                "HP",
+                "LP",
+                "サイト",
+                "ウェブ",
+                "ネット",
+                "見た",
+                "見ました",
+                "拝見"
+            ],
+            "response": "0600"
+        },
+        {
+            "keywords": [
+                "料金",
+                "いくら",
+                "費用",
+                "値段",
+                "価格",
+                "コスト"
+            ],
+            "response": "122",
+            "followup": "085"
+        },
+        {
+            "keywords": [
+                "導入",
+                "始めたい",
+                "申し込み",
+                "使いたい",
+                "検討"
+            ],
+            "response": "060",
+            "followup": "104",
+            "action": "transfer"
+        },
+        {
+            "keywords": [
+                "担当者",
+                "人と話",
+                "契約",
+                "相談したい",
+                "詳しく"
+            ],
+            "response": "081",
+            "action": "transfer"
+        },
+        {
+            "keywords": [
+                "早く",
+                "はよ",
+                "いいから",
+                "ええから",
+                "人間",
+                "人に代わ",
+                "代われ",
+                "変われ"
+            ],
+            "response": "124",
+            "action": "transfer"
+        },
+        {
+            "keywords": [
+                "大丈夫",
+                "結構",
+                "もういい",
+                "切ります",
+                "ありがとう"
+            ],
+            "response": "086",
+            "followup": "087",
+            "action": "hangup"
+        },
+        {
+            "keywords": [
+                "AI",
+                "ロボット",
+                "自動",
+                "機械"
+            ],
+            "response": "023_AI_IDENTITY"
+        },
+        {
+            "name": "iwamoto",
+            "keywords": [
+                "岩本",
+                "いわもと",
+                "イワモト"
+            ],
+            "response": "081",
+            "action": "transfer"
+        },
+        {
+            "name": "sales_check",
+            "keywords": [
+                "ご案内",
+                "ご提案",
+                "法人様向け",
+                "資料をお送り",
+                "広告",
+                "求人",
+                "営業のお電話"
+            ],
+            "response": "093"
+        },
+        {
+            "name": "sales_confirm",
+            "keywords": [
+                "営業です",
+                "営業の電話",
+                "そうです",
+                "はいそうです",
+                "提案",
+                "案内"
+            ],
+            "response": [
+                "094",
+                "087"
+            ],
+            "action": "hangup"
+        },
+        {
+            "name": "system_detail",
+            "keywords": [
+                "システム",
+                "仕組み",
+                "しくみ",
+                "どうなってる",
+                "技術"
+            ],
+            "response": "006_SYS"
+        },
+        {
+            "name": "system_how",
+            "keywords": [
+                "どうやって",
+                "動作",
+                "流れ",
+                "AI電話とは"
+            ],
+            "response": [
+                "020",
+                "021",
+                "022",
+                "023"
+            ]
+        },
+        {
+            "name": "system_accuracy",
+            "keywords": [
+                "精度",
+                "聞き取れる",
+                "認識",
+                "正確"
+            ],
+            "response": "068"
+        },
+        {
+            "name": "system_security",
+            "keywords": [
+                "セキュリティ",
+                "個人情報",
+                "安全",
+                "プライバシー",
+                "録音"
+            ],
+            "response": "063"
+        },
+        {
+            "name": "system_custom",
+            "keywords": [
+                "カスタマイズ",
+                "変更",
+                "カスタム",
+                "調整",
+                "設定"
+            ],
+            "response": "026"
+        },
+        {
+            "name": "system_24h",
+            "keywords": [
+                "24時間",
+                "夜間",
+                "休日",
+                "深夜",
+                "土日"
+            ],
+            "response": "121"
+        },
+        {
+            "keywords": [
+                "わかりました",
+                "了解",
+                "承知",
+                "なるほど",
+                "そうですか",
+                "理解しました"
+            ],
+            "phase": "QA",
+            "response": "099",
+            "next_phase": "QA"
+        },
+        {
+            "keywords": [
+                "お願いします",
+                "よろしくお願いします",
+                "頼みます"
+            ],
+            "phase": "QA",
+            "response": "099",
+            "next_phase": "QA"
+        },
+        {
+            "keywords": [
+                "お願いします",
+                "よろしく",
+                "頼みます",
+                "はい",
+                "お願い"
+            ],
+            "phase": "transfer_confirm",
+            "response": "124",
+            "action": "transfer",
+            "next_phase": "END"
+        }
+    ],
+    "default_response": "114",
+    "retry_limit": 1,
+    "retry_exceeded_response": "0604",
+    "transfer_number": "08024152649",
+    "caller_id_number": "58304073",
+    "timeout_response": "003",
+    "no_input_count_limit": 2,
+    "instant_keywords": [
+        "もしもし",
+        "モシモシ",
+        "こんにちは",
+        "こんにちわ"
+    ]
+}

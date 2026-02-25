@@ -1,0 +1,86 @@
+{"type": "call_start", "uuid": "0707633d-4b88-4b69-b44f-c9bce283df57", "client_id": "000", "time": "2026-02-24T09:04:26.273Z"}
+{"type": "asr_interim", "text": "お", "confidence": 0.0, "time": "2026-02-24T09:04:39.865Z"}
+{"type": "asr_interim", "text": "お世", "confidence": 0.0, "time": "2026-02-24T09:04:40.055Z"}
+{"type": "asr_interim", "text": "お世話", "confidence": 0.0, "time": "2026-02-24T09:04:40.068Z"}
+{"type": "asr_interim", "text": "お世話になって", "confidence": 0.0, "time": "2026-02-24T09:04:40.179Z"}
+{"type": "asr_interim", "text": "お世話になっており", "confidence": 0.0, "time": "2026-02-24T09:04:40.354Z"}
+{"type": "asr_interim", "text": "お世話になっております", "confidence": 0.0, "time": "2026-02-24T09:04:40.453Z"}
+{"type": "response", "text": "お世話になっております", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-24T09:04:40.854Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-24T09:04:40.931Z"}
+{"type": "asr_interim", "text": "お世話になっております", "confidence": 0.0, "time": "2026-02-24T09:04:41.045Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-24T09:04:41.132Z"}
+{"type": "asr_interim", "text": "お世話になっております あの", "confidence": 0.0, "time": "2026-02-24T09:04:41.354Z"}
+{"type": "asr_interim", "text": " 今度", "confidence": 0.0, "time": "2026-02-24T09:04:41.356Z"}
+{"type": "asr_interim", "text": "お世話になっております", "confidence": 0.0, "time": "2026-02-24T09:04:41.369Z"}
+{"type": "asr_interim", "text": " 今度", "confidence": 0.0, "time": "2026-02-24T09:04:41.370Z"}
+{"type": "asr_interim", "text": "お世話になっております あの", "confidence": 0.0, "time": "2026-02-24T09:04:41.664Z"}
+{"type": "asr_interim", "text": " 今度 予約", "confidence": 0.0, "time": "2026-02-24T09:04:41.665Z"}
+{"type": "asr_interim", "text": "お世話になっております 今度", "confidence": 0.0, "time": "2026-02-24T09:04:41.755Z"}
+{"type": "asr_interim", "text": " 予約", "confidence": 0.0, "time": "2026-02-24T09:04:41.756Z"}
+{"type": "asr_interim", "text": "お世話になっております 今度", "confidence": 0.0, "time": "2026-02-24T09:04:42.161Z"}
+{"type": "asr_interim", "text": " 予約を", "confidence": 0.0, "time": "2026-02-24T09:04:42.162Z"}
+{"type": "asr_interim", "text": "お世話になっております 今度", "confidence": 0.0, "time": "2026-02-24T09:04:42.277Z"}
+{"type": "asr_interim", "text": " 予約をお願い", "confidence": 0.0, "time": "2026-02-24T09:04:42.278Z"}
+{"type": "response", "text": "予約をお願い", "audio_ids": ["0604"], "phase": "QA", "time": "2026-02-24T09:04:42.679Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-24T09:04:42.820Z"}
+{"type": "asr_interim", "text": "お世話になっております 今度 予約をお願い", "confidence": 0.0, "time": "2026-02-24T09:04:43.067Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-24T09:04:43.188Z"}
+{"type": "response", "text": "今度 予約をお願い", "audio_ids": ["0604"], "phase": "QA", "time": "2026-02-24T09:04:43.467Z"}
+{"type": "asr_interim", "text": "お世話になっております 今度", "confidence": 0.0, "time": "2026-02-24T09:04:43.492Z"}
+{"type": "asr_interim", "text": " 予約をお願いあ", "confidence": 0.0, "time": "2026-02-24T09:04:43.493Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-24T09:04:43.600Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-24T09:04:43.715Z"}
+{"type": "response", "text": "予約をお願いあ", "audio_ids": ["0604"], "phase": "QA", "time": "2026-02-24T09:04:43.894Z"}
+{"type": "asr_interim", "text": "お世話になっております 今度 予約をお願いあ", "confidence": 0.0, "time": "2026-02-24T09:04:43.897Z"}
+{"type": "asr_interim", "text": " 予約", "confidence": 0.0, "time": "2026-02-24T09:04:43.899Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-24T09:04:43.998Z"}
+{"type": "asr_interim", "text": "お世話になっております 今度 予約をお願いあ 予約", "confidence": 0.0, "time": "2026-02-24T09:04:44.504Z"}
+{"type": "response", "text": "今度 予約をお願いあ 予約", "audio_ids": ["0604"], "phase": "QA", "time": "2026-02-24T09:04:44.905Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-24T09:04:45.089Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-24T09:04:45.163Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-24T09:04:45.216Z"}
+{"type": "asr_final", "text": "お世話になっております あの 今度 予約をお願いあ 予約", "confidence": 0.669050395488739, "time": "2026-02-24T09:04:45.439Z"}
+{"type": "asr_interim", "text": "すい", "confidence": 0.0, "time": "2026-02-24T09:04:51.096Z"}
+{"type": "asr_interim", "text": " すいません", "confidence": 0.0, "time": "2026-02-24T09:04:51.276Z"}
+{"type": "response", "text": "すいません", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-24T09:04:51.677Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-24T09:04:51.741Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:51.762Z"}
+{"type": "asr_interim", "text": " すいません", "confidence": 0.0, "time": "2026-02-24T09:04:51.851Z"}
+{"type": "asr_interim", "text": " いや", "confidence": 0.0, "time": "2026-02-24T09:04:51.852Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-24T09:04:52.033Z"}
+{"type": "asr_interim", "text": " すいません", "confidence": 0.0, "time": "2026-02-24T09:04:52.172Z"}
+{"type": "asr_interim", "text": " いや 担当", "confidence": 0.0, "time": "2026-02-24T09:04:52.172Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:52.359Z"}
+{"type": "asr_interim", "text": " 担当者", "confidence": 0.0, "time": "2026-02-24T09:04:52.360Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:52.460Z"}
+{"type": "asr_interim", "text": " 担当者に", "confidence": 0.0, "time": "2026-02-24T09:04:52.460Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:52.766Z"}
+{"type": "asr_interim", "text": " 担当者には", "confidence": 0.0, "time": "2026-02-24T09:04:52.766Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:52.789Z"}
+{"type": "asr_interim", "text": " 担当者には繋", "confidence": 0.0, "time": "2026-02-24T09:04:52.789Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:52.967Z"}
+{"type": "asr_interim", "text": " 担当者には繋が", "confidence": 0.0, "time": "2026-02-24T09:04:52.968Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:53.063Z"}
+{"type": "asr_interim", "text": " 担当者には繋がなく", "confidence": 0.0, "time": "2026-02-24T09:04:53.063Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:53.162Z"}
+{"type": "asr_interim", "text": " 担当者には繋がなくて", "confidence": 0.0, "time": "2026-02-24T09:04:53.163Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:53.402Z"}
+{"type": "asr_interim", "text": " 担当者には繋がなくてよく", "confidence": 0.0, "time": "2026-02-24T09:04:53.407Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:53.567Z"}
+{"type": "asr_interim", "text": " 担当者には繋がなくてよくて", "confidence": 0.0, "time": "2026-02-24T09:04:53.569Z"}
+{"type": "asr_interim", "text": " すいません いや 担当者には繋がなくてよくて", "confidence": 0.0, "time": "2026-02-24T09:04:54.167Z"}
+{"type": "response", "text": " いや 担当者には繋がなくてよくて", "audio_ids": ["081"], "phase": "QA", "time": "2026-02-24T09:04:54.569Z"}
+{"type": "asr_interim", "text": " すいません いや 担当者には繋がなくてよくて", "confidence": 0.0, "time": "2026-02-24T09:04:54.576Z"}
+{"type": "asr_interim", "text": " あの", "confidence": 0.0, "time": "2026-02-24T09:04:54.577Z"}
+{"type": "playback_start", "audio_id": "081", "path": "/opt/libertycall/clients/000/audio/081.wav", "time": "2026-02-24T09:04:54.652Z"}
+{"type": "asr_interim", "text": " すいません いや 担当者には繋がなくてよくて あの", "confidence": 0.0, "time": "2026-02-24T09:04:54.864Z"}
+{"type": "asr_interim", "text": " 予約", "confidence": 0.0, "time": "2026-02-24T09:04:54.865Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:55.066Z"}
+{"type": "asr_interim", "text": " 担当者には繋がなくてよくてあの予約を", "confidence": 0.0, "time": "2026-02-24T09:04:55.067Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:55.183Z"}
+{"type": "asr_interim", "text": " 担当者には繋がなくてよくてあの予約をお願い", "confidence": 0.0, "time": "2026-02-24T09:04:55.184Z"}
+{"type": "playback_end", "audio_id": "081", "duration": 0.0, "time": "2026-02-24T09:04:55.404Z"}
+{"type": "action", "action": "transfer", "time": "2026-02-24T09:04:55.405Z"}
+{"type": "asr_interim", "text": " すいません いや", "confidence": 0.0, "time": "2026-02-24T09:04:55.465Z"}
+{"type": "asr_interim", "text": " 担当者には繋がなくてよくてあの予約をお願いし", "confidence": 0.0, "time": "2026-02-24T09:04:55.468Z"}
+{"type": "call_end", "uuid": "0707633d-4b88-4b69-b44f-c9bce283df57", "duration": 38.9, "time": "2026-02-24T09:05:05.158Z"}

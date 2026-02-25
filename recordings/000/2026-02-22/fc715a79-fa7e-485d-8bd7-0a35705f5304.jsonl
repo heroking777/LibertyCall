@@ -1,0 +1,13 @@
+{"type": "call_start", "uuid": "fc715a79-fa7e-485d-8bd7-0a35705f5304", "client_id": "000", "time": "2026-02-22T08:53:08.775Z"}
+{"type": "asr_interim", "text": "倒", "confidence": 0.0, "time": "2026-02-22T08:53:20.828Z"}
+{"type": "asr_interim", "text": "容器", "confidence": 0.0, "time": "2026-02-22T08:53:20.923Z"}
+{"type": "asr_interim", "text": "早期に", "confidence": 0.0, "time": "2026-02-22T08:53:21.020Z"}
+{"type": "asr_interim", "text": "容器について", "confidence": 0.0, "time": "2026-02-22T08:53:21.135Z"}
+{"type": "asr_interim", "text": "容器について教え", "confidence": 0.0, "time": "2026-02-22T08:53:21.220Z"}
+{"type": "asr_interim", "text": "容器について教えて", "confidence": 0.0, "time": "2026-02-22T08:53:21.316Z"}
+{"type": "asr_interim", "text": "容器について教えてください", "confidence": 0.0, "time": "2026-02-22T08:53:21.434Z"}
+{"type": "response", "text": "容器について教えてください", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-22T08:53:21.836Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-22T08:53:21.837Z"}
+{"type": "asr_final", "text": "容器について教えてください", "confidence": 0.8413113355636597, "time": "2026-02-22T08:53:22.435Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-22T08:53:24.055Z"}
+{"type": "call_end", "uuid": "fc715a79-fa7e-485d-8bd7-0a35705f5304", "duration": 25.5, "time": "2026-02-22T08:53:34.249Z"}

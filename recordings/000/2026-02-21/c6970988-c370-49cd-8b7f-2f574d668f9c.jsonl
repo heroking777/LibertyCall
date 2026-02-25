@@ -1,0 +1,50 @@
+{"type": "call_start", "uuid": "c6970988-c370-49cd-8b7f-2f574d668f9c", "client_id": "000", "time": "2026-02-21T23:47:08.754Z"}
+{"type": "asr_interim", "text": "担当", "confidence": 0.0, "time": "2026-02-21T23:47:21.904Z"}
+{"type": "asr_interim", "text": "担当の", "confidence": 0.0, "time": "2026-02-21T23:47:22.203Z"}
+{"type": "asr_interim", "text": "担当の 牧", "confidence": 0.0, "time": "2026-02-21T23:47:22.497Z"}
+{"type": "asr_interim", "text": "担当の 牧野", "confidence": 0.0, "time": "2026-02-21T23:47:22.691Z"}
+{"type": "asr_interim", "text": "担当の", "confidence": 0.0, "time": "2026-02-21T23:47:22.791Z"}
+{"type": "asr_interim", "text": " 牧野さん", "confidence": 0.0, "time": "2026-02-21T23:47:22.792Z"}
+{"type": "asr_interim", "text": "担当の", "confidence": 0.0, "time": "2026-02-21T23:47:22.993Z"}
+{"type": "asr_interim", "text": " 牧野さんを", "confidence": 0.0, "time": "2026-02-21T23:47:22.995Z"}
+{"type": "asr_interim", "text": "担当の", "confidence": 0.0, "time": "2026-02-21T23:47:23.102Z"}
+{"type": "asr_interim", "text": " 牧野さんをお願い", "confidence": 0.0, "time": "2026-02-21T23:47:23.103Z"}
+{"type": "asr_interim", "text": "担当の", "confidence": 0.0, "time": "2026-02-21T23:47:23.117Z"}
+{"type": "asr_interim", "text": " 牧野さんをお願いし", "confidence": 0.0, "time": "2026-02-21T23:47:23.118Z"}
+{"type": "asr_interim", "text": "担当の", "confidence": 0.0, "time": "2026-02-21T23:47:23.396Z"}
+{"type": "asr_interim", "text": " 牧野さんをお願いします", "confidence": 0.0, "time": "2026-02-21T23:47:23.397Z"}
+{"type": "response", "text": "牧野さんをお願いします", "audio_ids": ["099"], "phase": "QA", "time": "2026-02-21T23:47:23.799Z"}
+{"type": "playback_start", "audio_id": "099", "path": "/opt/libertycall/clients/000/audio/099.wav", "time": "2026-02-21T23:47:23.800Z"}
+{"type": "asr_interim", "text": "担当の 牧野さんをお願いします", "confidence": 0.0, "time": "2026-02-21T23:47:23.988Z"}
+{"type": "asr_final", "text": "担当の 牧野さんをお願いします", "confidence": 0.9718064069747925, "time": "2026-02-21T23:47:24.587Z"}
+{"type": "playback_end", "audio_id": "099", "duration": 0.0, "time": "2026-02-21T23:47:25.904Z"}
+{"type": "asr_interim", "text": " あり", "confidence": 0.0, "time": "2026-02-21T23:47:27.917Z"}
+{"type": "asr_interim", "text": " ありませ", "confidence": 0.0, "time": "2026-02-21T23:47:28.111Z"}
+{"type": "asr_interim", "text": " ありません", "confidence": 0.0, "time": "2026-02-21T23:47:28.212Z"}
+{"type": "response", "text": "ありません", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-21T23:47:28.613Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-21T23:47:28.614Z"}
+{"type": "asr_final", "text": " ありません", "confidence": 0.9167892336845398, "time": "2026-02-21T23:47:29.201Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-21T23:47:30.918Z"}
+{"type": "asr_interim", "text": " 応", "confidence": 0.0, "time": "2026-02-21T23:47:33.046Z"}
+{"type": "asr_interim", "text": " 応募", "confidence": 0.0, "time": "2026-02-21T23:47:33.232Z"}
+{"type": "asr_interim", "text": " 応募に", "confidence": 0.0, "time": "2026-02-21T23:47:33.242Z"}
+{"type": "asr_interim", "text": " 応募について", "confidence": 0.0, "time": "2026-02-21T23:47:33.438Z"}
+{"type": "asr_interim", "text": " 応募についてです", "confidence": 0.0, "time": "2026-02-21T23:47:33.643Z"}
+{"type": "response", "text": "応募についてです", "audio_ids": ["0604"], "phase": "transfer_confirm", "time": "2026-02-21T23:47:34.044Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-21T23:47:34.045Z"}
+{"type": "asr_final", "text": " 応募についてです", "confidence": 0.9408503174781799, "time": "2026-02-21T23:47:34.730Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-21T23:47:39.553Z"}
+{"type": "asr_interim", "text": " 牧", "confidence": 0.0, "time": "2026-02-21T23:47:40.870Z"}
+{"type": "asr_interim", "text": " 牧野", "confidence": 0.0, "time": "2026-02-21T23:47:41.055Z"}
+{"type": "asr_interim", "text": " 牧野さん", "confidence": 0.0, "time": "2026-02-21T23:47:41.155Z"}
+{"type": "asr_interim", "text": " 牧野さんに", "confidence": 0.0, "time": "2026-02-21T23:47:41.257Z"}
+{"type": "asr_interim", "text": " 牧野さんにお願い", "confidence": 0.0, "time": "2026-02-21T23:47:41.365Z"}
+{"type": "asr_interim", "text": " 牧野さんにお願いし", "confidence": 0.0, "time": "2026-02-21T23:47:41.465Z"}
+{"type": "asr_interim", "text": " 牧野さんにお願いします", "confidence": 0.0, "time": "2026-02-21T23:47:41.759Z"}
+{"type": "response", "text": "牧野さんにお願いします", "audio_ids": ["124"], "phase": "END", "time": "2026-02-21T23:47:42.160Z"}
+{"type": "playback_start", "audio_id": "124", "path": "/opt/libertycall/clients/000/audio/124.wav", "time": "2026-02-21T23:47:42.161Z"}
+{"type": "asr_interim", "text": " 牧野さんにお願いします", "confidence": 0.0, "time": "2026-02-21T23:47:42.844Z"}
+{"type": "asr_final", "text": " 牧野さんにお願いします", "confidence": 0.7419362664222717, "time": "2026-02-21T23:47:42.859Z"}
+{"type": "playback_end", "audio_id": "124", "duration": 0.0, "time": "2026-02-21T23:47:44.067Z"}
+{"type": "action", "action": "transfer", "time": "2026-02-21T23:47:44.067Z"}
+{"type": "call_end", "uuid": "c6970988-c370-49cd-8b7f-2f574d668f9c", "duration": 60.2, "time": "2026-02-21T23:48:08.920Z"}

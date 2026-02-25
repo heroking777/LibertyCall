@@ -166,8 +166,8 @@ def get_calls_history(
         result.append({
             "call_id": call.call_id,
             "caller": call.caller_number or "unknown",
-            "started_at": call.started_at.isoformat() if call.started_at else None,
-            "ended_at": call.ended_at.isoformat() if call.ended_at else None,
+            "started_at": call.started_at.isoformat() + "Z" if call.started_at else None,
+            "ended_at": call.ended_at.isoformat() + "Z" if call.ended_at else None,
             "event_type": event_data.get("event_type"),
             "event_payload": event_data.get("event_payload"),
         })

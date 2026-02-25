@@ -1,0 +1,15 @@
+{"type": "call_start", "uuid": "84b6b8c0-8529-4dca-b143-090812fc1183", "client_id": "000", "time": "2026-02-16T05:41:01.664Z"}
+{"type": "asr_interim", "text": "い", "confidence": 0.0, "time": "2026-02-16T05:41:12.093Z"}
+{"type": "asr_interim", "text": "いわ", "confidence": 0.0, "time": "2026-02-16T05:41:12.298Z"}
+{"type": "asr_interim", "text": "いま", "confidence": 0.0, "time": "2026-02-16T05:41:12.599Z"}
+{"type": "asr_interim", "text": "いざ挑戦", "confidence": 0.0, "time": "2026-02-16T05:41:12.746Z"}
+{"type": "asr_interim", "text": "いざ挑戦 スタート", "confidence": 0.0, "time": "2026-02-16T05:41:13.109Z"}
+{"type": "asr_interim", "text": "いざ挑戦", "confidence": 0.0, "time": "2026-02-16T05:41:13.286Z"}
+{"type": "asr_interim", "text": " スタート", "confidence": 0.0, "time": "2026-02-16T05:41:13.287Z"}
+{"type": "asr_interim", "text": "いざ挑戦 スタート", "confidence": 0.0, "time": "2026-02-16T05:41:13.685Z"}
+{"type": "asr_interim", "text": "いざ挑戦", "confidence": 0.0, "time": "2026-02-16T05:41:13.790Z"}
+{"type": "asr_interim", "text": " スタートは", "confidence": 0.0, "time": "2026-02-16T05:41:13.791Z"}
+{"type": "response", "text": "いざ挑戦 スタートは", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-16T05:41:13.953Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-16T05:41:13.953Z"}
+{"type": "asr_final", "text": "いざ挑戦 スタートは", "confidence": 0.24771849811077118, "time": "2026-02-16T05:41:13.954Z"}
+{"type": "call_end", "uuid": "84b6b8c0-8529-4dca-b143-090812fc1183", "duration": 12.3, "time": "2026-02-16T05:41:13.955Z"}

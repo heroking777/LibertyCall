@@ -233,7 +233,8 @@ def main():
         success = send_notification_email(
             sent_count=list_status['sent'],
             failed_count=0,
-            error_message=None
+            error_message=None,
+            custom_body=report_body
         )
         
         if success:

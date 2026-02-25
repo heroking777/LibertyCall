@@ -16,6 +16,7 @@ function ConsoleHeader({ user, onLogout }) {
 
   const adminMenuItems = [
     { path: '/console/file-logs', label: '通話ログ' },
+    { path: '/console/live', label: 'ライブ通話' },
     { path: '/console/clients', label: 'クライアント管理' },
     { path: '/console/users', label: 'ユーザー管理' },
     { path: '/console/audio-tests', label: '音声テスト' },
@@ -24,6 +25,7 @@ function ConsoleHeader({ user, onLogout }) {
 
   const clientAdminMenuItems = [
     { path: '/console/file-logs', label: '通話ログ' },
+    { path: '/console/live', label: 'ライブ通話' },
     { path: '/console/audio-tests', label: '音声テスト' },
     { path: '/console/flow-editor', label: 'フローエディタ' },
   ]

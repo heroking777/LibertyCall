@@ -1,4 +1,5 @@
 """WhisperStreamingSession - faster-whisper based ASR session."""
+from asr_stream.embedding_classifier import EmbeddingClassifier
 import io
 import json
 import logging
@@ -89,6 +90,19 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
 
         # dialogue_config
         self._dialogue_config = self._load_dialogue_config()
+
+        from intent_wrapper import IntentWrapper
+        self._streaming_llm = IntentWrapper(self.client_id)
+
+        # Embedding classifier
+        try:
+            self._emb_clf = EmbeddingClassifier()
+            self._responding = False
+            self._emb_clf.set_ct_model(self._model.model)
+            logger.info("[EMB_CLF] classifier ready for uuid=%s", self.uuid)
+        except Exception as e:
+            self._emb_clf = None
+            logger.warning("[EMB_CLF] failed to load: %s", e)
 
         # ESL
         self._esl = None
@@ -286,12 +300,52 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
             # Convert 8kHz 16-bit PCM to 16kHz float32 for Whisper
             audio_16k = self._resample_8k_to_16k(audio_data)
 
+            # --- Embedding classifier (primary) ---
+            if self._emb_clf:
+                try:
+                    # Skip if already responding
+                    if getattr(self, '_responding', False) or getattr(self, '_muted', False) or getattr(self, 'muted', False):
+                        logger.info("[EMB_CLF] skipping - already responding or muted")
+                        return
+                    # _responding is set in _trigger_immediate_response
+                    # Skip short buffers (likely announcement residue)
+                    audio_duration = len(audio_16k) / 16000.0
+                    if audio_duration < 1.5:
+                        logger.info("[EMB_CLF] skipping short buffer %.1fs", audio_duration)
+                        return
+                    emb_label, emb_conf = self._emb_clf.classify(audio_16k)
+                    # Re-check if another buffer already triggered response
+                    if getattr(self, '_muted', False) or getattr(self, 'muted', False):
+                        logger.info("[EMB_CLF] skipping - muted after classify")
+                        self._responding = False
+                        return
+                    logger.info("[EMB_CLF] uuid=%s label=%s conf=%.3f duration=%.2fs",
+                               self.uuid, emb_label, emb_conf, buffer_duration)
+                    if emb_conf >= 0.50:
+                        elapsed_emb = time.time() - start_time
+                        logger.info('[EMB_CLF] result uuid=%s elapsed=%.3fs label=%s conf=%.3f',
+                                   self.uuid, elapsed_emb, emb_label, emb_conf)
+                        self._responding = True
+                        self._trigger_immediate_response(emb_label)
+                        return
+                    else:
+                        logger.info("[EMB_CLF] low confidence %.3f, fallback to transfer (081)", emb_conf)
+                        self._responding = True
+                        self._trigger_immediate_response("081_transfer")
+                        return
+                except Exception as e:
+                    logger.warning("[EMB_CLF] error: %s, fallback to transfer (081)", e)
+                    self._responding = True
+                    self._trigger_immediate_response("081_transfer")
+                    return
+
+            # --- Whisper text fallback ---
             # Run Whisper inference
             segments, info = self._model.transcribe(
                 audio_16k,
                 language="ja",
-                initial_prompt="これは電話での応対シーンです。お客様との会話、商談、アポイントメントの調整などの内容が含まれます。",
-                beam_size=1,
+                initial_prompt="もしもし、こんにちは。料金について教えてください。導入を検討しています。担当者をお願いします。セキュリティは大丈夫ですか。24時間対応ですか。ホームページを見ました。",
+                beam_size=3,
                 best_of=1,
                 vad_filter=False,
                 without_timestamps=True,
@@ -305,6 +359,12 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
 
             full_text = "".join(text_parts).strip()
             elapsed = time.time() - start_time
+            
+            # システム音声の誤認識をフィルタリング
+            SYSTEM_NOISE = ["ご視聴", "チャンネル登録", "お客様に", "お客様の"]
+            if any(noise in full_text for noise in SYSTEM_NOISE):
+                logger.info("[WHISPER] filtered system noise: '%s'", full_text)
+                return
 
             logger.info('[WHISPER] result uuid=%s elapsed=%.3fs text="%s"',
                        self.uuid, elapsed, full_text)
@@ -322,7 +382,9 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
                         self._streaming_llm.add_fragment(full_text)
                         logger.info("[WHISPER] interim fragment sent to streaming LLM: %r", full_text)
                     else:
-                        # For final results, get best candidate and trigger response
+                        # For final results, add fragment first then get best candidate
+                        self._streaming_llm.add_fragment(full_text)
+                        logger.info("[WHISPER] final fragment sent to streaming LLM: %r", full_text)
                         response_id = self._streaming_llm.finalize()
                         if response_id:
                             logger.info("[WHISPER] streaming LLM final response: %s", response_id)
@@ -345,32 +407,28 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
         """8kHz 16-bit PCM -> 16kHz float32 numpy array for Whisper"""
         # Decode 16-bit PCM
         samples_8k = np.frombuffer(pcm_data, dtype=np.int16).astype(np.float32)
+        # DEBUG: save raw PCM before any processing
+        try:
+            import wave as _wave
+            _raw_path = f"/tmp/whisper_raw_{int(time.time())}.wav"
+            _raw_int16 = np.frombuffer(pcm_data, dtype=np.int16)
+            with _wave.open(_raw_path, "w") as _wf:
+                _wf.setnchannels(1)
+                _wf.setsampwidth(2)
+                _wf.setframerate(8000)
+                _wf.writeframes(_raw_int16.tobytes())
+            logger.info("[DEBUG_RAW] saved %s (%d samples)", _raw_path, len(_raw_int16))
+        except: pass
         
-        # Check if stereo (2 channels) and convert to mono
-        if len(samples_8k) % 2 == 0:
-            # Assume stereo, take left channel or average both channels
-            left_channel = samples_8k[::2]
-            right_channel = samples_8k[1::2]
-            # Average both channels for better mono conversion
-            samples_8k_mono = (left_channel + right_channel) / 2.0
-        else:
-            samples_8k_mono = samples_8k
+        # WebSocket audio is already mono
+        samples_8k_mono = samples_8k
         
-        # Normalize to [-1, 1] range
-        max_val = np.max(np.abs(samples_8k_mono))
-        if max_val > 0:
-            samples_8k_normalized = samples_8k_mono / max_val
-        else:
-            samples_8k_normalized = samples_8k_mono
+        # Normalize to [-1, 1] range (fixed scale, same as offline)
+        samples_8k_normalized = samples_8k_mono / 32768.0
         
-        # Apply gentle amplification if RMS is too low
+        # Amplification DISABLED - causes hallucination at higher RMS
         rms = np.sqrt(np.mean(samples_8k_normalized ** 2))
-        if rms < 0.1:  # If RMS is too low, amplify
-            target_rms = 0.15
-            amplification = min(target_rms / rms, 10.0)  # Increase limit to 10x for very low audio
-            samples_8k_normalized *= amplification
-            logger.info("[WHISPER] amplified audio: rms=%.4f -> %.4f (amp=%.2fx)", 
-                       rms, rms * amplification, amplification)
+        logger.info("[WHISPER] audio rms=%.4f (no amplification)", rms)
         
         # Simple linear interpolation for 8k -> 16k
         n = len(samples_8k_normalized)
@@ -378,11 +436,60 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
         indices_16k = indices_16k[indices_16k < n]
         samples_16k = np.interp(indices_16k, np.arange(n), samples_8k_normalized)
 
+
+        # DEBUG: save resampled audio for inspection
+        import wave as _wave
+        _debug_path = f"/tmp/whisper_debug_{int(time.time())}.wav"
+        try:
+            _pcm16 = (samples_16k * 32767).astype(np.int16)
+            with _wave.open(_debug_path, 'w') as _wf:
+                _wf.setnchannels(1)
+                _wf.setsampwidth(2)
+                _wf.setframerate(16000)
+                _wf.writeframes(_pcm16.tobytes())
+            logger.info("[DEBUG_WAV] saved %s (%d samples)", _debug_path, len(_pcm16))
+        except Exception as _e:
+            logger.warning("[DEBUG_WAV] failed: %s", _e)
+
         return samples_16k.astype(np.float32)
 
+    # Mapping: classifier label -> actual audio response
+    _RESPONSE_MAP = {
+        "099": "081",
+        "0604": "125",
+    }
+
     def _trigger_immediate_response(self, response_id):
+        response_id = self._RESPONSE_MAP.get(response_id, response_id)
         """即時応答をトリガー - StreamingLLMHandlerからの候補IDで音声再生"""
         try:
+            # 再生中はASRバッファをミュート（システム音声を拾わないため）
+            self._muted = True
+            self._audio_buffer = bytearray()
+            if hasattr(self, 'silence_handler') and self.silence_handler:
+                self.silence_handler.pause_timer()
+            logger.info("[IMMEDIATE_RESP] muted for playback response_id=%s", response_id)
+            
+            # 再生完了後にunmuteするタイマー（音声長さに応じて調整）
+            import wave as _wave
+            audio_path_check = f"/opt/libertycall/clients/{self.client_id}/audio/{response_id}.wav"
+            try:
+                with _wave.open(audio_path_check) as wf:
+                    duration = wf.getnframes() / wf.getframerate()
+                unmute_delay = duration + 0.5  # 音声長 + 0.5秒マージン
+            except:
+                unmute_delay = 5.0  # デフォルト5秒
+            
+            def _unmute():
+                self._muted = False
+                self._responding = False
+                # Reset silence timer after playback complete
+                if hasattr(self, 'silence_handler') and self.silence_handler:
+                    self.silence_handler.resume_timer()
+                self._audio_buffer = bytearray()
+                logger.info("[IMMEDIATE_RESP] unmuted after %.1fs", unmute_delay)
+            
+            threading.Timer(unmute_delay, _unmute).start()
             # 音声ファイルパスを構築
             audio_path = f"/opt/libertycall/clients/{self.client_id}/audio/{response_id}.wav"
             
@@ -399,9 +506,9 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
                 self.call_logger.log_response(response_id, [response_id], "IMMEDIATE")
             
             # ESL経由で音声再生
-            if self._esl and hasattr(self._esl, 'execute'):
-                cmd = f'playback {audio_path}'
-                self._esl.execute(cmd)
+            if self._esl:
+                cmd = f'uuid_broadcast {self.uuid} {audio_path} aleg'
+                self._esl.api(cmd)
                 logger.info("[IMMEDIATE_RESP] ESL playback command sent: %s", cmd)
             else:
                 logger.warning("[IMMEDIATE_RESP] ESL not available for playback")

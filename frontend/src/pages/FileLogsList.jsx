@@ -70,8 +70,12 @@ function FileLogsList({ user }) {
         }
       }
 
-      // 開始時間降順ソート
-      merged.sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
+      // 開始時間降順ソート（UTC統一）
+      const toUTC = (dt) => {
+        if (!dt) return 0
+        return new Date(String(dt).endsWith('Z') ? dt : dt + 'Z').getTime()
+      }
+      merged.sort((a, b) => toUTC(b.started_at) - toUTC(a.started_at))
       
       setCalls(merged)
     } catch (err) {
@@ -84,21 +88,14 @@ function FileLogsList({ user }) {
 
   const formatTime = (datetime) => {
     if (!datetime) return '-'
-    // UTC時刻をJST（日本時間）に変換して表示
-    // ISO文字列がUTCとして解釈されるようにする（Zがない場合は追加）
     const isoString = datetime.endsWith('Z') ? datetime : datetime + 'Z'
     const d = new Date(isoString)
+    const month = d.getMonth() + 1
+    const day = d.getDate()
+    const hour = String(d.getHours()).padStart(2, '0')
+    const minute = String(d.getMinutes()).padStart(2, '0')
     
-    // UTC時刻をJSTに変換（+9時間）
-    const jstOffset = 9 * 60 * 60 * 1000 // 9時間をミリ秒に変換
-    const jstTime = new Date(d.getTime() + jstOffset)
-    
-    const month = jstTime.getUTCMonth() + 1
-    const day = jstTime.getUTCDate()
-    const hour = String(jstTime.getUTCHours()).padStart(2, '0')
-    const minute = String(jstTime.getUTCMinutes()).padStart(2, '0')
-    
-    return `${month}/${day} ${hour}:${minute}`
+    return `${month}/${day} ${hour}:${minute}`  
   }
 
   const displayNumber = (num) => {
@@ -196,3 +193,4 @@ function FileLogsList({ user }) {
 
 export default FileLogsList
 
+// build 1771835069

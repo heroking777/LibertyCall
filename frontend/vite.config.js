@@ -1,8 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// バックエンドAPIのURL（環境変数から取得、デフォルトは実際のIP）
-// 注意: バックエンドはポート8001で起動している
 const API_TARGET = process.env.VITE_API_TARGET || 'http://127.0.0.1:8001'
 
 export default defineConfig({
@@ -10,7 +8,7 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
-    strictPort: true, // ポートが使用中の場合はエラーにする（別ポートにフォールバックしない）
+    strictPort: true,
     proxy: {
       '/api': {
         target: API_TARGET,
@@ -30,5 +28,12 @@ export default defineConfig({
   },
   build: {
     outDir: 'build',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name]-v2-[hash].js',
+        chunkFileNames: 'assets/[name]-v2-[hash].js',
+        assetFileNames: 'assets/[name]-v2-[hash].[ext]',
+      },
+    },
   },
 })

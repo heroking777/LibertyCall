@@ -1,0 +1,4 @@
+{"type": "call_start", "uuid": "test-debug-001", "client_id": "000", "time": "2026-02-23T07:42:28.717Z"}
+{"type": "response", "text": "テスト発話", "audio_ids": ["001"], "phase": "QA", "time": "2026-02-23T07:42:28.766Z"}
+{"type": "playback_start", "audio_id": "001", "path": "/tmp/test.wav", "time": "2026-02-23T07:42:29.696Z"}
+{"type": "call_end", "uuid": "test-debug-001", "duration": 1.0, "time": "2026-02-23T07:42:29.728Z"}

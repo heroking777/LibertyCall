@@ -40,8 +40,8 @@ class StreamingLLMHandler:
             self.fragments.append(fragment_text.strip())
             logger.info("[STREAM_LLM] fragment added: %r, total: %d", 
                        fragment_text.strip(), len(self.fragments))
-        # バックグラウンドでLLM推論
-        threading.Thread(target=self._update_candidates, daemon=True).start()
+        # デバッグのため同期実行
+        self._update_candidates()
 
     def _update_candidates(self):
         """現在の断片リストからLLM推論して候補を更新"""
@@ -88,6 +88,8 @@ IDのみを返し、他の文字は出力しないでください。
                     logger.info("[STREAM_LLM] candidate updated: %s", answer)
         except Exception as e:
             logger.error("[STREAM_LLM] inference error: %s", e)
+            import traceback
+            logger.error("[STREAM_LLM] traceback: %s", traceback.format_exc())
 
     def finalize(self):
         """無音検知で確定。現時点の最良候補を返す"""

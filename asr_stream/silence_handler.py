@@ -44,7 +44,10 @@ class SilenceHandler:
             sys.path.insert(0, '/opt/libertycall')
             from libs.esl.ESL import ESLconnection
             self.esl = ESLconnection("127.0.0.1", "8021", "ClueCon")
-            if not self.esl.connected():
+            if self.esl.connected():
+                self.esl.send("noevents")
+                self.esl.recvEvent()  # consume reply
+            else:
                 logger.error("[SILENCE] ESL connection failed uuid=%s", self.uuid)
                 self.esl = None
         except Exception as e:
@@ -57,7 +60,7 @@ class SilenceHandler:
             logger.warning("[SILENCE] ESL not connected uuid=%s", self.uuid)
             return False
         logger.info("[SILENCE] ESL connected, checking uuid_exists uuid=%s", self.uuid)
-        check_result = self.esl.api(f"uuid_exists {self.uuid}")
+        check_result = self.esl.api(f"uuid_exists {self.uuid}") if self.esl else None
         logger.info("[SILENCE] uuid_exists result=%s uuid=%s",
                      check_result.getBody() if check_result else "None", self.uuid)
         if not check_result or "-ERR" in str(check_result.getBody()) or "false" in str(check_result.getBody()).lower():
@@ -102,6 +105,8 @@ class SilenceHandler:
         ])
         while self.is_running:
             time.sleep(1)
+            if getattr(self, '_timer_paused', False):
+                continue
             if self.last_speech_time is None:
                 continue
             elapsed = time.time() - self.last_speech_time
@@ -144,14 +149,16 @@ class SilenceHandler:
         logger.info("[SILENCE] timer_reset uuid=%s", self.uuid)
 
     def pause_timer(self):
+        self._timer_paused = True
         self._paused_time = time.time()
-        logger.info("[SILENCE] timer_pause uuid=%s", self.uuid)
+        logger.info("[SILENCE] timer_paused uuid=%s", self.uuid)
 
     def resume_timer(self):
+        self._timer_paused = False
         if hasattr(self, '_paused_time') and self._paused_time:
             pause_duration = time.time() - self._paused_time
             self.last_speech_time += pause_duration
-            logger.info("[SILENCE] timer_resume uuid=%s pause_duration=%.1fs",
+            logger.info("[SILENCE] timer_resumed uuid=%s pause_duration=%.1fs",
                          self.uuid, pause_duration)
         self._paused_time = None
 
@@ -214,6 +221,13 @@ class SilenceHandler:
     def stop(self):
         logger.info("[SILENCE] stop called uuid=%s", self.uuid)
         self.is_running = False
+        if self.esl:
+            try:
+                self.esl.disconnect()
+                logger.info("[SILENCE] ESL disconnected uuid=%s", self.uuid)
+            except Exception:
+                pass
+            self.esl = None
 
     def detect_silence(self, chunk):
         """音声チャンクの振幅を見て無音を検知"""

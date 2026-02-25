@@ -1,0 +1,144 @@
+{"type": "call_start", "uuid": "04b55d94-f9b3-4930-b111-b322ebb8c372", "client_id": "000", "time": "2026-02-24T09:03:23.678Z"}
+{"type": "asr_interim", "text": "あ", "confidence": 0.0, "time": "2026-02-24T09:03:35.891Z"}
+{"type": "response", "text": "こんにちは", "audio_ids": ["005"], "phase": "QA", "time": "2026-02-24T09:03:36.185Z"}
+{"type": "playback_start", "audio_id": "005", "path": "/opt/libertycall/clients/000/audio/005.wav", "time": "2026-02-24T09:03:36.315Z"}
+{"type": "asr_interim", "text": "こんにちは", "confidence": 0.0, "time": "2026-02-24T09:03:36.415Z"}
+{"type": "asr_interim", "text": "こんにちは", "confidence": 0.0, "time": "2026-02-24T09:03:36.781Z"}
+{"type": "asr_interim", "text": " す", "confidence": 0.0, "time": "2026-02-24T09:03:36.782Z"}
+{"type": "asr_interim", "text": "こんにちは", "confidence": 0.0, "time": "2026-02-24T09:03:36.906Z"}
+{"type": "asr_interim", "text": " すい", "confidence": 0.0, "time": "2026-02-24T09:03:36.907Z"}
+{"type": "playback_end", "audio_id": "005", "duration": 0.0, "time": "2026-02-24T09:03:36.916Z"}
+{"type": "asr_interim", "text": "こんにちは", "confidence": 0.0, "time": "2026-02-24T09:03:37.014Z"}
+{"type": "asr_interim", "text": " すいません", "confidence": 0.0, "time": "2026-02-24T09:03:37.015Z"}
+{"type": "asr_interim", "text": "こんにちは", "confidence": 0.0, "time": "2026-02-24T09:03:37.307Z"}
+{"type": "asr_interim", "text": " すいません 電話", "confidence": 0.0, "time": "2026-02-24T09:03:37.308Z"}
+{"type": "asr_interim", "text": "こんにちは すいません", "confidence": 0.0, "time": "2026-02-24T09:03:37.593Z"}
+{"type": "asr_interim", "text": " 電話", "confidence": 0.0, "time": "2026-02-24T09:03:37.594Z"}
+{"type": "asr_interim", "text": "こんにちは すいません", "confidence": 0.0, "time": "2026-02-24T09:03:37.704Z"}
+{"type": "asr_interim", "text": " 電話代", "confidence": 0.0, "time": "2026-02-24T09:03:37.705Z"}
+{"type": "asr_interim", "text": "こんにちは すいません", "confidence": 0.0, "time": "2026-02-24T09:03:37.904Z"}
+{"type": "asr_interim", "text": " 電話代行", "confidence": 0.0, "time": "2026-02-24T09:03:37.904Z"}
+{"type": "asr_interim", "text": "こんにちは すいません", "confidence": 0.0, "time": "2026-02-24T09:03:38.107Z"}
+{"type": "asr_interim", "text": " 電話代行サービス", "confidence": 0.0, "time": "2026-02-24T09:03:38.108Z"}
+{"type": "asr_interim", "text": "こんにちは すいません", "confidence": 0.0, "time": "2026-02-24T09:03:38.406Z"}
+{"type": "asr_interim", "text": " 電話代行サービス気", "confidence": 0.0, "time": "2026-02-24T09:03:38.407Z"}
+{"type": "asr_interim", "text": "こんにちは すいません", "confidence": 0.0, "time": "2026-02-24T09:03:38.501Z"}
+{"type": "asr_interim", "text": " 電話代行サービス気に", "confidence": 0.0, "time": "2026-02-24T09:03:38.502Z"}
+{"type": "asr_interim", "text": "こんにちは すいません", "confidence": 0.0, "time": "2026-02-24T09:03:38.601Z"}
+{"type": "asr_interim", "text": " 電話代行サービス 気になっ", "confidence": 0.0, "time": "2026-02-24T09:03:38.601Z"}
+{"type": "asr_interim", "text": "こんにちは すいません", "confidence": 0.0, "time": "2026-02-24T09:03:38.705Z"}
+{"type": "asr_interim", "text": " 電話代行サービス 気になって", "confidence": 0.0, "time": "2026-02-24T09:03:38.705Z"}
+{"type": "response", "text": "気になって", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-24T09:03:39.106Z"}
+{"type": "asr_interim", "text": "こんにちは すいません 電話代行サービス", "confidence": 0.0, "time": "2026-02-24T09:03:39.111Z"}
+{"type": "asr_interim", "text": " 気になって", "confidence": 0.0, "time": "2026-02-24T09:03:39.112Z"}
+{"type": "asr_interim", "text": "こんにちは すいません 電話代行サービス", "confidence": 0.0, "time": "2026-02-24T09:03:39.125Z"}
+{"type": "asr_interim", "text": " 気になってかけ", "confidence": 0.0, "time": "2026-02-24T09:03:39.125Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-24T09:03:39.205Z"}
+{"type": "asr_interim", "text": "こんにちは すいません 電話代行サービス", "confidence": 0.0, "time": "2026-02-24T09:03:39.211Z"}
+{"type": "asr_interim", "text": " 気になってかけた", "confidence": 0.0, "time": "2026-02-24T09:03:39.211Z"}
+{"type": "asr_interim", "text": "こんにちは すいません 電話代行サービス", "confidence": 0.0, "time": "2026-02-24T09:03:39.307Z"}
+{"type": "asr_interim", "text": " 気になってかけたん", "confidence": 0.0, "time": "2026-02-24T09:03:39.308Z"}
+{"type": "asr_interim", "text": "こんにちは すいません 電話代行サービス", "confidence": 0.0, "time": "2026-02-24T09:03:39.434Z"}
+{"type": "asr_interim", "text": " 気になってかけたんです", "confidence": 0.0, "time": "2026-02-24T09:03:39.435Z"}
+{"type": "asr_interim", "text": "こんにちは すいません 電話代行サービス", "confidence": 0.0, "time": "2026-02-24T09:03:39.621Z"}
+{"type": "asr_interim", "text": " 気になってかけたんですけど", "confidence": 0.0, "time": "2026-02-24T09:03:39.621Z"}
+{"type": "response", "text": "気になってかけたんですけど", "audio_ids": ["0604"], "phase": "transfer_confirm", "time": "2026-02-24T09:03:40.022Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-24T09:03:40.057Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-24T09:03:40.080Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-24T09:03:40.097Z"}
+{"type": "asr_interim", "text": "こんにちは すいません 電話代行サービス 気になってかけたんですけど", "confidence": 0.0, "time": "2026-02-24T09:03:40.195Z"}
+{"type": "response", "text": "気になってかけたんですけど", "audio_ids": ["114"], "phase": "transfer_confirm", "time": "2026-02-24T09:03:40.596Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-24T09:03:40.639Z"}
+{"type": "asr_final", "text": "こんにちは すいません 電話代行サービス 気になってかけたんですけど", "confidence": 0.9332571029663086, "time": "2026-02-24T09:03:40.938Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-24T09:03:42.893Z"}
+{"type": "asr_interim", "text": "えっと", "confidence": 0.0, "time": "2026-02-24T09:03:44.544Z"}
+{"type": "asr_interim", "text": "えっと", "confidence": 0.0, "time": "2026-02-24T09:03:45.141Z"}
+{"type": "asr_interim", "text": "えっとなんか", "confidence": 0.0, "time": "2026-02-24T09:03:45.258Z"}
+{"type": "asr_interim", "text": "えっとなんか メール", "confidence": 0.0, "time": "2026-02-24T09:03:45.551Z"}
+{"type": "asr_interim", "text": "えっとなんか", "confidence": 0.0, "time": "2026-02-24T09:03:45.840Z"}
+{"type": "asr_interim", "text": " メール", "confidence": 0.0, "time": "2026-02-24T09:03:45.841Z"}
+{"type": "asr_interim", "text": "えっとなんか", "confidence": 0.0, "time": "2026-02-24T09:03:45.858Z"}
+{"type": "asr_interim", "text": " メールを", "confidence": 0.0, "time": "2026-02-24T09:03:45.859Z"}
+{"type": "response", "text": "メールを", "audio_ids": ["0604"], "phase": "transfer_confirm", "time": "2026-02-24T09:03:46.260Z"}
+{"type": "asr_interim", "text": "えっとなんか", "confidence": 0.0, "time": "2026-02-24T09:03:46.286Z"}
+{"type": "asr_interim", "text": " メールを 御恩", "confidence": 0.0, "time": "2026-02-24T09:03:46.287Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-24T09:03:46.339Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを", "confidence": 0.0, "time": "2026-02-24T09:03:46.374Z"}
+{"type": "asr_interim", "text": " 御", "confidence": 0.0, "time": "2026-02-24T09:03:46.374Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを", "confidence": 0.0, "time": "2026-02-24T09:03:46.389Z"}
+{"type": "asr_interim", "text": " 御社", "confidence": 0.0, "time": "2026-02-24T09:03:46.391Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを", "confidence": 0.0, "time": "2026-02-24T09:03:46.448Z"}
+{"type": "asr_interim", "text": " 御社から", "confidence": 0.0, "time": "2026-02-24T09:03:46.449Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを", "confidence": 0.0, "time": "2026-02-24T09:03:46.963Z"}
+{"type": "asr_interim", "text": " 御社からいただい", "confidence": 0.0, "time": "2026-02-24T09:03:46.964Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを", "confidence": 0.0, "time": "2026-02-24T09:03:47.147Z"}
+{"type": "asr_interim", "text": " 御社からいただいて", "confidence": 0.0, "time": "2026-02-24T09:03:47.148Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを", "confidence": 0.0, "time": "2026-02-24T09:03:47.346Z"}
+{"type": "asr_interim", "text": " 御社からいただいており", "confidence": 0.0, "time": "2026-02-24T09:03:47.347Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-24T09:03:47.518Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを", "confidence": 0.0, "time": "2026-02-24T09:03:47.555Z"}
+{"type": "asr_interim", "text": " 御社からいただいておりまし", "confidence": 0.0, "time": "2026-02-24T09:03:47.556Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを", "confidence": 0.0, "time": "2026-02-24T09:03:47.670Z"}
+{"type": "asr_interim", "text": " 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:47.671Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:48.256Z"}
+{"type": "response", "text": "メールを 御社からいただいておりまして", "audio_ids": ["114"], "phase": "transfer_confirm", "time": "2026-02-24T09:03:48.657Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:48.670Z"}
+{"type": "asr_interim", "text": " 電話", "confidence": 0.0, "time": "2026-02-24T09:03:48.671Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-24T09:03:48.726Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:49.172Z"}
+{"type": "asr_interim", "text": " 電話対応", "confidence": 0.0, "time": "2026-02-24T09:03:49.173Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-24T09:03:49.283Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:49.376Z"}
+{"type": "asr_interim", "text": " 電話対応の", "confidence": 0.0, "time": "2026-02-24T09:03:49.376Z"}
+{"type": "response", "text": "電話対応の", "audio_ids": ["0604"], "phase": "transfer_confirm", "time": "2026-02-24T09:03:49.777Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:49.799Z"}
+{"type": "asr_interim", "text": " 電話対応の業", "confidence": 0.0, "time": "2026-02-24T09:03:49.799Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-24T09:03:49.866Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:49.890Z"}
+{"type": "asr_interim", "text": " 電話対応の業務", "confidence": 0.0, "time": "2026-02-24T09:03:49.891Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-24T09:03:49.926Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして 電話対応の業務", "confidence": 0.0, "time": "2026-02-24T09:03:50.006Z"}
+{"type": "asr_interim", "text": " 代", "confidence": 0.0, "time": "2026-02-24T09:03:50.007Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:50.185Z"}
+{"type": "asr_interim", "text": " 電話対応の業務代行", "confidence": 0.0, "time": "2026-02-24T09:03:50.186Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:50.403Z"}
+{"type": "asr_interim", "text": " 電話対応の業務代行サー", "confidence": 0.0, "time": "2026-02-24T09:03:50.404Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:50.586Z"}
+{"type": "asr_interim", "text": " 電話対応の業務代行サービ", "confidence": 0.0, "time": "2026-02-24T09:03:50.587Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして 電話対応の業務代行", "confidence": 0.0, "time": "2026-02-24T09:03:50.608Z"}
+{"type": "asr_interim", "text": " さーびす", "confidence": 0.0, "time": "2026-02-24T09:03:50.610Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:50.697Z"}
+{"type": "asr_interim", "text": " 電話対応の業務代行サービスって", "confidence": 0.0, "time": "2026-02-24T09:03:50.698Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:51.094Z"}
+{"type": "asr_interim", "text": " 電話対応の業務代行サービスっていう", "confidence": 0.0, "time": "2026-02-24T09:03:51.095Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:51.286Z"}
+{"type": "asr_interim", "text": " 電話対応の業務代行サービスっていうこと", "confidence": 0.0, "time": "2026-02-24T09:03:51.287Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして", "confidence": 0.0, "time": "2026-02-24T09:03:51.491Z"}
+{"type": "asr_interim", "text": " 電話対応の業務代行サービスっていうことで", "confidence": 0.0, "time": "2026-02-24T09:03:51.492Z"}
+{"type": "asr_interim", "text": "えっとなんか メールを 御社からいただいておりまして 電話対応の業務代行サービスっていうことで", "confidence": 0.0, "time": "2026-02-24T09:03:52.580Z"}
+{"type": "asr_final", "text": "えっとなんか メールを 御社からいただいておりまして 電話対応の業務代行サービスっていうことで", "confidence": 0.870346188545227, "time": "2026-02-24T09:03:52.620Z"}
+{"type": "asr_interim", "text": " いや", "confidence": 0.0, "time": "2026-02-24T09:03:56.905Z"}
+{"type": "asr_interim", "text": " いや 担当", "confidence": 0.0, "time": "2026-02-24T09:03:57.329Z"}
+{"type": "asr_interim", "text": " いや", "confidence": 0.0, "time": "2026-02-24T09:03:57.493Z"}
+{"type": "asr_interim", "text": " 担当", "confidence": 0.0, "time": "2026-02-24T09:03:57.493Z"}
+{"type": "asr_interim", "text": " いや", "confidence": 0.0, "time": "2026-02-24T09:03:57.606Z"}
+{"type": "asr_interim", "text": " 担当者", "confidence": 0.0, "time": "2026-02-24T09:03:57.606Z"}
+{"type": "asr_interim", "text": " いや", "confidence": 0.0, "time": "2026-02-24T09:03:57.707Z"}
+{"type": "asr_interim", "text": " 担当者に", "confidence": 0.0, "time": "2026-02-24T09:03:57.708Z"}
+{"type": "asr_interim", "text": " いや", "confidence": 0.0, "time": "2026-02-24T09:03:57.913Z"}
+{"type": "asr_interim", "text": " 担当者には", "confidence": 0.0, "time": "2026-02-24T09:03:57.915Z"}
+{"type": "response", "text": "担当者には", "audio_ids": ["081"], "phase": "transfer_confirm", "time": "2026-02-24T09:03:58.316Z"}
+{"type": "asr_interim", "text": " いや", "confidence": 0.0, "time": "2026-02-24T09:03:58.319Z"}
+{"type": "asr_interim", "text": " 担当者には繋", "confidence": 0.0, "time": "2026-02-24T09:03:58.320Z"}
+{"type": "playback_start", "audio_id": "081", "path": "/opt/libertycall/clients/000/audio/081.wav", "time": "2026-02-24T09:03:58.395Z"}
+{"type": "asr_interim", "text": " いや", "confidence": 0.0, "time": "2026-02-24T09:03:58.424Z"}
+{"type": "asr_interim", "text": " 担当者には繋が", "confidence": 0.0, "time": "2026-02-24T09:03:58.425Z"}
+{"type": "asr_interim", "text": " いや", "confidence": 0.0, "time": "2026-02-24T09:03:58.511Z"}
+{"type": "asr_interim", "text": " 担当者には繋がない", "confidence": 0.0, "time": "2026-02-24T09:03:58.512Z"}
+{"type": "asr_interim", "text": " いや", "confidence": 0.0, "time": "2026-02-24T09:03:58.711Z"}
+{"type": "asr_interim", "text": " 担当者には繋がないで", "confidence": 0.0, "time": "2026-02-24T09:03:58.712Z"}
+{"type": "asr_interim", "text": " いや", "confidence": 0.0, "time": "2026-02-24T09:03:59.218Z"}
+{"type": "asr_interim", "text": " 担当者には繋がないで欲しい", "confidence": 0.0, "time": "2026-02-24T09:03:59.219Z"}
+{"type": "playback_end", "audio_id": "081", "duration": 0.0, "time": "2026-02-24T09:03:59.357Z"}
+{"type": "action", "action": "transfer", "time": "2026-02-24T09:03:59.357Z"}
+{"type": "call_end", "uuid": "04b55d94-f9b3-4930-b111-b322ebb8c372", "duration": 46.8, "time": "2026-02-24T09:04:10.439Z"}

@@ -1,7 +1,7 @@
 """ログAPIルーター."""
 
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Depends
 from sqlalchemy.orm import Session
@@ -11,6 +11,8 @@ from ..schemas import CallLogListResponse, CallLogDetailResponse, CallSummary, C
 from ..services.log_reader_service import LogReaderService
 from ..auth import get_current_user as auth_get_current_user
 from ..models import User
+
+JST = timezone(timedelta(hours=9))
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
@@ -119,7 +121,14 @@ def get_call_log_detail(
     call_data = log_reader.read_call_log(client_id, call_id)
     
     if not call_data["logs"]:
-        raise HTTPException(status_code=404, detail="Call log not found")
+        # ログが空でもcall情報は返す
+        return CallLogDetailResponse(
+            call_id=call_id,
+            client_id=client_id,
+            caller_number=None,
+            started_at=None,
+            logs=[],
+        )
     
     # スキーマに変換
     log_entries = [

@@ -475,11 +475,14 @@ class ESLconnection(object):
 
         # loop until these content types are returned
         ct_list = ['api/response', 'command/reply']
-        event = self.recvEvent()
+        event = self.recvEventTimed(5000)
+        retries = 0
         while self.connected() and event and event.getHeader('Content-Type') not in ct_list:
-            print("queueing event")
             self.__event_queue.append(event)
-            event = self.recvEvent()
+            event = self.recvEventTimed(5000)
+            retries += 1
+            if retries > 50:
+                return None
         return event
 
     def setAsyncExecute(self, value):

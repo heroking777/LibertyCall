@@ -136,6 +136,26 @@ HANDOFF_NO_KEYWORDS = [
     "いらない",
     "やっぱりいい",
     "やっぱりいいです",
+    "いいえ",
+    "いえ",
+    "いやです",
+    "いやいや",
+    "繋がなくていい",
+    "つながなくていい",
+    "繋がなくてよくて",
+    "つながなくてよくて",
+    "繋がないで",
+    "つながないで",
+    "繋げなくていい",
+    "つなげなくていい",
+    "つなげないで",
+    "しなくていい",
+    "しないでいい",
+    "しないで",
+    "いらないです",
+    "けっこう",
+    "つながなくて",
+    "繋がなくて",
 ]
 
 # YES判定用キーワード
@@ -146,7 +166,6 @@ YES_KEYWORDS = [
     "お願いします",
     "お願い",
     "承知",
-    "大丈夫です",
     "はいお願いします",
     "はい、お願いします",
 ]
@@ -158,7 +177,7 @@ def normalize_text(text: str) -> str:
         return ""
     normalized = unicodedata.normalize("NFKC", text)
     normalized = normalized.lower()
-    normalized = normalized.replace(" ", "").replace("　", "")
+    normalized = normalized.replace(" ", "").replace("\u3000", "")
     return normalized
 
 
@@ -168,7 +187,7 @@ def normalize_text_for_comparison(t: str) -> str:
         return ""
     import re
     t = t.strip()
-    t = re.sub(r'[。、？！：；「」『』【】（）()\[\]{}、.?!:;"\'""''・]', '', t)
+    t = re.sub(r'[。、？！：；「」『』【】（）()\[\]{}、.?!:;\"\'""\'\'・]', '', t)
     t = re.sub(r'\s+', '', t)
     return t
 
@@ -182,29 +201,33 @@ def contains_keywords(normalized_text: str, keywords: list[str]) -> bool:
 def interpret_handoff_reply(raw_text: str, retry_count: int = 0) -> str:
     """
     ハンドオフ確認時の返答を解釈
-    
+
     Args:
         raw_text: ユーザー発話
         retry_count: リトライ回数（0なら初回、未使用だが互換性のため保持）
-    
+
     Returns:
         HANDOFF_YES / HANDOFF_NO / UNKNOWN
     """
     if not raw_text:
         return "UNKNOWN"
-    
-    t = normalize_text(raw_text)
-    
-    # NO判定（拒否語を優先）
-    if any(kw in t for kw in HANDOFF_NO_KEYWORDS):
-        return "HANDOFF_NO"
-    
-    # YES判定
-    if any(kw in t for kw in YES_KEYWORDS):
-        return "HANDOFF_YES"
-    
-    return "UNKNOWN"
 
+    t = normalize_text(raw_text)
+
+    has_no = any(kw in t for kw in HANDOFF_NO_KEYWORDS)
+    has_yes = any(kw in t for kw in YES_KEYWORDS)
+
+    # 両方ある場合 → 曖昧扱い（再確認させる）
+    if has_no and has_yes:
+        return "UNKNOWN"
+
+    if has_no:
+        return "HANDOFF_NO"
+
+    if has_yes:
+        return "HANDOFF_YES"
+
+    return "UNKNOWN"
 
 def get_response_template(template_id: str) -> str:
     """テンプレートIDに対応するテキストを返す"""

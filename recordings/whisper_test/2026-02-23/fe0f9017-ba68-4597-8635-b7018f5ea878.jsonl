@@ -1,0 +1,4 @@
+{"type": "call_start", "uuid": "fe0f9017-ba68-4597-8635-b7018f5ea878", "client_id": "whisper_test", "time": "2026-02-23T11:59:37.930Z"}
+{"type": "asr_final", "text": "マフォーシェ", "confidence": 0.0, "time": "2026-02-23T11:59:50.141Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T11:59:50.142Z"}
+{"type": "call_end", "uuid": "fe0f9017-ba68-4597-8635-b7018f5ea878", "duration": 14.0, "time": "2026-02-23T11:59:51.936Z"}

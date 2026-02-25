@@ -1,0 +1,37 @@
+{"type": "call_start", "uuid": "9807b332-538f-405e-9a8b-8da3efe1400f", "client_id": "000", "time": "2026-02-16T05:40:39.306Z"}
+{"type": "asr_interim", "text": "そんな", "confidence": 0.0, "time": "2026-02-16T05:40:49.919Z"}
+{"type": "asr_interim", "text": "そんな将", "confidence": 0.0, "time": "2026-02-16T05:40:50.263Z"}
+{"type": "asr_interim", "text": "そんな将来", "confidence": 0.0, "time": "2026-02-16T05:40:50.315Z"}
+{"type": "asr_interim", "text": "そんな将来やり", "confidence": 0.0, "time": "2026-02-16T05:40:50.521Z"}
+{"type": "asr_interim", "text": "そんな将来やりそう", "confidence": 0.0, "time": "2026-02-16T05:40:50.721Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうな", "confidence": 0.0, "time": "2026-02-16T05:40:50.836Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなす", "confidence": 0.0, "time": "2026-02-16T05:40:50.925Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャン", "confidence": 0.0, "time": "2026-02-16T05:40:51.114Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャンダル", "confidence": 0.0, "time": "2026-02-16T05:40:51.225Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャンダルの", "confidence": 0.0, "time": "2026-02-16T05:40:51.415Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャンダルの見", "confidence": 0.0, "time": "2026-02-16T05:40:51.528Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャンダルの見出し", "confidence": 0.0, "time": "2026-02-16T05:40:51.546Z"}
+{"type": "response", "text": "そんな将来やりそうなスキャンダルの見出し", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-16T05:40:51.946Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-16T05:40:51.947Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-16T05:40:52.048Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャンダルの見出し", "confidence": 0.0, "time": "2026-02-16T05:40:52.111Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャンダルの見出し", "confidence": 0.0, "time": "2026-02-16T05:40:52.313Z"}
+{"type": "asr_interim", "text": " え", "confidence": 0.0, "time": "2026-02-16T05:40:52.314Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャンダルの見出し", "confidence": 0.0, "time": "2026-02-16T05:40:52.437Z"}
+{"type": "asr_interim", "text": " えー", "confidence": 0.0, "time": "2026-02-16T05:40:52.438Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャンダルの見出し", "confidence": 0.0, "time": "2026-02-16T05:40:52.725Z"}
+{"type": "asr_interim", "text": " えーら", "confidence": 0.0, "time": "2026-02-16T05:40:52.726Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャンダルの見出し", "confidence": 0.0, "time": "2026-02-16T05:40:52.743Z"}
+{"type": "asr_interim", "text": " えーラランド", "confidence": 0.0, "time": "2026-02-16T05:40:52.743Z"}
+{"type": "response", "text": "えーラランド", "audio_ids": ["0604"], "phase": "transfer_confirm", "time": "2026-02-16T05:40:53.144Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-16T05:40:53.145Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャンダルの見出し えーラランド", "confidence": 0.0, "time": "2026-02-16T05:40:53.312Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャンダルの見出し", "confidence": 0.0, "time": "2026-02-16T05:40:53.618Z"}
+{"type": "asr_interim", "text": " えーラランドに", "confidence": 0.0, "time": "2026-02-16T05:40:53.618Z"}
+{"type": "asr_interim", "text": "そんな将来やりそうなスキャンダルの見出し えーラランド", "confidence": 0.0, "time": "2026-02-16T05:40:53.706Z"}
+{"type": "response", "text": "えーラランド", "audio_ids": ["114"], "phase": "transfer_confirm", "time": "2026-02-16T05:40:54.107Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-16T05:40:54.107Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-16T05:40:54.809Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-16T05:40:54.848Z"}
+{"type": "asr_final", "text": "そんな将来やりそうなスキャンダルの見出し えーラランド", "confidence": 0.6725265383720398, "time": "2026-02-16T05:40:57.372Z"}
+{"type": "call_end", "uuid": "9807b332-538f-405e-9a8b-8da3efe1400f", "duration": 18.1, "time": "2026-02-16T05:40:57.379Z"}

@@ -1,0 +1,4 @@
+{"type": "call_start", "uuid": "8806a4e9-0e75-4a11-b69f-51694529bea6", "client_id": "whisper_test", "time": "2026-02-23T12:38:24.886Z"}
+{"type": "asr_final", "text": "ご視聴ありがとうございました。", "confidence": 0.0, "time": "2026-02-23T12:38:37.551Z"}
+{"type": "response", "text": "086", "audio_ids": ["086"], "phase": "IMMEDIATE", "time": "2026-02-23T12:38:37.552Z"}
+{"type": "call_end", "uuid": "8806a4e9-0e75-4a11-b69f-51694529bea6", "duration": 18.8, "time": "2026-02-23T12:38:43.683Z"}

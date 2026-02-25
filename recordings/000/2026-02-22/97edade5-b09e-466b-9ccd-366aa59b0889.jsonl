@@ -1,0 +1,20 @@
+{"type": "call_start", "uuid": "97edade5-b09e-466b-9ccd-366aa59b0889", "client_id": "000", "time": "2026-02-22T08:48:29.253Z"}
+{"type": "asr_interim", "text": "もし", "confidence": 0.0, "time": "2026-02-22T08:48:41.675Z"}
+{"type": "response", "text": "もしもし", "audio_ids": ["004"], "phase": "QA", "time": "2026-02-22T08:48:41.802Z"}
+{"type": "playback_start", "audio_id": "004", "path": "/opt/libertycall/clients/000/audio/004.wav", "time": "2026-02-22T08:48:42.423Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-02-22T08:48:42.424Z"}
+{"type": "asr_final", "text": "もしもし", "confidence": 0.8700557351112366, "time": "2026-02-22T08:48:42.870Z"}
+{"type": "playback_end", "audio_id": "004", "duration": 0.0, "time": "2026-02-22T08:48:43.726Z"}
+{"type": "asr_interim", "text": " 料金", "confidence": 0.0, "time": "2026-02-22T08:48:48.214Z"}
+{"type": "asr_interim", "text": " 料金に", "confidence": 0.0, "time": "2026-02-22T08:48:48.403Z"}
+{"type": "asr_interim", "text": " 料金について", "confidence": 0.0, "time": "2026-02-22T08:48:48.520Z"}
+{"type": "asr_interim", "text": " 料金について聞きたい", "confidence": 0.0, "time": "2026-02-22T08:48:48.833Z"}
+{"type": "asr_interim", "text": " 料金について聞きたいんです", "confidence": 0.0, "time": "2026-02-22T08:48:49.012Z"}
+{"type": "asr_interim", "text": " 料金について聞きたいんですけど", "confidence": 0.0, "time": "2026-02-22T08:48:49.100Z"}
+{"type": "response", "text": "料金について聞きたいんですけど", "audio_ids": ["122", "085"], "phase": "QA", "time": "2026-02-22T08:48:49.501Z"}
+{"type": "playback_start", "audio_id": "122", "path": "/opt/libertycall/clients/000/audio/122.wav", "time": "2026-02-22T08:48:49.698Z"}
+{"type": "playback_start", "audio_id": "085", "path": "/opt/libertycall/clients/000/audio/085.wav", "time": "2026-02-22T08:48:49.699Z"}
+{"type": "asr_final", "text": " 料金について聞きたいんですけど", "confidence": 0.5192147493362427, "time": "2026-02-22T08:48:50.103Z"}
+{"type": "playback_end", "audio_id": "122", "duration": 0.0, "time": "2026-02-22T08:48:58.713Z"}
+{"type": "playback_end", "audio_id": "085", "duration": 0.0, "time": "2026-02-22T08:48:58.713Z"}
+{"type": "call_end", "uuid": "97edade5-b09e-466b-9ccd-366aa59b0889", "duration": 32.7, "time": "2026-02-22T08:49:01.911Z"}

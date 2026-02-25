@@ -1,0 +1,10 @@
+{"type": "call_start", "uuid": "2b325c99-127e-4812-b1e4-3358c0e54a91", "client_id": "whisper_test", "time": "2026-02-23T11:24:38.406Z"}
+{"type": "asr_final", "text": "これは、私は申し上げるのです。", "confidence": 0.0, "time": "2026-02-23T11:24:53.031Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T11:24:53.032Z"}
+{"type": "asr_final", "text": "ゲオープン。", "confidence": 0.0, "time": "2026-02-23T11:24:54.460Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T11:24:54.461Z"}
+{"type": "asr_final", "text": "よく", "confidence": 0.0, "time": "2026-02-23T11:24:58.250Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T11:24:58.250Z"}
+{"type": "asr_final", "text": "ドキッ", "confidence": 0.0, "time": "2026-02-23T11:25:06.558Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T11:25:06.559Z"}
+{"type": "call_end", "uuid": "2b325c99-127e-4812-b1e4-3358c0e54a91", "duration": 46.5, "time": "2026-02-23T11:25:24.906Z"}

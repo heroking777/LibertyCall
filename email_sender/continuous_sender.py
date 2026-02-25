@@ -110,6 +110,9 @@ class ContinuousSender:
         if not email:
             return False
         
+        # 除外フラグがある場合はスキップ
+        if recipient.get("除外", "").strip():
+            return False
         try:
             success, error_msg = send_email_to_recipient(recipient, use_simulation=False)
             

@@ -1,0 +1,7 @@
+{"type": "call_start", "uuid": "08bc1530-1e38-401f-ac60-700a03fa9645", "client_id": "whisper_test", "time": "2026-02-23T13:03:03.903Z"}
+{"type": "asr_final", "text": "ご視聴ありがとうございました。", "confidence": 0.0, "time": "2026-02-23T13:03:17.300Z"}
+{"type": "response", "text": "086", "audio_ids": ["086"], "phase": "IMMEDIATE", "time": "2026-02-23T13:03:17.302Z"}
+{"type": "asr_final", "text": "モスマフィー。", "confidence": 0.0, "time": "2026-02-23T13:03:26.333Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T13:03:26.334Z"}
+{"type": "asr_final", "text": "ご視聴ありがとうございました。", "confidence": 0.0, "time": "2026-02-23T13:03:33.165Z"}
+{"type": "response", "text": "086", "audio_ids": ["086"], "phase": "IMMEDIATE", "time": "2026-02-23T13:03:33.166Z"}

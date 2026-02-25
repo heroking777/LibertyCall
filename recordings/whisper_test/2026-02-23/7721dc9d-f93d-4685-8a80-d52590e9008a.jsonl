@@ -1,0 +1,6 @@
+{"type": "call_start", "uuid": "7721dc9d-f93d-4685-8a80-d52590e9008a", "client_id": "whisper_test", "time": "2026-02-23T13:59:05.615Z"}
+{"type": "asr_final", "text": "マッシュを教えてください。", "confidence": 0.0, "time": "2026-02-23T13:59:23.582Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T13:59:23.583Z"}
+{"type": "asr_final", "text": "マジオンシー。", "confidence": 0.0, "time": "2026-02-23T13:59:31.026Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T13:59:31.027Z"}
+{"type": "call_end", "uuid": "7721dc9d-f93d-4685-8a80-d52590e9008a", "duration": 45.0, "time": "2026-02-23T13:59:50.593Z"}

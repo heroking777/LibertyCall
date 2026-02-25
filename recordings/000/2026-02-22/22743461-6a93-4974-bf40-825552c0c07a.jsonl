@@ -1,0 +1,14 @@
+{"type": "call_start", "uuid": "22743461-6a93-4974-bf40-825552c0c07a", "client_id": "000", "time": "2026-02-22T08:36:58.420Z"}
+{"type": "asr_interim", "text": "土", "confidence": 0.0, "time": "2026-02-22T08:37:09.949Z"}
+{"type": "asr_interim", "text": "土器", "confidence": 0.0, "time": "2026-02-22T08:37:10.065Z"}
+{"type": "asr_interim", "text": "土器に", "confidence": 0.0, "time": "2026-02-22T08:37:10.157Z"}
+{"type": "asr_interim", "text": "土器に追", "confidence": 0.0, "time": "2026-02-22T08:37:10.354Z"}
+{"type": "asr_interim", "text": "土器に釣り", "confidence": 0.0, "time": "2026-02-22T08:37:10.373Z"}
+{"type": "asr_interim", "text": "土器に通用", "confidence": 0.0, "time": "2026-02-22T08:37:10.460Z"}
+{"type": "asr_interim", "text": "土器に釣りをして", "confidence": 0.0, "time": "2026-02-22T08:37:10.515Z"}
+{"type": "asr_interim", "text": "土器に釣りをしてください", "confidence": 0.0, "time": "2026-02-22T08:37:10.659Z"}
+{"type": "response", "text": "土器に釣りをしてください", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-22T08:37:11.061Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-22T08:37:11.062Z"}
+{"type": "asr_final", "text": "土器に釣りをしてください", "confidence": 0.8179262280464172, "time": "2026-02-22T08:37:11.671Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-22T08:37:13.366Z"}
+{"type": "call_end", "uuid": "22743461-6a93-4974-bf40-825552c0c07a", "duration": 19.2, "time": "2026-02-22T08:37:17.602Z"}

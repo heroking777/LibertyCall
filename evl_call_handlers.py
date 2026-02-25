@@ -191,9 +191,12 @@ def handle_call(uuid, event):
         logger.info(f"[handle_call] Preparing to spawn realtime_gateway for uuid={uuid} (log={log_file})")
         # 必要な環境変数のみを選択的に渡す（LC_RTP_PORT等は引数で上書きされるため除外）
         env = {}
+        env["PATH"] = "/opt/libertycall/venv/bin:/usr/bin:/usr/local/bin"
+        env["PYTHONPATH"] = "/opt/libertycall"
         # ASR関連の環境変数を渡す
         for key in ["LC_ASR_STREAMING_ENABLED", "LC_ASR_PROVIDER", "LC_ASR_CHUNK_MS", "LC_ASR_SILENCE_MS", 
-                    "LC_DEFAULT_CLIENT_ID", "LC_TTS_STREAMING", "PYTHONUNBUFFERED"]:
+                    "LC_DEFAULT_CLIENT_ID", "LC_TTS_STREAMING", "PYTHONUNBUFFERED",
+                    "LIBERTYCALL_CONSOLE_ENABLED", "LIBERTYCALL_CONSOLE_API_BASE_URL", "GOOGLE_APPLICATION_CREDENTIALS"]:
             value = os.getenv(key)
             if value is not None:
                 env[key] = value

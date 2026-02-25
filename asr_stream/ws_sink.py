@@ -74,8 +74,16 @@ class WSSinkServer:
         try:
             sys.path.insert(0, '/opt/libertycall')
             from libs.esl.ESL import ESLconnection
-            self.esl = ESLconnection("127.0.0.1", "8021", "ClueCon")
-            if not self.esl.connected():
+            for attempt in range(10):
+                self.esl = ESLconnection("127.0.0.1", "8021", "ClueCon")
+                if self.esl.connected():
+                    break
+                logger.warning("[WS_SERVER] ESL connect attempt %d/10 failed, retrying in 3s...", attempt+1)
+                import time; time.sleep(3)
+            if self.esl.connected():
+                self.esl.send("noevents")
+                self.esl.recvEvent()  # consume reply
+            else:
                 logger.error("[WS_SERVER] ESL connection failed")
                 self.esl = None
         except Exception as e:
@@ -86,8 +94,11 @@ class WSSinkServer:
         try:
             logger.info(f"[WS_SERVER] Getting client_id for uuid={uuid}")
             if not self.esl or not self.esl.connected():
-                logger.error(f"[WS_SERVER] ESL not connected for uuid={uuid}")
-                return "000"
+                logger.warning(f"[WS_SERVER] ESL not connected for uuid={uuid}, reconnecting...")
+                self._connect_esl()
+                if not self.esl or not self.esl.connected():
+                    logger.error(f"[WS_SERVER] ESL reconnect failed for uuid={uuid}")
+                    return "000"
             result = self.esl.api(f"uuid_getvar {uuid} destination_number")
             dest_number = result.getBody() if result else "unknown"
             logger.info(f"[WS_SERVER] Got destination_number={dest_number} for uuid={uuid}")
@@ -123,13 +134,34 @@ class WSSinkServer:
         try:
             client_id = self._get_client_id_from_uuid(call_uuid)
             logger.info(f"[WS_SERVER] uuid={call_uuid} dest_number mapped to client_id={client_id}")
-            call_logger = CallLogger(call_uuid, client_id)
+            # 発信者番号を取得
+            caller_number = "番号不明"
+            try:
+                if self.esl and self.esl.connected():
+                    cn_result = self.esl.api(f"uuid_getvar {call_uuid} caller_id_number")
+                    cn_body = cn_result.getBody().strip() if cn_result else ""
+                    if cn_body and cn_body != "_undef_" and cn_body != "NONE":
+                        caller_number = cn_body
+                    logger.info(f"[WS_SERVER] caller_number={caller_number} for uuid={call_uuid}")
+            except Exception as e:
+                logger.warning(f"[WS_SERVER] Failed to get caller_number: {e}")
+            call_logger = CallLogger(call_uuid, client_id, caller_number=caller_number)
             
             # === 両方向録音開始（ESL経由 uuid_record） ===
             rec_path = call_logger.get_recording_path()
+            for _esl_attempt in range(2):
+                try:
+                    if not self.esl or not self.esl.connected():
+                        logger.warning("[WS_SERVER] ESL not connected, reconnecting uuid=%s", call_uuid)
+                        self._connect_esl()
+                    self.esl.api(f"uuid_setvar {call_uuid} RECORD_STEREO true")
+                    rec_result = self.esl.api(f"uuid_record {call_uuid} start {rec_path}")
+                    break
+                except Exception as esl_err:
+                    logger.warning("[WS_SERVER] ESL call failed attempt=%d uuid=%s err=%s", _esl_attempt+1, call_uuid, esl_err)
+                    self._connect_esl()
+                    rec_result = None
             if self.esl and self.esl.connected():
-                self.esl.api(f"uuid_setvar {call_uuid} RECORD_STEREO true")
-                rec_result = self.esl.api(f"uuid_record {call_uuid} start {rec_path}")
                 rec_body = rec_result.getBody() if rec_result else "NO_RESULT"
                 if rec_result and "+OK" in str(rec_body):
                     recording_started = True
@@ -143,7 +175,7 @@ class WSSinkServer:
             silence_handler = SilenceHandler(call_uuid, client_id=client_id)
             gasr_session.silence_handler = silence_handler
             gasr_session.call_logger = call_logger
-            silence_handler.play_greeting(gasr_session)
+            await asyncio.get_event_loop().run_in_executor(None, silence_handler.play_greeting, gasr_session)
         except Exception as exc:
             logger.exception("[GASR] session_init_failed uuid=%s err=%s", call_uuid, exc)
             self.connections.pop(call_uuid, None)

@@ -1,0 +1,30 @@
+{"type": "call_start", "uuid": "10b020a8-cdf0-46d6-8b7f-7880828506e7", "client_id": "whisper_test", "time": "2026-02-23T13:29:08.380Z"}
+{"type": "asr_final", "text": "マスマスティ", "confidence": 0.0, "time": "2026-02-23T13:29:21.424Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T13:29:21.425Z"}
+{"type": "asr_final", "text": "マスドーティー", "confidence": 0.0, "time": "2026-02-23T13:29:27.640Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T13:29:27.641Z"}
+{"type": "asr_final", "text": "忘れません。", "confidence": 0.0, "time": "2026-02-23T13:29:40.190Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T13:29:40.191Z"}
+{"type": "asr_final", "text": "おつもし。", "confidence": 0.0, "time": "2026-02-23T13:29:46.415Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T13:29:46.417Z"}
+{"type": "asr_final", "text": "料金について教えてください。", "confidence": 0.0, "time": "2026-02-23T13:30:19.482Z"}
+{"type": "response", "text": "122", "audio_ids": ["122"], "phase": "IMMEDIATE", "time": "2026-02-23T13:30:19.483Z"}
+{"type": "asr_final", "text": "導入を検討してください。", "confidence": 0.0, "time": "2026-02-23T13:30:43.078Z"}
+{"type": "response", "text": "060", "audio_ids": ["060"], "phase": "IMMEDIATE", "time": "2026-02-23T13:30:43.079Z"}
+{"type": "asr_final", "text": "キュリティを教えてください。", "confidence": 0.0, "time": "2026-02-23T13:30:50.550Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T13:30:50.551Z"}
+{"type": "asr_final", "text": "2人を検討しています。", "confidence": 0.0, "time": "2026-02-23T13:30:57.248Z"}
+{"type": "response", "text": "060", "audio_ids": ["060"], "phase": "IMMEDIATE", "time": "2026-02-23T13:30:57.249Z"}
+{"type": "asr_final", "text": "ボニューを検討しています。", "confidence": 0.0, "time": "2026-02-23T13:31:04.246Z"}
+{"type": "response", "text": "060", "audio_ids": ["060"], "phase": "IMMEDIATE", "time": "2026-02-23T13:31:04.247Z"}
+{"type": "asr_final", "text": "導入を検討しています。", "confidence": 0.0, "time": "2026-02-23T13:31:10.849Z"}
+{"type": "response", "text": "060", "audio_ids": ["060"], "phase": "IMMEDIATE", "time": "2026-02-23T13:31:10.851Z"}
+{"type": "asr_final", "text": "ボニューを検討しています。", "confidence": 0.0, "time": "2026-02-23T13:31:17.513Z"}
+{"type": "response", "text": "060", "audio_ids": ["060"], "phase": "IMMEDIATE", "time": "2026-02-23T13:31:17.514Z"}
+{"type": "asr_final", "text": "あんとさんに関しています。", "confidence": 0.0, "time": "2026-02-23T13:31:23.955Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T13:31:23.956Z"}
+{"type": "asr_final", "text": "本当は多めできます。", "confidence": 0.0, "time": "2026-02-23T13:31:30.380Z"}
+{"type": "response", "text": "114", "audio_ids": ["114"], "phase": "IMMEDIATE", "time": "2026-02-23T13:31:30.381Z"}
+{"type": "asr_final", "text": "アンコースをお願いします。", "confidence": 0.0, "time": "2026-02-23T13:31:45.320Z"}
+{"type": "response", "text": "099", "audio_ids": ["099"], "phase": "IMMEDIATE", "time": "2026-02-23T13:31:45.321Z"}
+{"type": "call_end", "uuid": "10b020a8-cdf0-46d6-8b7f-7880828506e7", "duration": 168.9, "time": "2026-02-23T13:31:57.271Z"}
