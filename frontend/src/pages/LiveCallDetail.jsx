@@ -23,9 +23,13 @@ function LiveCallDetail() {
       }
     }
     fetchInitial()
+    const interval = setInterval(fetchInitial, 3000)
+    return () => clearInterval(interval)
   }, [callId])
 
   useEffect(() => {
+    // SSE disabled - using polling instead
+    return
     const token = localStorage.getItem('token')
     if (!token) return
 
@@ -76,7 +80,7 @@ function LiveCallDetail() {
 
   const formatTime = (iso) => {
     if (!iso) return ''
-    const d = new Date(iso)
+    const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z')
     return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   }
 

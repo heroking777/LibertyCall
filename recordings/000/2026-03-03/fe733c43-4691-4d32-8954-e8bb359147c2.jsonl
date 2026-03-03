@@ -1,0 +1,30 @@
+{"type": "call_start", "uuid": "fe733c43-4691-4d32-8954-e8bb359147c2", "caller_number": "05058650640", "client_id": "000", "time": "2026-03-03T12:15:35.974Z"}
+{"type": "asr_interim", "text": "もし", "confidence": 0.0, "time": "2026-03-03T12:15:55.426Z"}
+{"type": "response", "text": "もしもし", "audio_ids": ["004"], "phase": "QA", "time": "2026-03-03T12:15:55.733Z"}
+{"type": "playback_start", "audio_id": "004", "path": "/opt/libertycall/clients/000/audio/004.wav", "time": "2026-03-03T12:15:55.734Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-03-03T12:15:55.735Z"}
+{"type": "asr_final", "text": "もしもし", "confidence": 0.9002825021743774, "time": "2026-03-03T12:15:56.628Z"}
+{"type": "playback_end", "audio_id": "004", "duration": 0.0, "time": "2026-03-03T12:15:57.037Z"}
+{"type": "asr_interim", "text": " 担当", "confidence": 0.0, "time": "2026-03-03T12:16:00.365Z"}
+{"type": "asr_interim", "text": " 担当者", "confidence": 0.0, "time": "2026-03-03T12:16:00.563Z"}
+{"type": "asr_interim", "text": " 担当者 繋", "confidence": 0.0, "time": "2026-03-03T12:16:00.772Z"}
+{"type": "asr_interim", "text": " 担当者 つない", "confidence": 0.0, "time": "2026-03-03T12:16:00.905Z"}
+{"type": "asr_interim", "text": " 担当者 つないで", "confidence": 0.0, "time": "2026-03-03T12:16:00.923Z"}
+{"type": "asr_interim", "text": " 担当者 つないでください", "confidence": 0.0, "time": "2026-03-03T12:16:01.058Z"}
+{"type": "asr_interim", "text": " 担当者", "confidence": 0.0, "time": "2026-03-03T12:16:01.448Z"}
+{"type": "asr_interim", "text": " つないでください", "confidence": 0.0, "time": "2026-03-03T12:16:01.448Z"}
+{"type": "response", "text": "つないでください", "audio_ids": ["114"], "phase": "QA", "time": "2026-03-03T12:16:01.849Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-03-03T12:16:01.851Z"}
+{"type": "asr_final", "text": " 担当者 つないでください", "confidence": 0.9152907133102417, "time": "2026-03-03T12:16:02.063Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-03-03T12:16:04.154Z"}
+{"type": "asr_interim", "text": " 担当", "confidence": 0.0, "time": "2026-03-03T12:16:06.393Z"}
+{"type": "asr_interim", "text": " 担当者", "confidence": 0.0, "time": "2026-03-03T12:16:06.581Z"}
+{"type": "asr_interim", "text": " 担当者に", "confidence": 0.0, "time": "2026-03-03T12:16:06.689Z"}
+{"type": "asr_interim", "text": " 担当者につないで", "confidence": 0.0, "time": "2026-03-03T12:16:06.943Z"}
+{"type": "asr_interim", "text": " 担当者につないでください", "confidence": 0.0, "time": "2026-03-03T12:16:07.179Z"}
+{"type": "response", "text": "担当者につないでください", "audio_ids": ["081"], "phase": "QA", "time": "2026-03-03T12:16:07.580Z"}
+{"type": "playback_start", "audio_id": "081", "path": "/opt/libertycall/clients/000/audio/081.wav", "time": "2026-03-03T12:16:07.581Z"}
+{"type": "asr_final", "text": " 担当者につないでください", "confidence": 0.8013067245483398, "time": "2026-03-03T12:16:08.180Z"}
+{"type": "playback_end", "audio_id": "081", "duration": 0.0, "time": "2026-03-03T12:16:09.484Z"}
+{"type": "action", "action": "transfer", "time": "2026-03-03T12:16:09.485Z"}
+{"type": "call_end", "uuid": "fe733c43-4691-4d32-8954-e8bb359147c2", "duration": 61.6, "time": "2026-03-03T12:16:37.557Z"}

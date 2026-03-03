@@ -1,0 +1,11 @@
+{"type": "call_start", "uuid": "92bbe7fa-1230-4668-9572-12da6d3b310c", "client_id": "000", "time": "2026-02-26T10:14:30.914Z"}
+{"type": "asr_interim", "text": "結構", "confidence": 0.0, "time": "2026-02-26T10:14:42.296Z"}
+{"type": "asr_interim", "text": "結構です", "confidence": 0.0, "time": "2026-02-26T10:14:42.501Z"}
+{"type": "response", "text": "結構です", "audio_ids": ["086", "087"], "phase": "QA", "time": "2026-02-26T10:14:42.902Z"}
+{"type": "playback_start", "audio_id": "086", "path": "/opt/libertycall/clients/000/audio/086.wav", "time": "2026-02-26T10:14:43.014Z"}
+{"type": "playback_start", "audio_id": "087", "path": "/opt/libertycall/clients/000/audio/087.wav", "time": "2026-02-26T10:14:43.086Z"}
+{"type": "asr_final", "text": "結構です", "confidence": 0.9728907942771912, "time": "2026-02-26T10:14:43.496Z"}
+{"type": "playback_end", "audio_id": "086", "duration": 0.0, "time": "2026-02-26T10:14:47.845Z"}
+{"type": "playback_end", "audio_id": "087", "duration": 0.0, "time": "2026-02-26T10:14:47.845Z"}
+{"type": "action", "action": "hangup", "time": "2026-02-26T10:14:47.846Z"}
+{"type": "call_end", "uuid": "92bbe7fa-1230-4668-9572-12da6d3b310c", "duration": 17.1, "time": "2026-02-26T10:14:48.040Z"}

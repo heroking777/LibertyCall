@@ -1,0 +1,1 @@
+{"n_classes": 4, "classes": ["004", "023", "086", "099"], "model": "lr", "use_mfcc": true}

@@ -1,0 +1,2 @@
+{"type": "call_start", "uuid": "c895ad48-1618-48b6-8f00-d9281252dba5", "client_id": "000", "time": "2026-02-26T13:12:55.907Z"}
+{"type": "call_end", "uuid": "c895ad48-1618-48b6-8f00-d9281252dba5", "duration": 19.4, "time": "2026-02-26T13:13:15.273Z"}

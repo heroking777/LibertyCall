@@ -1,0 +1,39 @@
+use_default_settings: true
+server:
+  secret_key: "libertycall_searxng_2026"
+  bind_address: "0.0.0.0"
+  port: 8080
+  limiter: false
+search:
+  formats:
+    - html
+    - json
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+    disabled: false
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    disabled: false
+  - name: brave
+    engine: brave
+    shortcut: br
+    disabled: false
+  - name: qwant
+    engine: qwant
+    shortcut: qw
+    disabled: false
+  - name: mojeek
+    engine: mojeek
+    shortcut: mj
+    disabled: false
+  - name: yahoo
+    engine: yahoo
+    shortcut: yh
+    disabled: false
+  - name: startpage
+    engine: startpage
+    shortcut: sp
+    disabled: false

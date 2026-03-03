@@ -1,0 +1,2 @@
+{"type": "call_start", "uuid": "37b72f07-57a1-4f1e-8700-29ea1dfc59ed", "client_id": "000", "time": "2026-02-25T16:57:34.305Z"}
+{"type": "response", "text": "121", "audio_ids": ["121"], "phase": "IMMEDIATE", "time": "2026-02-25T16:57:47.589Z"}

@@ -1,0 +1,3 @@
+{"type": "call_start", "uuid": "f225ebee-0a17-4847-81cb-328ab8f37ded", "client_id": "000", "time": "2026-02-26T09:53:40.904Z"}
+{"type": "response", "text": "004", "audio_ids": ["004"], "phase": "IMMEDIATE", "time": "2026-02-26T09:53:52.078Z"}
+{"type": "call_end", "uuid": "f225ebee-0a17-4847-81cb-328ab8f37ded", "duration": 13.1, "time": "2026-02-26T09:53:54.024Z"}

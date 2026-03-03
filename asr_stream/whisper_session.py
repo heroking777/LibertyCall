@@ -22,7 +22,7 @@ from libs.esl.ESL import ESLconnection
 
 logger = logging.getLogger(__name__)
 
-GASR_SAMPLE_RATE = int(os.environ.get("GASR_SAMPLE_RATE", "8000"))
+GASR_SAMPLE_RATE = int(os.environ.get("GASR_SAMPLE_RATE", "16000"))
 GASR_LANGUAGE = os.environ.get("GASR_LANGUAGE", "ja-JP")
 GASR_OUTPUT_DIR = os.environ.get("GASR_OUTPUT_DIR", "/tmp")
 
@@ -76,13 +76,17 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
         # Audio buffer for Whisper (collect chunks, transcribe on silence)
         self._audio_buffer = bytearray()
         self._last_voice_time = None
-        self._vad_threshold = 300  # Fixed threshold for low-amplitude audio
+        self._vad_threshold = 500  # Raised to avoid echo/noise floor
         logger.info("[WHISPER] VAD threshold set to %d", self._vad_threshold)
         self._silence_duration_trigger = float(os.environ.get("WHISPER_SILENCE_TRIGGER", "0.5"))
         
         # Periodic transcription for real-time processing
         self._periodic_timer = None
-        self._periodic_interval = float(os.environ.get("WHISPER_PERIODIC_INTERVAL", "2.5"))  # seconds
+        self._periodic_interval = float(os.environ.get("WHISPER_PERIODIC_INTERVAL", "0.5"))  # streaming classify every 0.5s
+        self._streaming_candidate = None
+        self._last_activity_time = time.time()
+        self._idle_monitor_thread = threading.Thread(target=self._idle_monitor, daemon=True)
+        self._idle_monitor_thread.start()  # (label, conf) updated by interim classify
         self._last_transcribe_time = 0
 
         # voice_map
@@ -171,28 +175,57 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
         self._periodic_timer.start()
     
     def _periodic_transcribe(self):
-        """Periodic transcription callback"""
-        current_time = time.time()
-        
-        # Only transcribe if we have enough audio and haven't transcribed recently
-        if (self._audio_buffer and 
-            current_time - self._last_transcribe_time >= self._periodic_interval and
-            len(self._audio_buffer) >= self.sample_rate * 2 * 1.0):  # At least 1 second of audio
+        """Streaming classify: run embedding classifier on current buffer every 0.5s"""
+        if not self._audio_buffer or getattr(self, '_responding', False) or getattr(self, '_muted', False):
+            if self._is_speaking:
+                self._schedule_periodic_transcribe()
+            return
+
+        try:
+            audio_data = bytes(self._audio_buffer)
+            buf_dur = len(audio_data) / (self.sample_rate * 2)
             
-            logger.info("[PERIODIC] transcribing uuid=%s buffer_size=%d", 
-                       self.uuid, len(self._audio_buffer))
-            self._transcribe_buffer(interim=True)
-            self._last_transcribe_time = current_time
-        
-        # Schedule next periodic transcription if still speaking
+            if buf_dur < 0.3:
+                if self._is_speaking:
+                    self._schedule_periodic_transcribe()
+                return
+
+            audio_16k = self._resample_8k_to_16k(audio_data)
+            
+            if self._emb_clf and getattr(self, "client_id", "") != "whisper_test":
+                label, conf = self._emb_clf.classify(audio_16k)
+                self._streaming_candidate = (label, conf)
+                logger.info("[STREAM_CLF] interim uuid=%s label=%s conf=%.3f buf=%.1fs",
+                           self.uuid, label, conf, buf_dur)
+        except Exception as e:
+            logger.warning("[STREAM_CLF] interim error: %s", e)
+
         if self._is_speaking:
             self._schedule_periodic_transcribe()
+
+    def _idle_monitor(self):
+        """5分間無音で最終催促→切断"""
+        IDLE_TIMEOUT = 300  # 5 minutes
+        while not self._stop_requested.is_set():
+            time.sleep(5)
+            if not hasattr(self, '_speech_detected'):
+                continue  # まだ最初の発話前（通常の催促タイマーが動いてる）
+            elapsed = time.time() - self._last_activity_time
+            if elapsed >= IDLE_TIMEOUT:
+                logger.info("[IDLE] 5min timeout uuid=%s", self.uuid)
+                if hasattr(self, 'silence_handler') and self.silence_handler:
+                    self.silence_handler._play_audio("prompt_003_8k.wav")
+                    time.sleep(10)
+                    self.silence_handler._hangup()
+                break
 
     def send_audio(self, chunk):
         if self._stop_requested.is_set() or not chunk:
             return
         if self.muted:
+            logger.debug("[SEND_AUDIO] muted uuid=%s", self.uuid)
             return
+        logger.debug("[SEND_AUDIO] received chunk=%d muted=%s uuid=%s", len(chunk), self.muted, self.uuid)
 
         # Flush old buffered audio after unmute
         if hasattr(self, '_flush_until') and time.time() < self._flush_until:
@@ -236,7 +269,6 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
             amplitude = 0
 
         now = time.time()
-
         if amplitude > self._vad_threshold:
             # Voice detected
             self._last_voice_time = now
@@ -247,6 +279,13 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
                 self._is_speaking = True
                 logger.info("[VAD] voice detected uuid=%s amplitude=%.0f", self.uuid, amplitude)
                 self._schedule_periodic_transcribe()
+                # Stop prompt timer after first speech, start long idle timer
+                if hasattr(self, 'silence_handler') and self.silence_handler and not hasattr(self, '_speech_detected'):
+                    self._speech_detected = True
+                    self.silence_handler.stop_timer()
+                    logger.info("[VAD] silence timer stopped, starting idle monitor uuid=%s", self.uuid)
+                # Update last activity time
+                self._last_activity_time = time.time()
             else:
                 logger.debug("[VAD] continuing speech uuid=%s amplitude=%.0f", self.uuid, amplitude)
         else:
@@ -255,9 +294,54 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
                 self._audio_buffer.extend(chunk)
                 # Check if silence long enough to trigger final transcription
                 if self._last_voice_time and (now - self._last_voice_time) >= self._silence_duration_trigger:
-                    self._transcribe_buffer()  # Final transcription
+                    # --- Streaming classify: final decision ---
+                    if self._emb_clf and getattr(self, "client_id", "") != "whisper_test" and not getattr(self, '_responding', False) and not getattr(self, '_muted', False):
+                        try:
+                            audio_data = bytes(self._audio_buffer)
+                            buf_dur = len(audio_data) / (self.sample_rate * 2)
+                            audio_16k = self._resample_8k_to_16k(audio_data)
+                            label, conf = self._emb_clf.classify(audio_16k)
+                            logger.info("[STREAM_CLF] final uuid=%s label=%s conf=%.3f buf=%.1fs candidate=%s",
+                                       self.uuid, label, conf, buf_dur, self._streaming_candidate)
+                            
+                            # Use interim candidate if it had higher confidence
+                            if self._streaming_candidate and self._streaming_candidate[1] > 0.95 and self._streaming_candidate[1] > conf:
+                                logger.info("[STREAM_CLF] override final with interim: %s conf=%.3f -> %s conf=%.3f",
+                                           label, conf, self._streaming_candidate[0], self._streaming_candidate[1])
+                                label = self._streaming_candidate[0]
+                                conf = self._streaming_candidate[1]
+
+                            # Save raw audio for training
+                            try:
+                                import wave as _wave
+                                ts = int(time.time())
+                                raw_path = f"/tmp/whisper_raw_{ts}.wav"
+                                with _wave.open(raw_path, 'w') as wf:
+                                    wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(self.sample_rate)
+                                    wf.writeframes(audio_data)
+                            except: pass
+                            
+                            if conf >= 0.50:
+                                self._responding = True
+                                self._trigger_immediate_response(label)
+                                # Update activity time on response
+                                self._last_activity_time = time.time()
+                            else:
+                                logger.info("[STREAM_CLF] low conf %.3f, fallback 081", conf)
+                                self._responding = True
+                                self._trigger_immediate_response("081_transfer")
+                        except Exception as e:
+                            logger.warning("[STREAM_CLF] final error: %s", e)
+                            self._responding = True
+                            self._trigger_immediate_response("081_transfer")
+                    
+                    # For whisper_test: run Whisper STT instead of embedding classifier
+                    if getattr(self, "client_id", "") == "whisper_test" and not getattr(self, '_responding', False):
+                        self._transcribe_buffer(interim=False)
+                    
+                    self._audio_buffer = bytearray()
+                    self._streaming_candidate = None
                     self._is_speaking = False
-                    # Cancel periodic timer
                     if self._periodic_timer:
                         self._periodic_timer.cancel()
                         self._periodic_timer = None
@@ -301,7 +385,7 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
             audio_16k = self._resample_8k_to_16k(audio_data)
 
             # --- Embedding classifier (primary) ---
-            if self._emb_clf:
+            if self._emb_clf and getattr(self, "client_id", "") != "whisper_test":
                 try:
                     # Skip if already responding
                     if getattr(self, '_responding', False) or getattr(self, '_muted', False) or getattr(self, 'muted', False):
@@ -369,6 +453,25 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
             logger.info('[WHISPER] result uuid=%s elapsed=%.3fs text="%s"',
                        self.uuid, elapsed, full_text)
 
+            # --- Save training data pair (audio + transcript) ---
+            if full_text and not interim:
+                try:
+                    import json as _json
+                    import wave as _wave
+                    _ts = int(time.time() * 1000)
+                    _seg_dir = "/opt/libertycall/training_data/segments"
+                    _wav_path = f"{_seg_dir}/{_ts}.wav"
+                    _txt_path = f"{_seg_dir}/{_ts}.txt"
+                    with _wave.open(_wav_path, 'w') as _wf:
+                        _wf.setnchannels(1); _wf.setsampwidth(2); _wf.setframerate(16000)
+                        import numpy as _np
+                        _wf.writeframes((_np.clip(audio_16k, -1.0, 1.0) * 32767).astype(_np.int16).tobytes())
+                    with open(_txt_path, 'w') as _tf:
+                        _tf.write(full_text)
+                    logger.info("[TRAIN_DATA] saved %s text=%r", _wav_path, full_text)
+                except Exception as _e:
+                    logger.warning("[TRAIN_DATA] save error: %s", _e)
+
             if full_text:
                 # Log ASR result
                 if hasattr(self, 'call_logger') and self.call_logger:
@@ -404,37 +507,31 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
             logger.error("[WHISPER] transcription error uuid=%s err=%s", self.uuid, e)
 
     def _resample_8k_to_16k(self, pcm_data):
-        """8kHz 16-bit PCM -> 16kHz float32 numpy array for Whisper"""
-        # Decode 16-bit PCM
-        samples_8k = np.frombuffer(pcm_data, dtype=np.int16).astype(np.float32)
-        # DEBUG: save raw PCM before any processing
-        try:
-            import wave as _wave
-            _raw_path = f"/tmp/whisper_raw_{int(time.time())}.wav"
-            _raw_int16 = np.frombuffer(pcm_data, dtype=np.int16)
-            with _wave.open(_raw_path, "w") as _wf:
-                _wf.setnchannels(1)
-                _wf.setsampwidth(2)
-                _wf.setframerate(8000)
-                _wf.writeframes(_raw_int16.tobytes())
-            logger.info("[DEBUG_RAW] saved %s (%d samples)", _raw_path, len(_raw_int16))
-        except: pass
+        """PCM -> 16kHz float32 numpy array for Whisper"""
+        samples = np.frombuffer(pcm_data, dtype=np.int16).astype(np.float32)
         
-        # WebSocket audio is already mono
-        samples_8k_mono = samples_8k
+        # Normalize to [-1, 1]
+        samples_normalized = samples / 32768.0
         
-        # Normalize to [-1, 1] range (fixed scale, same as offline)
-        samples_8k_normalized = samples_8k_mono / 32768.0
+        # If already 16kHz (audio_fork sends 16k), no resampling needed
+        if self.sample_rate == 16000:
+            samples_8k_normalized = samples_normalized
+        else:
+            # Legacy 8kHz path
+            samples_8k_normalized = samples_normalized
         
         # Amplification DISABLED - causes hallucination at higher RMS
         rms = np.sqrt(np.mean(samples_8k_normalized ** 2))
         logger.info("[WHISPER] audio rms=%.4f (no amplification)", rms)
         
-        # Simple linear interpolation for 8k -> 16k
-        n = len(samples_8k_normalized)
-        indices_16k = np.arange(0, n, 0.5)
-        indices_16k = indices_16k[indices_16k < n]
-        samples_16k = np.interp(indices_16k, np.arange(n), samples_8k_normalized)
+        # Resample only if 8kHz, skip if already 16kHz
+        if self.sample_rate == 16000:
+            samples_16k = samples_8k_normalized
+        else:
+            n = len(samples_8k_normalized)
+            indices_16k = np.arange(0, n, 0.5)
+            indices_16k = indices_16k[indices_16k < n]
+            samples_16k = np.interp(indices_16k, np.arange(n), samples_8k_normalized)
 
 
         # DEBUG: save resampled audio for inspection
@@ -483,9 +580,8 @@ class WhisperStreamingSession(GASRDialogHandlerMixin):
             def _unmute():
                 self._muted = False
                 self._responding = False
-                # Reset silence timer after playback complete
-                if hasattr(self, 'silence_handler') and self.silence_handler:
-                    self.silence_handler.resume_timer()
+                # Update activity time after playback
+                self._last_activity_time = time.time()
                 self._audio_buffer = bytearray()
                 logger.info("[IMMEDIATE_RESP] unmuted after %.1fs", unmute_delay)
             

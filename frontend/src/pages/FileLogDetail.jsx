@@ -134,6 +134,13 @@ function FileLogDetail() {
               <span className="meta-value" style={{ display: 'block', color: '#666' }}>{summary}</span>
             </div>
           )}
+          {/* 録音再生 */}
+          <div className="recording-player" style={{ marginTop: '12px' }}>
+            <span className="meta-label">録音:</span>
+            <audio controls preload="none" style={{ marginLeft: '10px', verticalAlign: 'middle' }}>
+              <source src={`${API_BASE}/logs/${clientId}/${callId}/recording`} type="audio/wav" />
+            </audio>
+          </div>
         </div>
       </div>
 

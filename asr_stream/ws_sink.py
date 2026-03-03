@@ -17,7 +17,6 @@ from google.cloud import speech
 from websockets import exceptions as ws_exceptions
 
 from speech_client_manager import SpeechClientManager
-from call_logger import CallLogger
 
 # importをファイル先頭で一度だけ実行
 sys.path.insert(0, '/opt/libertycall')
@@ -40,6 +39,7 @@ logger_ws.setLevel(logging.WARNING)
 logger_ws.addHandler(logging.StreamHandler(sys.stdout))
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+from call_logger import CallLogger
 
 GASR_SAMPLE_RATE = int(os.environ.get("GASR_SAMPLE_RATE", "8000"))
 GASR_LANGUAGE = os.environ.get("GASR_LANGUAGE", "ja-JP")

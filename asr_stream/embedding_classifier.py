@@ -13,15 +13,16 @@ MODEL_DIR = "/opt/libertycall/training_data/embeddings"
 
 class EmbeddingClassifier:
     def __init__(self):
-        self._scaler = pickle.load(open(f"{MODEL_DIR}/scaler_v2.pkl", "rb"))
-        self._pca = pickle.load(open(f"{MODEL_DIR}/pca_v2.pkl", "rb"))
-        self._classifier = pickle.load(open(f"{MODEL_DIR}/classifier_lr_v2.pkl", "rb"))
+        self._scaler = pickle.load(open(f"{MODEL_DIR}/scaler_v3.pkl", "rb"))
+        self._pca = pickle.load(open(f"{MODEL_DIR}/pca_v3.pkl", "rb"))
+        self._classifier = pickle.load(open(f"{MODEL_DIR}/classifier_mlp_v3.pkl", "rb"))
         self._ext = FeatureExtractor()
         self._ct = None
         
         # MFCC設定を読み込み
         try:
-            self._config = pickle.load(open(f"{MODEL_DIR}/config_v2.pkl", "rb"))
+            import json
+            self._config = json.load(open(f"{MODEL_DIR}/config_v3.pkl", "r"))
             self._use_mfcc = self._config.get("use_mfcc", False)
         except:
             self._use_mfcc = False

@@ -39,7 +39,7 @@ function FileLogsList({ user }) {
         }),
         api.get('/calls/history', {
           params: { client_id: clientId },
-        }),
+        }).catch(() => ({ data: { calls: [] } })),
       ])
 
       // 既存のログ（AI応答付き通話）

@@ -13,22 +13,29 @@ from typing import List, Dict, Set
 INVALID_EVENTS = {"bounce", "dropped", "spamreport", "auto_reply"}
 
 
-def load_invalid_emails_from_sendgrid() -> Set[str]:
+def load_invalid_emails_from_sendgrid(deferred_threshold: int = 10) -> Set[str]:
     """
     SendGridイベントログから無効メールを取得
-    
+
+    bounce/dropped/spamreport/auto_reply に加え、
+    deferred が deferred_threshold 回以上のアドレスも無効とみなす。
+
+    Args:
+        deferred_threshold: deferredをこの回数以上繰り返したら無効とみなす
+
     Returns:
         無効メールアドレスのセット
     """
     invalid_emails = set()
-    
+    deferred_counts: Dict[str, int] = {}
+
     # ログファイルのパス（プロジェクトルートのlogsディレクトリ）
-    project_root = Path(__file__).parent.parent.parent
+    project_root = Path(__file__).parent.parent
     log_path = project_root / "logs" / "sendgrid_events.csv"
-    
+
     if not log_path.exists():
         return invalid_emails
-    
+
     try:
         with open(log_path, encoding="utf-8") as f:
             reader = csv.reader(f)
@@ -39,10 +46,20 @@ def load_invalid_emails_from_sendgrid() -> Set[str]:
                     event = row[1].strip().lower()
                     if event in INVALID_EVENTS:
                         invalid_emails.add(email)
+                    elif event == "deferred":
+                        deferred_counts[email] = deferred_counts.get(email, 0) + 1
     except Exception as e:
         print(f"[WARN] Failed to load invalid emails from SendGrid log: {e}")
-    
+
+    # deferred が閾値以上のアドレスも無効扱い
+    for email, count in deferred_counts.items():
+        if count >= deferred_threshold:
+            invalid_emails.add(email)
+            print(f"[INFO] Deferred {count} times, marking as invalid: {email}")
+
     return invalid_emails
+
+
 
 
 class ProductionCSVRepository:
@@ -118,6 +135,11 @@ class ProductionCSVRepository:
                     # SendGridイベントログから無効メールを除外
                     if email.lower() in invalid_emails:
                         print(f"[SKIP] Invalid email skipped (SendGrid event): {email}")
+                        continue
+                    
+                    # 除外フラグが設定されているメールを除外
+                    exclude_flag = row.get("除外", "").strip()
+                    if exclude_flag:
                         continue
                     
                     # master_leads.csvの形式をrecipients.csvの形式に変換

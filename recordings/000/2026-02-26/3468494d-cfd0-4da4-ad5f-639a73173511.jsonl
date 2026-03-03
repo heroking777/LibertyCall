@@ -1,0 +1,52 @@
+{"type": "call_start", "uuid": "3468494d-cfd0-4da4-ad5f-639a73173511", "client_id": "000", "time": "2026-02-26T15:22:23.332Z"}
+{"type": "asr_interim", "text": "もし", "confidence": 0.0, "time": "2026-02-26T15:22:37.543Z"}
+{"type": "response", "text": "もしもし", "audio_ids": ["004"], "phase": "QA", "time": "2026-02-26T15:22:37.650Z"}
+{"type": "playback_start", "audio_id": "004", "path": "/opt/libertycall/clients/000/audio/004.wav", "time": "2026-02-26T15:22:39.745Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-02-26T15:22:39.876Z"}
+{"type": "asr_final", "text": "もしもし", "confidence": 0.8296297192573547, "time": "2026-02-26T15:22:39.878Z"}
+{"type": "playback_end", "audio_id": "004", "duration": 0.0, "time": "2026-02-26T15:22:40.779Z"}
+{"type": "asr_interim", "text": "もし", "confidence": 0.0, "time": "2026-02-26T15:22:42.703Z"}
+{"type": "response", "text": "もしもし", "audio_ids": ["004"], "phase": "QA", "time": "2026-02-26T15:22:42.803Z"}
+{"type": "playback_start", "audio_id": "004", "path": "/opt/libertycall/clients/000/audio/004.wav", "time": "2026-02-26T15:22:42.849Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-02-26T15:22:42.900Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-02-26T15:22:43.391Z"}
+{"type": "playback_end", "audio_id": "004", "duration": 0.0, "time": "2026-02-26T15:22:44.102Z"}
+{"type": "asr_final", "text": "もしもし", "confidence": 0.661577045917511, "time": "2026-02-26T15:22:44.417Z"}
+{"type": "asr_interim", "text": "あなた", "confidence": 0.0, "time": "2026-02-26T15:22:46.822Z"}
+{"type": "asr_interim", "text": "あなた何歳", "confidence": 0.0, "time": "2026-02-26T15:22:47.118Z"}
+{"type": "asr_interim", "text": "あなた何歳です", "confidence": 0.0, "time": "2026-02-26T15:22:47.319Z"}
+{"type": "asr_interim", "text": "あなた何歳ですか", "confidence": 0.0, "time": "2026-02-26T15:22:47.419Z"}
+{"type": "response", "text": "あなた何歳ですか", "audio_ids": ["114"], "phase": "QA", "time": "2026-02-26T15:22:47.821Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-26T15:22:47.893Z"}
+{"type": "asr_interim", "text": "あなた何歳ですか", "confidence": 0.0, "time": "2026-02-26T15:22:48.014Z"}
+{"type": "asr_final", "text": "あなた何歳ですか", "confidence": 0.9816847443580627, "time": "2026-02-26T15:22:48.712Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-26T15:22:50.155Z"}
+{"type": "asr_interim", "text": "り", "confidence": 0.0, "time": "2026-02-26T15:22:52.053Z"}
+{"type": "asr_interim", "text": " リバ", "confidence": 0.0, "time": "2026-02-26T15:22:52.134Z"}
+{"type": "asr_interim", "text": " リバティ", "confidence": 0.0, "time": "2026-02-26T15:22:52.234Z"}
+{"type": "asr_interim", "text": " リバティこ", "confidence": 0.0, "time": "2026-02-26T15:22:52.445Z"}
+{"type": "asr_interim", "text": " リバティコール", "confidence": 0.0, "time": "2026-02-26T15:22:52.544Z"}
+{"type": "asr_interim", "text": " リバティ コールに", "confidence": 0.0, "time": "2026-02-26T15:22:52.635Z"}
+{"type": "asr_interim", "text": " リバティ コールについ", "confidence": 0.0, "time": "2026-02-26T15:22:52.667Z"}
+{"type": "asr_interim", "text": " リバティ コールについて", "confidence": 0.0, "time": "2026-02-26T15:22:52.840Z"}
+{"type": "asr_interim", "text": " リバティ", "confidence": 0.0, "time": "2026-02-26T15:22:53.226Z"}
+{"type": "asr_interim", "text": " コールについて", "confidence": 0.0, "time": "2026-02-26T15:22:53.227Z"}
+{"type": "response", "text": "コールについて", "audio_ids": ["0604"], "phase": "transfer_confirm", "time": "2026-02-26T15:22:53.629Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-26T15:22:53.695Z"}
+{"type": "asr_final", "text": " リバティ コールについて", "confidence": 0.5418282151222229, "time": "2026-02-26T15:22:53.839Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-02-26T15:22:59.146Z"}
+{"type": "asr_interim", "text": "はい", "confidence": 0.0, "time": "2026-02-26T15:23:00.764Z"}
+{"type": "asr_interim", "text": "はい", "confidence": 0.0, "time": "2026-02-26T15:23:01.344Z"}
+{"type": "response", "text": "はい", "audio_ids": ["114"], "phase": "transfer_confirm", "time": "2026-02-26T15:23:01.745Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-02-26T15:23:01.924Z"}
+{"type": "asr_final", "text": "はい", "confidence": 0.2188323587179184, "time": "2026-02-26T15:23:04.055Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-02-26T15:23:04.204Z"}
+{"type": "asr_interim", "text": " 何", "confidence": 0.0, "time": "2026-02-26T15:23:05.778Z"}
+{"type": "asr_interim", "text": " 何が", "confidence": 0.0, "time": "2026-02-26T15:23:05.980Z"}
+{"type": "asr_interim", "text": "何がある", "confidence": 0.0, "time": "2026-02-26T15:23:06.090Z"}
+{"type": "asr_interim", "text": "何があるんです", "confidence": 0.0, "time": "2026-02-26T15:23:06.176Z"}
+{"type": "asr_interim", "text": "何があるんですか", "confidence": 0.0, "time": "2026-02-26T15:23:06.376Z"}
+{"type": "response", "text": "何があるんですか", "audio_ids": ["0604"], "phase": "transfer_confirm", "time": "2026-02-26T15:23:06.777Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-02-26T15:23:06.947Z"}
+{"type": "asr_final", "text": "何があるんですか", "confidence": 0.8622733950614929, "time": "2026-02-26T15:23:07.384Z"}
+{"type": "call_end", "uuid": "3468494d-cfd0-4da4-ad5f-639a73173511", "duration": 47.4, "time": "2026-02-26T15:23:10.761Z"}

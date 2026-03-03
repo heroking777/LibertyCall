@@ -1,0 +1,18 @@
+{"type": "call_start", "uuid": "466d9d9b-c1d6-4444-8705-1c9a85b30123", "client_id": "000", "time": "2026-02-25T13:51:18.220Z"}
+{"type": "response", "text": "124", "audio_ids": ["124"], "phase": "IMMEDIATE", "time": "2026-02-25T13:51:30.710Z"}
+{"type": "response", "text": "023", "audio_ids": ["023"], "phase": "IMMEDIATE", "time": "2026-02-25T13:51:35.587Z"}
+{"type": "response", "text": "124", "audio_ids": ["124"], "phase": "IMMEDIATE", "time": "2026-02-25T13:51:44.104Z"}
+{"type": "response", "text": "125", "audio_ids": ["125"], "phase": "IMMEDIATE", "time": "2026-02-25T13:51:49.236Z"}
+{"type": "response", "text": "023", "audio_ids": ["023"], "phase": "IMMEDIATE", "time": "2026-02-25T13:52:08.108Z"}
+{"type": "response", "text": "124", "audio_ids": ["124"], "phase": "IMMEDIATE", "time": "2026-02-25T13:52:14.973Z"}
+{"type": "response", "text": "086", "audio_ids": ["086"], "phase": "IMMEDIATE", "time": "2026-02-25T13:52:25.915Z"}
+{"type": "response", "text": "125", "audio_ids": ["125"], "phase": "IMMEDIATE", "time": "2026-02-25T13:52:32.717Z"}
+{"type": "response", "text": "124", "audio_ids": ["124"], "phase": "IMMEDIATE", "time": "2026-02-25T13:52:46.757Z"}
+{"type": "response", "text": "124", "audio_ids": ["124"], "phase": "IMMEDIATE", "time": "2026-02-25T13:52:50.871Z"}
+{"type": "response", "text": "124", "audio_ids": ["124"], "phase": "IMMEDIATE", "time": "2026-02-25T13:53:02.183Z"}
+{"type": "response", "text": "004", "audio_ids": ["004"], "phase": "IMMEDIATE", "time": "2026-02-25T13:53:22.108Z"}
+{"type": "response", "text": "004", "audio_ids": ["004"], "phase": "IMMEDIATE", "time": "2026-02-25T13:53:33.371Z"}
+{"type": "response", "text": "124", "audio_ids": ["124"], "phase": "IMMEDIATE", "time": "2026-02-25T13:53:44.118Z"}
+{"type": "response", "text": "124", "audio_ids": ["124"], "phase": "IMMEDIATE", "time": "2026-02-25T13:53:48.625Z"}
+{"type": "response", "text": "004", "audio_ids": ["004"], "phase": "IMMEDIATE", "time": "2026-02-25T13:53:52.758Z"}
+{"type": "call_end", "uuid": "466d9d9b-c1d6-4444-8705-1c9a85b30123", "duration": 156.6, "time": "2026-02-25T13:53:54.814Z"}

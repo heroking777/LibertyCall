@@ -146,7 +146,13 @@ class SilenceHandler:
     def reset_timer(self):
         self.last_speech_time = time.time()
         self.prompt_count = 0
+        self._timer_paused = False
         logger.info("[SILENCE] timer_reset uuid=%s", self.uuid)
+
+    def stop_timer(self):
+        self.is_running = False
+        self._timer_paused = True
+        logger.info("[SILENCE] timer_stopped permanently uuid=%s", self.uuid)
 
     def pause_timer(self):
         self._timer_paused = True

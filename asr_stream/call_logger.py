@@ -48,7 +48,11 @@ class CallLogger:
         # console_bridge: 通話開始
         if _bridge:
             try:
+                logger.info("[CALL_LOG] bridge.start_call calling, _bridge=%s, enabled=%s", _bridge, getattr(_bridge, "enabled", "N/A"))
+                from console_bridge import _service_client as _sc
+                logger.info("[CALL_LOG] _service_client=%s", _sc)
                 _bridge.start_call(uuid, client_id, caller_number=caller_number)
+                logger.info("[CALL_LOG] bridge.start_call DONE")
             except Exception as e:
                 logger.warning("[CALL_LOG] bridge start_call failed: %s", e)
 

@@ -1,0 +1,12 @@
+{"type": "call_start", "uuid": "acf70a7e-b562-43c9-bd0f-ba3f39d4d7dc", "client_id": "000", "time": "2026-02-26T07:21:32.457Z"}
+{"type": "response", "text": "081", "audio_ids": ["081"], "phase": "IMMEDIATE", "time": "2026-02-26T07:21:45.117Z"}
+{"type": "response", "text": "081", "audio_ids": ["081"], "phase": "IMMEDIATE", "time": "2026-02-26T07:21:50.629Z"}
+{"type": "response", "text": "081", "audio_ids": ["081"], "phase": "IMMEDIATE", "time": "2026-02-26T07:21:55.781Z"}
+{"type": "response", "text": "081", "audio_ids": ["081"], "phase": "IMMEDIATE", "time": "2026-02-26T07:22:01.324Z"}
+{"type": "response", "text": "081", "audio_ids": ["081"], "phase": "IMMEDIATE", "time": "2026-02-26T07:22:06.931Z"}
+{"type": "response", "text": "081", "audio_ids": ["081"], "phase": "IMMEDIATE", "time": "2026-02-26T07:22:11.834Z"}
+{"type": "response", "text": "081", "audio_ids": ["081"], "phase": "IMMEDIATE", "time": "2026-02-26T07:22:17.412Z"}
+{"type": "response", "text": "081", "audio_ids": ["081"], "phase": "IMMEDIATE", "time": "2026-02-26T07:22:22.813Z"}
+{"type": "response", "text": "081", "audio_ids": ["081"], "phase": "IMMEDIATE", "time": "2026-02-26T07:22:28.126Z"}
+{"type": "response", "text": "086", "audio_ids": ["086"], "phase": "IMMEDIATE", "time": "2026-02-26T07:22:33.747Z"}
+{"type": "call_end", "uuid": "acf70a7e-b562-43c9-bd0f-ba3f39d4d7dc", "duration": 66.9, "time": "2026-02-26T07:22:39.399Z"}

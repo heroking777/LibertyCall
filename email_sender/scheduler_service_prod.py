@@ -428,7 +428,7 @@ def generate_daily_report():
     """
     try:
         # レポート生成スクリプトのパス
-        project_root = Path(__file__).parent.parent.parent
+        project_root = Path(__file__).parent.parent
         report_script = project_root / "logs" / "report_generator.py"
         
         if not report_script.exists():
