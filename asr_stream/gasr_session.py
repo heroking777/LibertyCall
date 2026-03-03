@@ -82,11 +82,11 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
     
         # アナウンス再生中にSTT接続を事前確立
         self._unmute_event = threading.Event()
-        self._stream_started = False
-        # self._thread = threading.Thread(
-            # target=self._consume_responses, daemon=True)
-        # self._thread.start()
-        # logger.info("[GASR] pre-starting STT connection uuid=%s", self.uuid)
+        self._stream_started = True
+        self._thread = threading.Thread(
+            target=self._consume_responses, daemon=True)
+        self._thread.start()
+        logger.info("[GASR] pre-starting STT connection uuid=%s", self.uuid)
     
         # ESL接続を事前に作成
         self._esl = None
@@ -235,9 +235,11 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
                 yield speech.StreamingRecognizeRequest(audio_content=chunk)
             except queue.Empty:
                 logger.debug("[GASR] _request_generator queue empty, continuing uuid=%s", self.uuid)
+                # unmute前はキープアライブとして無音データを送信（Google STT 10秒タイムアウト対策）
+                silence_bytes = b'\x00' * 640  # 40ms of 8kHz 16bit silence
+                yield speech.StreamingRecognizeRequest(audio_content=silence_bytes)
                 if first_empty:
-                    logger.info("[GASR] _request_generator sending empty request to establish STT connection uuid=%s", self.uuid)
-                    yield speech.StreamingRecognizeRequest(audio_content=b'')
+                    logger.info("[GASR] _request_generator sending keepalive to establish STT connection uuid=%s", self.uuid)
                     first_empty = False
                 continue
     
