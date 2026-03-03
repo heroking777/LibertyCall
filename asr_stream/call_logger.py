@@ -41,7 +41,7 @@ class CallLogger:
         self.jsonl_path = os.path.join(self.base_dir, f"{uuid}.jsonl")
         self._file = open(self.jsonl_path, "a", encoding="utf-8")
 
-        self._write({"type": "call_start", "uuid": uuid,
+        self._write({"type": "call_start", "uuid": uuid, "caller_number": caller_number,
                       "client_id": client_id})
         logger.info("[CALL_LOG] started uuid=%s path=%s", uuid, self.jsonl_path)
 

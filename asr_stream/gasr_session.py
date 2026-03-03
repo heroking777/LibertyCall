@@ -235,9 +235,10 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
                 yield speech.StreamingRecognizeRequest(audio_content=chunk)
             except queue.Empty:
                 logger.debug("[GASR] _request_generator queue empty, continuing uuid=%s", self.uuid)
-                # unmute前はキープアライブとして無音データを送信（Google STT 10秒タイムアウト対策）
-                silence_bytes = b'\x00' * 640  # 40ms of 8kHz 16bit silence
-                yield speech.StreamingRecognizeRequest(audio_content=silence_bytes)
+                # unmute前はキープアライブとして微小ノイズを送信（Google STT 10秒タイムアウト対策）
+                import random
+                noise = bytes([random.randint(127, 129) for _ in range(640)])  # 8kHz 40ms near-silence
+                yield speech.StreamingRecognizeRequest(audio_content=noise)
                 if first_empty:
                     logger.info("[GASR] _request_generator sending keepalive to establish STT connection uuid=%s", self.uuid)
                     first_empty = False
