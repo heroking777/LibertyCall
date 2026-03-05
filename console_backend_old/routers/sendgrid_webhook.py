@@ -190,7 +190,8 @@ async def handle_dsn_exclude(request: Request):
     for email in emails:
         email_clean = email.strip().lower()
         if email_clean and "@" in email_clean:
-            if _flag_email_in_master(email_clean, "dsn_failure_auto"):
+            reason = data.get("reason", "dsn_failure_auto")
+            if _flag_email_in_master(email_clean, reason):
                 flagged.append(email_clean)
 
     return {"status": "ok", "flagged": flagged, "count": len(flagged)}

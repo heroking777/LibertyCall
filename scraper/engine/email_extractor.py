@@ -86,23 +86,77 @@ def _clean_email(email):
 
 def _is_valid_email(email):
     email = _clean_email(email)
-    if '@' not in email:
+    if not email or '@' not in email:
         return False
-    domain = email.split('@')[1].lower()
-    if domain in EXCLUDE_EMAILS:
+
+    # URLエンコード混入
+    if '%' in email:
         return False
-    for excl in EXCLUDE_EMAILS:
-        if domain.endswith('.' + excl) or domain == excl:
-            return False
-    if domain.endswith('.png') or domain.endswith('.jpg') or domain.endswith('.gif'):
+
+    local, domain = email.rsplit('@', 1)
+
+    # 基本フォーマット
+    if not local or not domain or '.' not in domain:
         return False
-    if len(email) > 80:
+    if len(email) < 6 or len(email) > 80:
         return False
     if '..' in email:
         return False
-    local = email.split('@')[0].lower()
-    if local in ('sample', 'test', 'example', 'dummy', 'info@example', 'admin@example'):
+
+    domain_lower = domain.lower()
+
+    # 除外ドメイン
+    if domain_lower in EXCLUDE_EMAILS:
         return False
+    for excl in EXCLUDE_EMAILS:
+        if domain_lower.endswith('.' + excl):
+            return False
+
+    # 画像・メディアファイル拡張子（srcset誤検出対策）
+    MEDIA_EXTS = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.avif',
+                  '.ico', '.bmp', '.tiff', '.mp4', '.mp3', '.pdf', '.css', '.js')
+    if any(domain_lower.endswith(ext) for ext in MEDIA_EXTS):
+        return False
+    if any(email.lower().endswith(ext) for ext in MEDIA_EXTS):
+        return False
+
+    # ドメインが短すぎる (x.xx 等)
+    parts = domain_lower.split('.')
+    if len(parts) < 2 or len(parts[0]) < 2:
+        return False
+
+    # 数字のみのローカルパート (0783330003@ 等)
+    if re.match(r'^[\d]+$', local) and len(local) > 6:
+        return False
+
+    # ハッシュ・ランダム文字列 (10956296.cf7a03bb... 等)
+    if re.match(r'^[0-9a-f]{6,}\.[0-9a-f]{6,}', local):
+        return False
+
+    # サイズ指定パターン (300x171, 2x, 3x 等 = srcset由来)
+    if re.search(r'\d+x\d+', email) or re.search(r'@\d+x\.', email):
+        return False
+
+    # テスト用ローカルパート
+    if local.lower() in ('sample', 'test', 'example', 'dummy', 'xxx', 'name', 'email'):
+        return False
+
+    # TLDが2文字未満 or 存在しないパターン（.bbb等）
+    tld = parts[-1]
+    VALID_SHORT_TLDS = {'co', 'jp', 'ch', 'uk', 'de', 'fr', 'it', 'es', 'nl', 'se',
+                        'no', 'dk', 'fi', 'at', 'be', 'pt', 'ie', 'au', 'nz', 'sg',
+                        'hk', 'in', 'th', 'vn', 'id', 'ph', 'my', 'br', 'mx', 'ar',
+                        'kr', 'cn', 'tw', 'ru', 'us', 'ca', 'za', 'pl', 'cz', 'hu',
+                        'gr', 'ro', 'bg', 'hr', 'sk', 'si', 'lt', 'lv', 'ee', 'io',
+                        'ai', 'me', 'tv', 'cc', 'to', 'fm', 'am', 'ly', 'sh', 'sx',
+                        'kz', 'sz', 'pe'}
+    if len(tld) <= 3 and tld not in VALID_SHORT_TLDS and tld not in ('com', 'net', 'org', 'edu', 'gov', 'mil', 'int', 'biz', 'pro', 'xyz'):
+        return False
+
+    # ローカルパートが数字のみで3文字以下
+    if local.isdigit() and len(local) <= 3:
+        return False
+
     return True
 
 

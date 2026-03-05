@@ -70,3 +70,16 @@ if [ -z "$ALERT_MSG" ]; then
     sed -i '/^.*: OK$/d' "$LOG"
     echo "$(date +%H:%M): OK" >> "$LOG"
 fi
+
+# 5. syslog肥大化防止
+SYSLOG_SIZE=$(sudo du -sm /var/log/syslog 2>/dev/null | awk '{print $1}')
+if [ "${SYSLOG_SIZE:-0}" -gt 500 ]; then
+    sudo truncate -s 0 /var/log/syslog
+    echo "$(date): WARN - syslog truncated (was ${SYSLOG_SIZE}MB)" >> "$LOG"
+    add_alert "syslog truncated (${SYSLOG_SIZE}MB)"
+fi
+SYSLOG1_SIZE=$(sudo du -sm /var/log/syslog.1 2>/dev/null | awk '{print $1}')
+if [ "${SYSLOG1_SIZE:-0}" -gt 500 ]; then
+    sudo truncate -s 0 /var/log/syslog.1
+    echo "$(date): WARN - syslog.1 truncated (was ${SYSLOG1_SIZE}MB)" >> "$LOG"
+fi

@@ -14,10 +14,16 @@ from typing import Dict, List, Optional
 
 # ロギング設定
 import logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+from logging.handlers import RotatingFileHandler
+_cs_handler = RotatingFileHandler(
+    "/tmp/continuous_sender.log",
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=2,
 )
+_cs_handler.setFormatter(logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+))
+logging.basicConfig(level=logging.INFO, handlers=[_cs_handler])
 logger = logging.getLogger(__name__)
 
 # プロジェクトルートをパスに追加

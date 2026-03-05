@@ -64,6 +64,14 @@ def main():
             emails = extract_emails(url, deep_search=True, smtp_guess=True)
             if emails:
                 email = emails[0]
+                # domain_match_check: メールのドメインが企業ドメインと一致するか検証
+                email_domain = email.split('@')[1].lower() if '@' in email else ''
+                company_domain = domain.lower()
+                # 企業ドメインと完全一致、またはサブドメイン関係にあるか
+                if email_domain != company_domain and not email_domain.endswith('.' + company_domain) and not company_domain.endswith('.' + email_domain):
+                    # 不一致 = 無関係なサイトから拾ったゴミメール
+                    skipped += 1
+                    continue
                 found_emails += 1
                 existing_domains.add(domain.lower())
                 # master_leads.csvと同じ7列: email,company_name,address,stage,last_sent_date,initial_sent_date,除外

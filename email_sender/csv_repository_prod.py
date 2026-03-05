@@ -219,20 +219,37 @@ class ProductionCSVRepository:
                 fieldnames = ["email", "company_name", "address", "stage", "last_sent_date", "initial_sent_date", "除外"]
                 writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
                 writer.writeheader()
+                # 除外フラグ付きレコードのemailを収集（重複防止用）
+                written_emails = set()
                 for recipient in recipients_dict.values():
                     email_lower = recipient.get("email", "").strip().lower()
                     existing = existing_data.get(email_lower, {})
-                    # recipients.csvの形式からmaster_leads.csvの形式に変換
                     row = {
                         "email": recipient.get("email", ""),
                         "company_name": recipient.get("company_name", ""),
-                        "address": recipient.get("address", "") or existing.get("address", ""),  # 既存のaddressを保持
+                        "address": recipient.get("address", "") or existing.get("address", ""),
                         "stage": recipient.get("stage", "initial"),
-                        "last_sent_date": recipient.get("last_sent_date", "") or existing.get("last_sent_date", ""),  # 既存のlast_sent_dateを保持
+                        "last_sent_date": recipient.get("last_sent_date", "") or existing.get("last_sent_date", ""),
                         "initial_sent_date": recipient.get("initial_sent_date", "") or existing.get("initial_sent_date", ""),
                         "除外": existing.get("除外", "") or recipient.get("除外", ""),
                     }
                     writer.writerow(row)
+                    written_emails.add(email_lower)
+                
+                # 除外フラグ付きレコードがload_recipientsで除外されていた場合、ここで復元
+                for ex_row in excluded_rows:
+                    ex_email = ex_row.get("email", "").strip().lower()
+                    if ex_email and ex_email not in written_emails:
+                        writer.writerow({
+                            "email": ex_row.get("email", ""),
+                            "company_name": ex_row.get("company_name", ""),
+                            "address": ex_row.get("address", ""),
+                            "stage": ex_row.get("stage", ""),
+                            "last_sent_date": ex_row.get("last_sent_date", ""),
+                            "initial_sent_date": ex_row.get("initial_sent_date", ""),
+                            "除外": ex_row.get("除外", ""),
+                        })
+                        written_emails.add(ex_email)
         except Exception as e:
             print(f"送信先リストの保存エラー: {e}")
             raise

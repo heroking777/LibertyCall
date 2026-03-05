@@ -36,11 +36,17 @@ try:
 except Exception:
     pass
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+from logging.handlers import RotatingFileHandler
+_gw_handler = RotatingFileHandler(
+    "/tmp/gateway_event_listener.log",
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=2,
 )
+_gw_handler.setFormatter(logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(name)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+))
+logging.basicConfig(level=logging.INFO, handlers=[_gw_handler])
 logger = logging.getLogger(__name__)
 
 sys.excepthook = _evl_excepthook
