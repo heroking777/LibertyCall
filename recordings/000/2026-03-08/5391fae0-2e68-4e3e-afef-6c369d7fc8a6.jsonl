@@ -1,0 +1,40 @@
+{"type": "call_start", "uuid": "5391fae0-2e68-4e3e-afef-6c369d7fc8a6", "caller_number": "08024152649", "client_id": "000", "time": "2026-03-08T15:05:33.246Z"}
+{"type": "asr_interim", "text": "予約", "confidence": 0.0, "time": "2026-03-08T15:05:53.987Z"}
+{"type": "asr_interim", "text": "予約を", "confidence": 0.0, "time": "2026-03-08T15:05:54.208Z"}
+{"type": "asr_interim", "text": "予約をする", "confidence": 0.0, "time": "2026-03-08T15:05:54.292Z"}
+{"type": "asr_interim", "text": "予約をするんです", "confidence": 0.0, "time": "2026-03-08T15:05:54.322Z"}
+{"type": "asr_interim", "text": "予約をするんですけど", "confidence": 0.0, "time": "2026-03-08T15:05:54.483Z"}
+{"type": "response", "text": "予約をするんですけど", "audio_ids": ["0604"], "phase": "QA", "time": "2026-03-08T15:05:54.884Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-03-08T15:05:54.969Z"}
+{"type": "asr_final", "text": "予約をするんですけど", "confidence": 0.3819476366043091, "time": "2026-03-08T15:05:55.388Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-03-08T15:06:00.431Z"}
+{"type": "asr_interim", "text": " 予約", "confidence": 0.0, "time": "2026-03-08T15:06:03.216Z"}
+{"type": "asr_interim", "text": " 予約 遅", "confidence": 0.0, "time": "2026-03-08T15:06:03.610Z"}
+{"type": "asr_interim", "text": " 予約 遅い", "confidence": 0.0, "time": "2026-03-08T15:06:03.624Z"}
+{"type": "asr_interim", "text": " 予約 遅いんです", "confidence": 0.0, "time": "2026-03-08T15:06:03.710Z"}
+{"type": "asr_interim", "text": " 予約 遅いんですけど", "confidence": 0.0, "time": "2026-03-08T15:06:03.808Z"}
+{"type": "response", "text": "予約 遅いんですけど", "audio_ids": ["0604"], "phase": "QA", "time": "2026-03-08T15:06:04.209Z"}
+{"type": "asr_interim", "text": " 予約", "confidence": 0.0, "time": "2026-03-08T15:06:04.301Z"}
+{"type": "asr_interim", "text": " 遅いんですけど", "confidence": 0.0, "time": "2026-03-08T15:06:04.303Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-03-08T15:06:04.305Z"}
+{"type": "asr_interim", "text": " 予約 遅いんですけど", "confidence": 0.0, "time": "2026-03-08T15:06:04.403Z"}
+{"type": "asr_final", "text": " 予約 遅いんですけど", "confidence": 0.646087110042572, "time": "2026-03-08T15:06:04.997Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-03-08T15:06:09.769Z"}
+{"type": "asr_interim", "text": " 予約", "confidence": 0.0, "time": "2026-03-08T15:06:17.835Z"}
+{"type": "asr_interim", "text": " 予約お願い", "confidence": 0.0, "time": "2026-03-08T15:06:18.053Z"}
+{"type": "asr_interim", "text": " 予約お願いし", "confidence": 0.0, "time": "2026-03-08T15:06:18.135Z"}
+{"type": "asr_interim", "text": " 予約お願いします", "confidence": 0.0, "time": "2026-03-08T15:06:18.323Z"}
+{"type": "response", "text": "予約お願いします", "audio_ids": ["099"], "phase": "QA", "time": "2026-03-08T15:06:18.724Z"}
+{"type": "playback_start", "audio_id": "099", "path": "/opt/libertycall/clients/000/audio/099.wav", "time": "2026-03-08T15:06:18.807Z"}
+{"type": "asr_final", "text": " 予約お願いします", "confidence": 0.18908248841762543, "time": "2026-03-08T15:06:19.228Z"}
+{"type": "playback_end", "audio_id": "099", "duration": 0.0, "time": "2026-03-08T15:06:20.957Z"}
+{"type": "asr_interim", "text": " 予約", "confidence": 0.0, "time": "2026-03-08T15:06:25.247Z"}
+{"type": "asr_interim", "text": " 予約お願い", "confidence": 0.0, "time": "2026-03-08T15:06:25.462Z"}
+{"type": "asr_interim", "text": " 予約お願いし", "confidence": 0.0, "time": "2026-03-08T15:06:25.552Z"}
+{"type": "asr_interim", "text": " 予約お願いします", "confidence": 0.0, "time": "2026-03-08T15:06:25.751Z"}
+{"type": "response", "text": "予約お願いします", "audio_ids": ["099"], "phase": "QA", "time": "2026-03-08T15:06:26.151Z"}
+{"type": "playback_start", "audio_id": "099", "path": "/opt/libertycall/clients/000/audio/099.wav", "time": "2026-03-08T15:06:26.203Z"}
+{"type": "asr_interim", "text": " 予約お願いします", "confidence": 0.0, "time": "2026-03-08T15:06:26.340Z"}
+{"type": "asr_final", "text": " 予約お願いします", "confidence": 0.27911823987960815, "time": "2026-03-08T15:06:27.060Z"}
+{"type": "playback_end", "audio_id": "099", "duration": 0.0, "time": "2026-03-08T15:06:28.347Z"}
+{"type": "call_end", "uuid": "5391fae0-2e68-4e3e-afef-6c369d7fc8a6", "duration": 56.7, "time": "2026-03-08T15:06:29.936Z"}
