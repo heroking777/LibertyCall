@@ -1,0 +1,10 @@
+{"type": "call_start", "uuid": "e18ef33e-f452-4472-a86a-76a1338259b3", "caller_number": "0455948282", "client_id": "000", "time": "2026-03-05T01:37:50.090Z"}
+{"type": "asr_interim", "text": "あ", "confidence": 0.0, "time": "2026-03-05T01:38:14.976Z"}
+{"type": "asr_interim", "text": "もし", "confidence": 0.0, "time": "2026-03-05T01:38:15.173Z"}
+{"type": "response", "text": "もしもし", "audio_ids": ["004"], "phase": "QA", "time": "2026-03-05T01:38:15.443Z"}
+{"type": "playback_start", "audio_id": "004", "path": "/opt/libertycall/clients/000/audio/004.wav", "time": "2026-03-05T01:38:15.547Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-03-05T01:38:15.588Z"}
+{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-03-05T01:38:15.916Z"}
+{"type": "asr_final", "text": "もしもし", "confidence": 0.7563297748565674, "time": "2026-03-05T01:38:16.615Z"}
+{"type": "playback_end", "audio_id": "004", "duration": 0.0, "time": "2026-03-05T01:38:16.789Z"}
+{"type": "call_end", "uuid": "e18ef33e-f452-4472-a86a-76a1338259b3", "duration": 29.3, "time": "2026-03-05T01:38:19.398Z"}

@@ -16,7 +16,7 @@ from typing import Dict, List, Optional
 import logging
 from logging.handlers import RotatingFileHandler
 _cs_handler = RotatingFileHandler(
-    "/opt/libertycall/logs/continuous_sender.log",
+    "/tmp/continuous_sender.log",
     maxBytes=10*1024*1024,  # 10MB
     backupCount=2,
 )
@@ -30,7 +30,6 @@ logger = logging.getLogger(__name__)
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from email_sender.pre_send_verify import verify_email
 from email_sender.scheduler_service_prod import load_recipients, send_email_to_recipient, save_recipients, select_recipients_for_today
 from email_sender.sendgrid_analytics import load_daily_limit, update_daily_limit_automatically, save_daily_limit, _load_current_limit_raw
 
@@ -120,17 +119,6 @@ class ContinuousSender:
         # 除外フラグがある場合はスキップ
         if recipient.get("除外", "").strip():
             return False
-        
-        # 送信前SMTP検証
-        try:
-            can_send, reason = verify_email(email)
-            if not can_send:
-                logger.info(f"SMTP検証で除外: {email} ({reason})")
-                recipient["除外"] = f"smtp_verify_{reason}"
-                return False
-        except Exception as e:
-            logger.warning(f"SMTP検証エラー（送信続行）: {email} - {e}")
-        
         try:
             success, error_msg = send_email_to_recipient(recipient, use_simulation=False)
             
@@ -233,11 +221,6 @@ class ContinuousSender:
                 # 進捗を保存（5分ごとまたは送信成功時）
                 if success or (datetime.now() - self.last_save_time).seconds >= 300:
                     self.save_progress(recipients)
-                
-                # SMTP検証で除外された場合は即保存して次へ
-                if not success:
-                    self.save_progress(recipients)
-                    continue
                 
                 # 次の送信までランダム間隔で待機
                 if self.running and self.sent_today < self.daily_limit:

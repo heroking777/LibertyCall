@@ -81,7 +81,7 @@ def load_excluded_emails():
         with open(MASTER_CSV, 'r') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if row.get('除外', '').strip():
+                if (row.get('除外') or '').strip():
                     email = row.get('email', '').strip().lower()
                     if email:
                         excluded.add(email)

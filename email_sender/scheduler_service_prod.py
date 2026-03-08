@@ -81,6 +81,10 @@ def select_recipients_for_today(recipients: List[Dict], limit: int = None) -> Li
     for r in recipients:
         stage = r.get("stage", "initial")
         
+        # 除外フラグがある場合はスキップ
+        if (r.get("除外") or "").strip():
+            continue
+
         # completedステージは除外
         if stage == "completed":
             continue
