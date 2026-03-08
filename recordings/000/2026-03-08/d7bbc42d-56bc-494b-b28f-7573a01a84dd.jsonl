@@ -1,0 +1,11 @@
+{"type": "call_start", "uuid": "d7bbc42d-56bc-494b-b28f-7573a01a84dd", "caller_number": "08024152649", "client_id": "000", "time": "2026-03-08T15:13:21.124Z"}
+{"type": "asr_interim", "text": "予約", "confidence": 0.0, "time": "2026-03-08T15:13:40.589Z"}
+{"type": "asr_interim", "text": "予約を", "confidence": 0.0, "time": "2026-03-08T15:13:40.889Z"}
+{"type": "asr_interim", "text": "予約をしたい", "confidence": 0.0, "time": "2026-03-08T15:13:41.007Z"}
+{"type": "asr_interim", "text": "予約をしたいんです", "confidence": 0.0, "time": "2026-03-08T15:13:41.097Z"}
+{"type": "asr_interim", "text": "予約をしたいんですけど", "confidence": 0.0, "time": "2026-03-08T15:13:41.184Z"}
+{"type": "response", "text": "予約をしたいんですけど", "audio_ids": ["0604"], "phase": "QA", "time": "2026-03-08T15:13:41.585Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-03-08T15:13:41.690Z"}
+{"type": "asr_final", "text": "予約をしたいんですけど", "confidence": 0.6646602153778076, "time": "2026-03-08T15:13:42.279Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-03-08T15:13:47.161Z"}
+{"type": "call_end", "uuid": "d7bbc42d-56bc-494b-b28f-7573a01a84dd", "duration": 27.1, "time": "2026-03-08T15:13:48.240Z"}

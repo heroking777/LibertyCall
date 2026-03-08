@@ -312,7 +312,7 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
     def unmute(self):
         self.muted = False
         self._unmute_time = time.time()
-        self._flush_until = self._unmute_time + 0.2
+        self._flush_until = self._unmute_time + 0.5
         logger.info("[GASR] unmuted uuid=%s flush_until=%.3f", self.uuid, self._flush_until)
         if not self._stream_started:
             self._stream_started = True
