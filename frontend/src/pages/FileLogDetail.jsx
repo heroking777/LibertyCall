@@ -1,181 +1,114 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../api'
-import { API_BASE } from '../config'
-import './FileLogDetail.css'
+
+const API_BASE = api.defaults.baseURL || ''
 
 function FileLogDetail() {
   const { clientId, callId } = useParams()
   const navigate = useNavigate()
+  const [call, setCall] = useState(null)
   const [logs, setLogs] = useState([])
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [callerNumber, setCallerNumber] = useState(null)
-  const [startedAt, setStartedAt] = useState(null)
-  const [summary, setSummary] = useState(null) // 要約表示用
+  const logsEndRef = useRef(null)
 
   useEffect(() => {
-    fetchLogDetail()
-    
-    // 🔹 リアルタイム更新 (SSE)
-    const es = new EventSource(`${API_BASE}/calls/stream?id=${callId}`)
-    
-    es.onmessage = (e) => {
+    const fetchData = async () => {
       try {
-        const data = JSON.parse(e.data)
-        
-        // 接続確認メッセージは無視
-        if (data.type === 'connected') {
-          return
-        }
-        
-        // call_idが一致する場合のみ処理
-        if (data.call_id === callId) {
-          // 要約更新
-          if (data.summary) {
-            setSummary(data.summary)
-          }
-          
-          // イベント（会話ログなど）追加
-          if (data.event) {
-            setLogs(prev => {
-              // 重複チェック（同じtimestamp + role + textの組み合わせを避ける）
-              const exists = prev.some(
-                log => log.timestamp === data.event.timestamp &&
-                       log.role === data.event.role &&
-                       log.text === data.event.text
-              )
-              if (exists) {
-                return prev
-              }
-              return [...prev, data.event]
-            })
-          }
-        }
+        // 通話情報取得
+        const callResp = await api.get(`/live/calls/${callId}`)
+        setCall(callResp.data.call)
+        // ログ取得（DB版）
+        const logsResp = await api.get(`/calls/${callId}/logs`)
+        setLogs(logsResp.data.data || [])
       } catch (err) {
-        console.error('Failed to parse SSE message:', err)
+        // live APIにない場合はlogsだけ取得
+        try {
+          const logsResp = await api.get(`/calls/${callId}/logs`)
+          setLogs(logsResp.data.data || [])
+        } catch (err2) {
+          setError('取得に失敗しました')
+        }
       }
     }
-    
-    es.onerror = (err) => {
-      console.warn('[SSE] Connection error:', err)
-      // エラー時は接続を閉じて再試行しない（通話終了時などは正常）
-    }
-    
-    return () => {
-      es.close()
-    }
-  }, [clientId, callId])
+    fetchData()
+  }, [callId])
 
-  const fetchLogDetail = async () => {
-    setLoading(true)
-    setError(null)
-    setLogs([]) // 古いログをクリア（通話が変わったときに前のログが残らないように）
-    setCallerNumber(null)
-    setStartedAt(null)
-    try {
-      const response = await api.get(`/logs/${clientId}/${callId}`)
-      setLogs(response.data.logs || [])
-      setCallerNumber(response.data.caller_number || null)
-      setStartedAt(response.data.started_at || null)
-    } catch (err) {
-      console.error('Failed to fetch log detail:', err)
-      setError(err.response?.data?.detail || 'ログ詳細の取得に失敗しました')
-    } finally {
-      setLoading(false)
-    }
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [logs])
+
+  const formatTime = (iso) => {
+    if (!iso) return ''
+    const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z')
+    return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   }
 
-  const formatTime = (datetime) => {
-    if (!datetime) return ""
-    const iso = String(datetime).endsWith("Z") ? datetime : datetime + "Z"
-    const d = new Date(iso)
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
-  }
-
-  const formatDateTime = (datetime) => {
-    if (!datetime) return ''
-    const iso = String(datetime).endsWith('Z') ? datetime : datetime + 'Z'
-    const d = new Date(iso)
-    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  }
-
-  const displayNumber = (num) => {
-    if (!num || num === "-") return "番号不明"
-    return num
+  if (error) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center' }}>
+        <p style={{ color: '#ef4444' }}>{error}</p>
+        <button onClick={() => navigate('/console/file-logs')} style={{ marginTop: '1rem', padding: '0.5rem 1rem', cursor: 'pointer' }}>← 一覧に戻る</button>
+      </div>
+    )
   }
 
   return (
-    <div className="file-log-detail">
-      <div className="file-log-header">
-        <button onClick={() => navigate('/console/file-logs')} className="back-btn">
-          ← 一覧に戻る
-        </button>
-        <div className="file-log-title">
-          <h2>
-            通話ログ詳細: {clientId} / {callId}
-          </h2>
-          <div className="file-log-meta">
-            {startedAt && (
-              <div className="meta-item">
-                <span className="meta-label">開始日時:</span>
-                <span className="meta-value">{formatDateTime(startedAt)}</span>
-              </div>
-            )}
-            <div className="meta-item">
-              <span className="meta-label">発信者番号:</span>
-              <span className="meta-value">{displayNumber(callerNumber)}</span>
-            </div>
-          </div>
-          {/* ✅ 要約表示（リアルタイム更新対応） */}
-          {summary && (
-            <div className="meta-item" style={{ marginTop: '10px', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
-              <span className="meta-label" style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>要約:</span>
-              <span className="meta-value" style={{ display: 'block', color: '#666' }}>{summary}</span>
-            </div>
-          )}
-          {/* 録音再生 */}
-          <div className="recording-player" style={{ marginTop: '12px' }}>
-            <span className="meta-label">録音:</span>
-            <audio controls preload="none" style={{ marginLeft: '10px', verticalAlign: 'middle' }}>
-              <source src={`${API_BASE}/logs/${clientId}/${callId}/recording`} type="audio/wav" />
-            </audio>
-          </div>
-        </div>
-      </div>
+    <div style={{ padding: '1.5rem', maxWidth: '800px', margin: '0 auto' }}>
+      <button onClick={() => navigate('/console/file-logs')} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '1rem', marginBottom: '1rem' }}>← 一覧に戻る</button>
 
-      {loading && <div className="loading">読み込み中...</div>}
-      {error && <div className="error">{error}</div>}
+      <h2 style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>
+        通話ログ詳細: {clientId} / {callId}
+      </h2>
 
-      {!loading && !error && (
-        <div className="log-timeline">
-          {logs.length === 0 ? (
-            <div className="no-data">ログがありません</div>
-          ) : (
-            logs.map((log, index) => (
-              <div
-                key={`${log.timestamp}-${log.role}-${index}`}
-                className={`log-entry log-entry-${log.role.toLowerCase()}`}
-              >
-                <div className="log-time">{formatTime(log.timestamp)}</div>
-                <div className="log-content">
-                  <div className="log-role">
-                    {log.role}
-                    {log.role === "AI" && log.template_id && (
-                      <span className="log-template">（{log.template_id}）</span>
-                    )}
-                    :
-                  </div>
-                  <div className="log-text">{log.text}</div>
-                </div>
-              </div>
-            ))
-          )}
+      {call && (
+        <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.9rem' }}>
+          <div><strong>開始日時:</strong> {formatTime(call.started_at)}</div>
+          <div><strong>発信者番号:</strong> {call.caller_number || '不明'}</div>
         </div>
       )}
+
+      <div style={{ marginBottom: '1rem' }}>
+        <strong>録音:</strong>
+        <audio controls style={{ width: '100%', marginTop: '0.5rem' }}>
+          <source src={`${API_BASE}/logs/${clientId}/${callId}/recording`} type="audio/wav" />
+        </audio>
+      </div>
+
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '1rem', minHeight: '300px', maxHeight: '500px', overflowY: 'auto' }}>
+        {logs.length === 0 ? (
+          <p style={{ color: '#9ca3af', textAlign: 'center' }}>ログがありません</p>
+        ) : (
+          logs.map((log, index) => (
+            <div
+              key={`${log.timestamp}-${log.role}-${index}`}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: log.role === 'user' ? 'flex-end' : 'flex-start',
+                marginBottom: '0.75rem',
+              }}
+            >
+              <div style={{
+                maxWidth: '75%',
+                padding: '0.5rem 0.75rem',
+                borderRadius: '12px',
+                backgroundColor: log.role === 'user' ? '#dbeafe' : '#f3f4f6',
+                borderBottomRightRadius: log.role === 'user' ? '4px' : '12px',
+                borderBottomLeftRadius: log.role === 'user' ? '12px' : '4px',
+              }}>
+                <div style={{ fontSize: '0.7rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                  {log.role === 'user' ? 'ユーザー' : 'AI'} {formatTime(log.timestamp)}
+                </div>
+                <div style={{ fontSize: '0.95rem' }}>{log.text}</div>
+              </div>
+            </div>
+          ))
+        )}
+        <div ref={logsEndRef} />
+      </div>
     </div>
   )
 }
 
 export default FileLogDetail
-
