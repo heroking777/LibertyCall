@@ -16,7 +16,7 @@ from typing import Dict, List, Optional
 import logging
 from logging.handlers import RotatingFileHandler
 _cs_handler = RotatingFileHandler(
-    "/opt/libertycall/logs/continuous_sender.log",
+    "/opt/libertycall/email_sender/logs/continuous_sender.log",
     maxBytes=10*1024*1024,  # 10MB
     backupCount=2,
 )
