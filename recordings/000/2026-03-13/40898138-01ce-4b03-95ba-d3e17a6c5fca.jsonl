@@ -1,0 +1,50 @@
+{"type": "call_start", "uuid": "40898138-01ce-4b03-95ba-d3e17a6c5fca", "caller_number": "08011125251", "client_id": "000", "time": "2026-03-13T01:22:52.205Z"}
+{"type": "asr_interim", "text": "そちら", "confidence": 0.0, "time": "2026-03-13T01:23:19.814Z"}
+{"type": "asr_interim", "text": "そちらの", "confidence": 0.0, "time": "2026-03-13T01:23:20.033Z"}
+{"type": "asr_interim", "text": "そちらの商品", "confidence": 0.0, "time": "2026-03-13T01:23:20.222Z"}
+{"type": "asr_interim", "text": "そちらの商品は", "confidence": 0.0, "time": "2026-03-13T01:23:20.524Z"}
+{"type": "asr_interim", "text": "そちらの商品は", "confidence": 0.0, "time": "2026-03-13T01:23:20.808Z"}
+{"type": "asr_interim", "text": " 本", "confidence": 0.0, "time": "2026-03-13T01:23:20.809Z"}
+{"type": "asr_interim", "text": "そちらの商品は本物", "confidence": 0.0, "time": "2026-03-13T01:23:20.826Z"}
+{"type": "asr_interim", "text": "そちらの商品は本物です", "confidence": 0.0, "time": "2026-03-13T01:23:21.009Z"}
+{"type": "asr_interim", "text": "そちらの商品は本物ですか", "confidence": 0.0, "time": "2026-03-13T01:23:21.215Z"}
+{"type": "response", "text": "そちらの商品は本物ですか", "audio_ids": ["114"], "phase": "QA", "time": "2026-03-13T01:23:21.621Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-03-13T01:23:21.663Z"}
+{"type": "asr_final", "text": "そちらの商品は本物ですか", "confidence": 0.9130339026451111, "time": "2026-03-13T01:23:22.118Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-03-13T01:23:23.879Z"}
+{"type": "asr_interim", "text": " 仏", "confidence": 0.0, "time": "2026-03-13T01:23:25.966Z"}
+{"type": "asr_interim", "text": " 仏壇", "confidence": 0.0, "time": "2026-03-13T01:23:26.048Z"}
+{"type": "asr_interim", "text": " 仏壇の", "confidence": 0.0, "time": "2026-03-13T01:23:26.150Z"}
+{"type": "asr_interim", "text": " 仏壇の商品", "confidence": 0.0, "time": "2026-03-13T01:23:26.285Z"}
+{"type": "asr_interim", "text": " 仏壇の商品は", "confidence": 0.0, "time": "2026-03-13T01:23:26.577Z"}
+{"type": "asr_interim", "text": " 仏壇の商品は", "confidence": 0.0, "time": "2026-03-13T01:23:26.948Z"}
+{"type": "asr_interim", "text": " 本", "confidence": 0.0, "time": "2026-03-13T01:23:26.948Z"}
+{"type": "asr_interim", "text": " 仏壇の商品は本物", "confidence": 0.0, "time": "2026-03-13T01:23:26.964Z"}
+{"type": "asr_interim", "text": " 仏壇の商品は本物です", "confidence": 0.0, "time": "2026-03-13T01:23:27.153Z"}
+{"type": "asr_interim", "text": " 仏壇の商品は本物ですか", "confidence": 0.0, "time": "2026-03-13T01:23:27.257Z"}
+{"type": "response", "text": "仏壇の商品は本物ですか", "audio_ids": ["0604"], "phase": "transfer_confirm", "time": "2026-03-13T01:23:27.657Z"}
+{"type": "playback_start", "audio_id": "0604", "path": "/opt/libertycall/clients/000/audio/0604.wav", "time": "2026-03-13T01:23:27.674Z"}
+{"type": "asr_final", "text": " 仏壇の商品は本物ですか", "confidence": 0.90800541639328, "time": "2026-03-13T01:23:28.347Z"}
+{"type": "playback_end", "audio_id": "0604", "duration": 0.0, "time": "2026-03-13T01:23:33.198Z"}
+{"type": "asr_interim", "text": " 大丈夫", "confidence": 0.0, "time": "2026-03-13T01:23:50.890Z"}
+{"type": "asr_interim", "text": " 大丈夫です", "confidence": 0.0, "time": "2026-03-13T01:23:51.189Z"}
+{"type": "asr_interim", "text": " 大丈夫ですよ", "confidence": 0.0, "time": "2026-03-13T01:23:51.389Z"}
+{"type": "response", "text": "大丈夫ですよ", "audio_ids": ["086", "087"], "phase": "transfer_confirm", "time": "2026-03-13T01:23:51.790Z"}
+{"type": "playback_start", "audio_id": "086", "path": "/opt/libertycall/clients/000/audio/086.wav", "time": "2026-03-13T01:23:51.805Z"}
+{"type": "playback_start", "audio_id": "087", "path": "/opt/libertycall/clients/000/audio/087.wav", "time": "2026-03-13T01:23:51.819Z"}
+{"type": "asr_interim", "text": " 大丈夫ですよ", "confidence": 0.0, "time": "2026-03-13T01:23:51.993Z"}
+{"type": "asr_interim", "text": " 大丈夫ですよ", "confidence": 0.0, "time": "2026-03-13T01:23:52.023Z"}
+{"type": "asr_interim", "text": " つない", "confidence": 0.0, "time": "2026-03-13T01:23:52.024Z"}
+{"type": "asr_interim", "text": " 大丈夫ですよ", "confidence": 0.0, "time": "2026-03-13T01:23:52.103Z"}
+{"type": "asr_interim", "text": " つないで", "confidence": 0.0, "time": "2026-03-13T01:23:52.104Z"}
+{"type": "asr_interim", "text": " 大丈夫ですよ", "confidence": 0.0, "time": "2026-03-13T01:23:52.392Z"}
+{"type": "asr_interim", "text": " つないでください", "confidence": 0.0, "time": "2026-03-13T01:23:52.392Z"}
+{"type": "asr_interim", "text": " 大丈夫ですよ つないでください", "confidence": 0.0, "time": "2026-03-13T01:23:52.978Z"}
+{"type": "response", "text": " つないでください", "audio_ids": ["114"], "phase": "transfer_confirm", "time": "2026-03-13T01:23:53.379Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-03-13T01:23:53.394Z"}
+{"type": "asr_final", "text": " 大丈夫ですよ つないでください", "confidence": 0.8344500064849854, "time": "2026-03-13T01:23:53.597Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-03-13T01:23:55.608Z"}
+{"type": "playback_end", "audio_id": "086", "duration": 0.0, "time": "2026-03-13T01:23:55.638Z"}
+{"type": "playback_end", "audio_id": "087", "duration": 0.0, "time": "2026-03-13T01:23:55.638Z"}
+{"type": "action", "action": "hangup", "time": "2026-03-13T01:23:55.639Z"}
+{"type": "call_end", "uuid": "40898138-01ce-4b03-95ba-d3e17a6c5fca", "duration": 63.7, "time": "2026-03-13T01:23:55.860Z"}

@@ -11,9 +11,12 @@ add_alert() {
 if ! fs_cli -x "status" > /dev/null 2>&1; then
     echo "$(date): WARN - FreeSWITCH down, restarting" >> "$LOG"
     sudo systemctl restart freeswitch
-    sleep 5
+    sleep 15
     if ! fs_cli -x "status" > /dev/null 2>&1; then
-        add_alert "FreeSWITCH restart FAILED"
+        sleep 10
+        if ! fs_cli -x "status" > /dev/null 2>&1; then
+            add_alert "FreeSWITCH restart FAILED"
+        fi
     fi
 fi
 

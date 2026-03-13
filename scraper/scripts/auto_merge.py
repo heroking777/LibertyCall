@@ -57,7 +57,7 @@ def is_valid_email(email):
         return False
     if len(email) < 6 or len(email) > 254:
         return False
-    if domain.lower() in INVALID_DOMAINS:
+    if domain.lower() in INVALID_DOMAINS or domain.lower() in COMPETITOR_DOMAINS:
         return False
     for tld in INVALID_TLDS:
         if domain.lower().endswith(tld):
@@ -65,7 +65,32 @@ def is_valid_email(email):
     for pat in INVALID_EMAIL_PATTERNS:
         if re.search(pat, email.lower()):
             return False
+    # 画像・メディアファイル拡張子
+    MEDIA_EXTS = ('.webp','.jpeg','.jpg','.png','.gif','.svg','.avif','.ico','.css','.js','.pdf','.mp4','.mp3')
+    if any(email.lower().endswith(ext) for ext in MEDIA_EXTS):
+        return False
+    # srcsetパターン (@2x, 300x171 等)
+    if re.search(r'@\d+x\.', email) or re.search(r'\d+x\d+', email):
+        return False
+    # ローカルパートが数字のみで6文字超
+    if re.match(r'^[\d]+$', local) and len(local) > 6:
+        return False
+    # ハッシュ文字列 (10956296.cf7a03bb... 等)
+    if re.match(r'^[0-9a-f]{6,}\.[0-9a-f]{6,}', local):
+        return False
     return True
+
+# 競合ドメインリスト読み込み
+COMPETITOR_DOMAINS = set()
+_comp_path = '/opt/libertycall/scraper/data/competitor_domains.txt'
+try:
+    with open(_comp_path, 'r') as _f:
+        for _line in _f:
+            _d = _line.strip().lower()
+            if _d:
+                COMPETITOR_DOMAINS.add(_d)
+except FileNotFoundError:
+    pass
 
 def load_excluded_emails():
     """除外すべきメールアドレスを収集"""
