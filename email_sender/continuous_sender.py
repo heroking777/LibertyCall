@@ -6,7 +6,9 @@
 import time
 import random
 import signal
+import fcntl
 import sys
+import os
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -39,6 +41,17 @@ class ContinuousSender:
     """24時間分散送信デーモン"""
     
     def __init__(self, max_daily_limit: int = 5000):
+        # 二重起動防止（flockベース）
+        self._lock_file = open('/tmp/continuous_sender.lock', 'w')
+        try:
+            fcntl.flock(self._lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self._lock_file.write(str(os.getpid()))
+            self._lock_file.flush()
+        except BlockingIOError:
+            print("ERROR: continuous_sender は既に実行中です。二重起動を防止しました。")
+            logger.error("二重起動検出。既にプロセスが実行中のため終了します。")
+            sys.exit(1)
+        
         self.max_daily_limit = max_daily_limit
         self.daily_limit = 50  # 初期値
         self.sent_today = 0

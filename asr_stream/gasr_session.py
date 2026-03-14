@@ -302,6 +302,16 @@ class GoogleStreamingSession(GASRDialogHandlerMixin):
                 self._esl.send("noevents")
                 self._esl.recvEvent()  # consume reply
                 logger.info("[ESL] connected uuid=%s", self.uuid)
+                # caller_number再取得（初回ESL失敗時のフォールバック）
+                if hasattr(self, 'call_logger') and self.call_logger and self.call_logger.caller_number == "番号不明":
+                    try:
+                        cn_result = self._esl.api(f"uuid_getvar {self.uuid} caller_id_number")
+                        cn_body = cn_result.getBody().strip() if cn_result else ""
+                        if cn_body and cn_body != "_undef_" and cn_body != "" and len(cn_body) > 3:
+                            self.call_logger.update_caller_number(cn_body)
+                            logger.info("[ESL] caller_number recovered=%s uuid=%s", cn_body, self.uuid)
+                    except Exception as e:
+                        logger.warning("[ESL] caller_number recovery failed uuid=%s err=%s", self.uuid, e)
             else:
                 logger.error("[ESL] connection failed uuid=%s", self.uuid)
                 self._esl = None

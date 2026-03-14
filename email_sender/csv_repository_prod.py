@@ -201,22 +201,24 @@ class ProductionCSVRepository:
             # 既存のmaster_leads.csvを読み込んで、address、last_sent_date、initial_sent_dateフィールドを保持
             existing_data = {}
             excluded_rows = []
+            original_fieldnames = None
             if self.recipients_file.exists():
                 with open(self.recipients_file, "r", encoding="utf-8", newline="") as f:
                     reader = csv.DictReader(f)
+                    original_fieldnames = reader.fieldnames
                     for row in reader:
                         email = row.get("email", "").strip().lower()
                         if email:
-                            existing_data[email] = {
-                                "address": row.get("address", "").strip(),
-                                "last_sent_date": row.get("last_sent_date", "").strip(),
-                                "initial_sent_date": row.get("initial_sent_date", "").strip(), "除外": row.get("除外", "").strip()
-                            }
+                            existing_data[email] = dict(row)
                             if row.get("除外", "").strip():
                                 excluded_rows.append(row)
             
             with open(self.recipients_file, "w", encoding="utf-8", newline="") as f:
                 fieldnames = ["email", "company_name", "address", "stage", "last_sent_date", "initial_sent_date", "除外"]
+                if original_fieldnames:
+                    for ef in original_fieldnames:
+                        if ef and ef not in fieldnames:
+                            fieldnames.append(ef)
                 writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
                 writer.writeheader()
                 # 除外フラグ付きレコードのemailを収集（重複防止用）
@@ -233,6 +235,10 @@ class ProductionCSVRepository:
                         "initial_sent_date": recipient.get("initial_sent_date", "") or existing.get("initial_sent_date", ""),
                         "除外": existing.get("除外", "") or recipient.get("除外", ""),
                     }
+                    # 追加カラム（phone, tel_called等）を保持
+                    for ef in fieldnames:
+                        if ef not in row:
+                            row[ef] = existing.get(ef, "")
                     writer.writerow(row)
                     written_emails.add(email_lower)
                 
@@ -240,7 +246,7 @@ class ProductionCSVRepository:
                 for ex_row in excluded_rows:
                     ex_email = ex_row.get("email", "").strip().lower()
                     if ex_email and ex_email not in written_emails:
-                        writer.writerow({
+                        ex_out = {
                             "email": ex_row.get("email", ""),
                             "company_name": ex_row.get("company_name", ""),
                             "address": ex_row.get("address", ""),
@@ -248,7 +254,11 @@ class ProductionCSVRepository:
                             "last_sent_date": ex_row.get("last_sent_date", ""),
                             "initial_sent_date": ex_row.get("initial_sent_date", ""),
                             "除外": ex_row.get("除外", ""),
-                        })
+                        }
+                        for ef in fieldnames:
+                            if ef not in ex_out:
+                                ex_out[ef] = ex_row.get(ef, "")
+                        writer.writerow(ex_out)
                         written_emails.add(ex_email)
         except Exception as e:
             print(f"送信先リストの保存エラー: {e}")

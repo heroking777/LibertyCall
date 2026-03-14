@@ -123,6 +123,25 @@ class CallLogger:
                     logger.warning("[CALL_LOG] bridge mark_transfer failed: %s", e)
         self._bridge_log("system", f"action:{action}", "active")
 
+
+    def update_caller_number(self, caller_number: str):
+        """caller_numberを後から更新（ESLリトライ用）"""
+        if caller_number and caller_number != "番号不明" and self.caller_number == "番号不明":
+            self.caller_number = caller_number
+            logger.info(f"[CALL_LOGGER] caller_number updated to {caller_number} uuid={self.uuid}")
+            self._write({"type": "caller_update", "caller_number": caller_number})
+            try:
+                from console_bridge import _bridge
+                if _bridge and _bridge._service_client:
+                    import httpx
+                    _bridge._service_client.patch(
+                        f"/api/calls/{self.uuid}",
+                        json={"caller_number": caller_number}
+                    )
+                    logger.info(f"[CALL_LOGGER] DB caller_number updated uuid={self.uuid}")
+            except Exception as e:
+                logger.warning(f"[CALL_LOGGER] DB update failed: {e}")
+
     def close(self):
         elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds()
         self._write({

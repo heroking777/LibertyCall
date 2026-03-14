@@ -134,17 +134,23 @@ class WSSinkServer:
         try:
             client_id = self._get_client_id_from_uuid(call_uuid)
             logger.info(f"[WS_SERVER] uuid={call_uuid} dest_number mapped to client_id={client_id}")
-            # 発信者番号を取得
+            # 発信者番号を取得（ESL接続リトライ付き）
             caller_number = "番号不明"
-            try:
-                if self.esl and self.esl.connected():
-                    cn_result = self.esl.api(f"uuid_getvar {call_uuid} caller_id_number")
-                    cn_body = cn_result.getBody().strip() if cn_result else ""
-                    if cn_body and cn_body != "_undef_" and cn_body != "NONE":
-                        caller_number = cn_body
-                    logger.info(f"[WS_SERVER] caller_number={caller_number} for uuid={call_uuid}")
-            except Exception as e:
-                logger.warning(f"[WS_SERVER] Failed to get caller_number: {e}")
+            for _attempt in range(3):
+                try:
+                    from libs.esl.ESL import ESLconnection
+                    _esl_tmp = ESLconnection("127.0.0.1", "8021", "ClueCon")
+                    if _esl_tmp.connected():
+                        cn_result = _esl_tmp.api(f"uuid_getvar {call_uuid} caller_id_number")
+                        cn_body = cn_result.getBody().strip() if cn_result else ""
+                        if cn_body and cn_body != "_undef_" and cn_body != "NONE":
+                            caller_number = cn_body
+                        _esl_tmp.disconnect()
+                        logger.info(f"[WS_SERVER] caller_number={caller_number} for uuid={call_uuid}")
+                        break
+                except Exception as e:
+                    logger.warning(f"[WS_SERVER] caller_number attempt {_attempt+1} failed: {e}")
+                    import time; time.sleep(0.5)
             call_logger = CallLogger(call_uuid, client_id, caller_number=caller_number)
             
             # === 両方向録音開始（ESL経由 uuid_record） ===
