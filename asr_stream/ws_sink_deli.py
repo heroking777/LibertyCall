@@ -1,3 +1,10 @@
+import os
+
+# ESL接続設定
+ESL_HOST = os.environ.get("AF_ESL_HOST", "127.0.0.1")
+ESL_PORT = int(os.environ.get("AF_ESL_PORT", "8021"))
+ESL_PASSWORD = os.environ.get("AF_ESL_PASSWORD", "ClueCon")
+
 #!/usr/bin/env python3
 """
 ws_sink_deli.py - デリヘル専用ASR WebSocket Server
@@ -306,9 +313,9 @@ class DeliASRSession:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(3)
-            sock.connect(("127.0.0.1", 8021))
+            sock.connect((ESL_HOST, ESL_PORT))
             sock.recv(1024)  # auth request
-            sock.sendall(b"auth ClueCon\n\n")
+            sock.sendall(f"auth {ESL_PASSWORD}\n\n".encode())
             sock.recv(1024)  # auth reply
             sock.sendall(f"{cmd}\n\n".encode())
             resp = sock.recv(4096).decode()
@@ -325,9 +332,9 @@ class DeliASRSession:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(3)
-            sock.connect(("127.0.0.1", 8021))
+            sock.connect((ESL_HOST, ESL_PORT))
             sock.recv(1024)
-            sock.sendall(b"auth ClueCon\n\n")
+            sock.sendall(f"auth {ESL_PASSWORD}\n\n".encode())
             sock.recv(1024)
             cmd = f"api uuid_getvar {self.call_uuid} {var_name}"
             sock.sendall(f"{cmd}\n\n".encode())
@@ -511,9 +518,9 @@ class DeliASRSession:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(3)
-            sock.connect(("127.0.0.1", 8021))
+            sock.connect((ESL_HOST, ESL_PORT))
             sock.recv(1024)
-            sock.sendall(b"auth ClueCon\n\n")
+            sock.sendall(f"auth {ESL_PASSWORD}\n\n".encode())
             sock.recv(1024)
             msg = (
                 f"sendmsg {self.call_uuid}\n"
