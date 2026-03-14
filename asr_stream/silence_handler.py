@@ -6,6 +6,12 @@ import sys
 import threading
 import time
 
+# ESL接続設定（環境変数から取得）
+ESL_HOST = os.environ.get("AF_ESL_HOST", "127.0.0.1")
+ESL_PORT = os.environ.get("AF_ESL_PORT", "8021")
+ESL_PASSWORD = os.environ.get("AF_ESL_PASSWORD", "ClueCon")
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,7 +49,7 @@ class SilenceHandler:
         try:
             sys.path.insert(0, '/opt/libertycall')
             from libs.esl.ESL import ESLconnection
-            self.esl = ESLconnection("127.0.0.1", "8021", "ClueCon")
+            self.esl = ESLconnection(ESL_HOST, ESL_PORT, ESL_PASSWORD)
             if self.esl.connected():
                 self.esl.send("noevents")
                 self.esl.recvEvent()  # consume reply

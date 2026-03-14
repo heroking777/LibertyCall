@@ -20,14 +20,11 @@ if ! fs_cli -x "status" > /dev/null 2>&1; then
     fi
 fi
 
-# 2. ws_sink (port 9000)
+# 2. ws_sink (port 9000) - systemd管理
 if ! ss -tlnp | grep -q ":9000 "; then
-    echo "$(date): WARN - ws_sink (9000) down, restarting" >> "$LOG"
-    pkill -f "python.*ws_sink" 2>/dev/null; sleep 3
-    # ポート9002(raw_server)が残っていたら強制解放
-    fuser -k 9002/tcp 2>/dev/null; sleep 1
-    cd /opt/libertycall/asr_stream && nohup env LIBERTYCALL_CONSOLE_ENABLED=true LIBERTYCALL_CONSOLE_API_BASE_URL=http://localhost:8001 PYTHONPATH=/opt:/opt/libertycall/asr_stream GOOGLE_APPLICATION_CREDENTIALS=/opt/libertycall/key/google_tts.json /opt/libertycall/venv/bin/python3 -u ws_sink.py > /tmp/ws_sink_debug.log 2>&1 &
-    sleep 5
+    echo "$(date): WARN - ws_sink (9000) down, restarting via systemd" >> "$LOG"
+    sudo systemctl restart ws-sink
+    sleep 10
     if ! ss -tlnp | grep -q ":9000 "; then
         add_alert "ws_sink restart FAILED"
     fi
@@ -45,17 +42,14 @@ if [ "$GW_STATE" != "REGED" ] && [ "$GW_STATE" != "" ]; then
     fi
 fi
 
-# 4. ws_sink メモリ異常チェック
+# 4. ws_sink メモリ異常チェック - systemd管理
 WS_PID=$(pgrep -f "ws_sink.py" | head -1)
 if [ -n "$WS_PID" ]; then
     MEM=$(ps -o rss= -p "$WS_PID" 2>/dev/null | tr -d ' ')
     if [ -n "$MEM" ] && [ "$MEM" -gt 2097152 ]; then
-        kill "$WS_PID"
-        sleep 3
-        pkill -f "python.*ws_sink" 2>/dev/null; sleep 1
-        fuser -k 9002/tcp 2>/dev/null; sleep 1
-        cd /opt/libertycall/asr_stream && nohup env LIBERTYCALL_CONSOLE_ENABLED=true LIBERTYCALL_CONSOLE_API_BASE_URL=http://localhost:8001 PYTHONPATH=/opt:/opt/libertycall/asr_stream GOOGLE_APPLICATION_CREDENTIALS=/opt/libertycall/key/google_tts.json /opt/libertycall/venv/bin/python3 -u ws_sink.py > /tmp/ws_sink_debug.log 2>&1 &
-        sleep 5
+        echo "$(date): WARN - ws_sink memory ${MEM}KB > 2GB, restarting via systemd" >> "$LOG"
+        sudo systemctl restart ws-sink
+        sleep 10
         if ! ss -tlnp | grep -q ":9000 "; then
             add_alert "ws_sink memory restart FAILED (was ${MEM}KB)"
         fi

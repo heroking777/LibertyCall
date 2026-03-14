@@ -18,6 +18,12 @@ from websockets import exceptions as ws_exceptions
 
 from speech_client_manager import SpeechClientManager
 
+# ESL接続設定（環境変数から取得）
+ESL_HOST = os.environ.get("AF_ESL_HOST", "127.0.0.1")
+ESL_PORT = os.environ.get("AF_ESL_PORT", "8021")
+ESL_PASSWORD = os.environ.get("AF_ESL_PASSWORD", "ClueCon")
+
+
 # importをファイル先頭で一度だけ実行
 sys.path.insert(0, '/opt/libertycall')
 from gateway.dialogue.dialogue_flow import get_response, get_action
@@ -75,7 +81,7 @@ class WSSinkServer:
             sys.path.insert(0, '/opt/libertycall')
             from libs.esl.ESL import ESLconnection
             for attempt in range(10):
-                self.esl = ESLconnection("127.0.0.1", "8021", "ClueCon")
+                self.esl = ESLconnection(ESL_HOST, ESL_PORT, ESL_PASSWORD)
                 if self.esl.connected():
                     break
                 logger.warning("[WS_SERVER] ESL connect attempt %d/10 failed, retrying in 3s...", attempt+1)
@@ -139,7 +145,7 @@ class WSSinkServer:
             for _attempt in range(3):
                 try:
                     from libs.esl.ESL import ESLconnection
-                    _esl_tmp = ESLconnection("127.0.0.1", "8021", "ClueCon")
+                    _esl_tmp = ESLconnection(ESL_HOST, ESL_PORT, ESL_PASSWORD)
                     if _esl_tmp.connected():
                         cn_result = _esl_tmp.api(f"uuid_getvar {call_uuid} caller_id_number")
                         cn_body = cn_result.getBody().strip() if cn_result else ""
@@ -240,11 +246,47 @@ async def main():
                 logger.info(f"[WARMUP] Skipping warmup - {len(server._active_sessions)} active sessions")
     
     asyncio.create_task(periodic_warmup())
+    global _server_instance
     server_instance = await websockets.serve(server.handle_client, host="0.0.0.0", port=9000, ping_interval=None, max_size=None)
+    _server_instance = server_instance
     logger.error("WSSink server started successfully")
     await server_instance.wait_closed()
 
+_server_instance = None
+_raw_srv = None
+
+def _graceful_shutdown(signum, frame):
+    """SIGTERMハンドラ: ポートを確実に解放して終了"""
+    import signal as _sig
+    logger.info(f"[SHUTDOWN] signal={signum} received, cleaning up...")
+    
+    # raw_server停止
+    global _raw_srv
+    if _raw_srv:
+        try:
+            _raw_srv.shutdown()
+            _raw_srv.server_close()
+            logger.info("[SHUTDOWN] raw_server closed")
+        except Exception as e:
+            logger.warning(f"[SHUTDOWN] raw_server close error: {e}")
+    
+    # WebSocketサーバー停止
+    global _server_instance
+    if _server_instance:
+        try:
+            _server_instance.close()
+            logger.info("[SHUTDOWN] websocket server closed")
+        except Exception as e:
+            logger.warning(f"[SHUTDOWN] websocket close error: {e}")
+    
+    logger.info("[SHUTDOWN] cleanup complete, exiting")
+    import sys
+    sys.exit(0)
+
 if __name__ == "__main__":
+    import signal
+    signal.signal(signal.SIGTERM, _graceful_shutdown)
+    signal.signal(signal.SIGINT, _graceful_shutdown)
     _raw_srv = start_raw_server()
     asyncio.run(main())
 

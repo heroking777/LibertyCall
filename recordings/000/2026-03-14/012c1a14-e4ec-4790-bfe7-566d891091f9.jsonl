@@ -1,1 +1,2 @@
 {"type": "call_start", "uuid": "012c1a14-e4ec-4790-bfe7-566d891091f9", "caller_number": "08024152649", "client_id": "000", "time": "2026-03-14T14:10:24.080Z"}
+{"type": "call_end", "uuid": "012c1a14-e4ec-4790-bfe7-566d891091f9", "duration": 24.6, "time": "2026-03-14T14:10:48.659Z"}

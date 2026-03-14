@@ -1,5 +1,6 @@
 """AF RAW MODE ADDON (nohang) - デバッグ用TCPサーバー"""
 import os
+import socket
 import socketserver
 import threading
 import time
@@ -48,6 +49,14 @@ class _RawHandler(socketserver.BaseRequestHandler):
 
 class _ReusableTCPServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
+
+    def server_bind(self):
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except Exception:
+            pass
+        self.socket.bind(self.server_address)
 
 
 def start_raw_server():
