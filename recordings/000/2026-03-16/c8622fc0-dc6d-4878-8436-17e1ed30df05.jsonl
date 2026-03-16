@@ -1,0 +1,42 @@
+{"type": "call_start", "uuid": "c8622fc0-dc6d-4878-8436-17e1ed30df05", "caller_number": "08024152649", "client_id": "000", "time": "2026-03-16T09:18:33.961Z"}
+{"type": "asr_interim", "text": "け", "confidence": 0.0, "time": "2026-03-16T09:18:53.138Z"}
+{"type": "asr_interim", "text": "ケツ", "confidence": 0.0, "time": "2026-03-16T09:18:53.234Z"}
+{"type": "asr_interim", "text": "ケツが", "confidence": 0.0, "time": "2026-03-16T09:18:53.330Z"}
+{"type": "asr_interim", "text": "ケツが痛", "confidence": 0.0, "time": "2026-03-16T09:18:53.430Z"}
+{"type": "asr_interim", "text": "ケツが痛く", "confidence": 0.0, "time": "2026-03-16T09:18:53.446Z"}
+{"type": "asr_interim", "text": "ケツが痛くて", "confidence": 0.0, "time": "2026-03-16T09:18:53.627Z"}
+{"type": "asr_interim", "text": "ケツが痛くてうん", "confidence": 0.0, "time": "2026-03-16T09:18:53.733Z"}
+{"type": "asr_interim", "text": "ケツが痛くてうんこ", "confidence": 0.0, "time": "2026-03-16T09:18:53.926Z"}
+{"type": "asr_interim", "text": "ケツが痛くてうんこが", "confidence": 0.0, "time": "2026-03-16T09:18:54.026Z"}
+{"type": "asr_interim", "text": "ケツが痛くてうんこがし", "confidence": 0.0, "time": "2026-03-16T09:18:54.060Z"}
+{"type": "asr_interim", "text": "ケツが痛くてうんこがしたい", "confidence": 0.0, "time": "2026-03-16T09:18:54.142Z"}
+{"type": "asr_interim", "text": "ケツが痛くてうんこがしたいんです", "confidence": 0.0, "time": "2026-03-16T09:18:54.241Z"}
+{"type": "asr_interim", "text": "ケツが痛くてうんこがしたいんですけど", "confidence": 0.0, "time": "2026-03-16T09:18:54.328Z"}
+{"type": "response", "text": "ケツが痛くてうんこがしたいんですけど", "audio_ids": ["114"], "phase": "QA", "time": "2026-03-16T09:18:54.730Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-03-16T09:18:54.793Z"}
+{"type": "asr_interim", "text": "ケツが痛くてうんこがしたいんですけど", "confidence": 0.0, "time": "2026-03-16T09:18:54.931Z"}
+{"type": "asr_final", "text": "ケツが痛くてうんこがしたいんですけど", "confidence": 0.5729973912239075, "time": "2026-03-16T09:18:55.425Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-03-16T09:18:57.056Z"}
+{"type": "asr_interim", "text": "契約", "confidence": 0.0, "time": "2026-03-16T09:19:00.073Z"}
+{"type": "asr_interim", "text": "契約上", "confidence": 0.0, "time": "2026-03-16T09:19:00.366Z"}
+{"type": "asr_interim", "text": " 契約上限", "confidence": 0.0, "time": "2026-03-16T09:19:00.450Z"}
+{"type": "asr_interim", "text": "契約上限に", "confidence": 0.0, "time": "2026-03-16T09:19:00.558Z"}
+{"type": "asr_interim", "text": "契約上限について", "confidence": 0.0, "time": "2026-03-16T09:19:00.713Z"}
+{"type": "response", "text": "契約上限について", "audio_ids": ["081"], "phase": "QA", "time": "2026-03-16T09:19:01.116Z"}
+{"type": "asr_interim", "text": "契約上限について改", "confidence": 0.0, "time": "2026-03-16T09:19:01.174Z"}
+{"type": "playback_start", "audio_id": "081", "path": "/opt/libertycall/clients/000/audio/081.wav", "time": "2026-03-16T09:19:01.175Z"}
+{"type": "playback_end", "audio_id": "081", "duration": 0.0, "time": "2026-03-16T09:19:01.263Z"}
+{"type": "action", "action": "transfer", "time": "2026-03-16T09:19:01.270Z"}
+{"type": "asr_interim", "text": "契約上限について", "confidence": 0.0, "time": "2026-03-16T09:19:01.273Z"}
+{"type": "asr_interim", "text": " 改めて", "confidence": 0.0, "time": "2026-03-16T09:19:01.274Z"}
+{"type": "response", "text": "改めて", "audio_ids": ["114"], "phase": "QA", "time": "2026-03-16T09:19:02.075Z"}
+{"type": "playback_start", "audio_id": "114", "path": "/opt/libertycall/clients/000/audio/114.wav", "time": "2026-03-16T09:19:02.115Z"}
+{"type": "asr_interim", "text": "契約上限について", "confidence": 0.0, "time": "2026-03-16T09:19:02.447Z"}
+{"type": "asr_interim", "text": " 改めてお", "confidence": 0.0, "time": "2026-03-16T09:19:02.450Z"}
+{"type": "asr_interim", "text": "契約上限について", "confidence": 0.0, "time": "2026-03-16T09:19:02.690Z"}
+{"type": "asr_interim", "text": " 改めてお伺い", "confidence": 0.0, "time": "2026-03-16T09:19:02.692Z"}
+{"type": "asr_interim", "text": "契約上限について", "confidence": 0.0, "time": "2026-03-16T09:19:03.125Z"}
+{"type": "asr_interim", "text": " 改めてお伺いし", "confidence": 0.0, "time": "2026-03-16T09:19:03.126Z"}
+{"type": "playback_end", "audio_id": "114", "duration": 0.0, "time": "2026-03-16T09:19:04.364Z"}
+{"type": "asr_final", "text": "契約上限について 改めてお伺いします", "confidence": 0.7394375801086426, "time": "2026-03-16T09:19:04.971Z"}
+{"type": "call_end", "uuid": "c8622fc0-dc6d-4878-8436-17e1ed30df05", "duration": 32.8, "time": "2026-03-16T09:19:06.763Z"}

@@ -12,17 +12,35 @@ logger = logging.getLogger(__name__)
 # クライアント設定キャッシュ
 _config_cache: Dict[str, dict] = {}
 
+_config_mtime = {}
+
+def clear_config_cache(client_id: str = None):
+    """設定キャッシュをクリア"""
+    if client_id:
+        _config_cache.pop(client_id, None)
+        _config_mtime.pop(client_id, None)
+    else:
+        _config_cache.clear()
+        _config_mtime.clear()
+    logger.info(f"[DIALOGUE] Config cache cleared: {client_id or 'all'}")
+
 def load_client_config(client_id: str) -> dict:
-    """クライアント設定を読み込む（キャッシュ付き）"""
-    if client_id in _config_cache:
+    """クライアント設定を読み込む（ファイル更新時に自動リロード）"""
+    config_path = f"/opt/libertycall/clients/{client_id}/config/dialogue_config.json"
+    try:
+        mtime = os.path.getmtime(config_path)
+    except OSError:
+        mtime = 0
+    
+    if client_id in _config_cache and _config_mtime.get(client_id) == mtime:
         return _config_cache[client_id]
     
-    config_path = f"/opt/libertycall/clients/{client_id}/config/dialogue_config.json"
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
             _config_cache[client_id] = config
-            logger.info(f"[DIALOGUE] Loaded config for client {client_id}")
+            _config_mtime[client_id] = mtime
+            logger.info(f"[DIALOGUE] Loaded config for client {client_id} (mtime={mtime})")
             return config
     except Exception as e:
         logger.warning(f"[DIALOGUE] Config not found for {client_id}, using default: {e}")
@@ -161,6 +179,16 @@ def get_response(
     default = config.get("default_response", "114")
     logger.info(f"[DIALOGUE] default response: {default}")
     
+    # transfer_confirmフェーズで2回マッチしなかったら強制転送
+    if phase == "transfer_confirm":
+        tc_retry = state.get('transfer_confirm_retry', 0)
+        if tc_retry >= 1:
+            logger.info(f"[DIALOGUE] transfer_confirm retry exceeded ({tc_retry}), forcing transfer")
+            state['action'] = 'transfer'
+            state['transfer_confirm_retry'] = 0
+            return ['081'], 'QA', state
+        state['transfer_confirm_retry'] = tc_retry + 1
+    
     # 再試行回数チェック
     if retry_count < retry_limit:
         state['retry_count'] = retry_count + 1
@@ -170,6 +198,7 @@ def get_response(
         logger.info(f"[DIALOGUE] retry limit exceeded: {retry_count}/{retry_limit}")
         default = config.get("retry_exceeded_response", "0604")
         state['retry_count'] = 0  # リセット
+        state['transfer_confirm_retry'] = 0
         phase = "transfer_confirm"  # 転送確認phaseに遷移
     
     if isinstance(default, list):
