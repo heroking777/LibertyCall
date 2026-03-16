@@ -63,3 +63,11 @@ freeswitch_conf/sip_profiles/lab_open/rakuten_001.xml
 freeswitch_conf/sip_profiles/lab_open/rakuten_whisper_test.xml
 config/google-speech-key.json
 models/
+
+# 大きなデータファイル（gitで管理しない）
+scraper/data/gbizinfo_companies.csv
+scraper/data/domains_found.tsv
+models/
+*.wav
+recordings/**/*.wav
+backups/*.db
