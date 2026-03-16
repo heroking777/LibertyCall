@@ -30,41 +30,6 @@
   ],
   "patterns": [
     {
-      "phase": "transfer_confirm",
-      "keywords": [
-        "はい",
-        "お願い",
-        "お願いします",
-        "うん",
-        "ええ",
-        "そうです",
-        "つないで",
-        "つなげて",
-        "大丈夫",
-        "構いません",
-        "いいです",
-        "頼みます"
-      ],
-      "response": "081",
-      "action": "transfer",
-      "next_phase": "QA"
-    },
-    {
-      "phase": "transfer_confirm",
-      "keywords": [
-        "いいえ",
-        "いえ",
-        "結構",
-        "不要",
-        "いらない",
-        "大丈夫です結構"
-      ],
-      "response": "086",
-      "followup": "087",
-      "action": "hangup",
-      "next_phase": "QA"
-    },
-    {
       "keywords": [
         "もしもし",
         "モシモシ"

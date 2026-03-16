@@ -24,7 +24,7 @@ from google.cloud import speech_v1 as speech
 from google.api_core.client_options import ClientOptions
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("deli_asr")
@@ -178,6 +178,9 @@ class DeliASRSession:
         self.call_uuid = None  # FreeSWITCH UUID（WebSocketパスから取得）
         self.greeting_done = False  # 挨拶完了フラグ
         self.caller_number = None
+        self.tenant_id = DELI_TENANT_ID
+        self.audio_base = AUDIO_BASE
+        self.default_course_id = None
         self.is_repeater = False
         self.suggest_data = None
         self.conv_state = "greeting"  # greeting → cast_confirm → course → time → location → confirm → done
@@ -351,11 +354,14 @@ class DeliASRSession:
             return None
 
     async def _preload_caller_info(self):
-        """挨拶再生中にcaller番号取得→suggest API呼び出し"""
+        """挨拶再生中にcaller番号・client_id取得→テナント設定ロード→suggest API呼び出し"""
         try:
-            # 1秒待ってからESLでcaller番号取得（接続安定のため）
             loop = asyncio.get_event_loop()
+
+            # caller番号とclient_id取得
             caller = await loop.run_in_executor(None, self._esl_getvar, "caller_id_number")
+            client_id = await loop.run_in_executor(None, self._esl_getvar, "client_id")
+
             if caller:
                 self.caller_number = caller
                 logger.info(f"[{self.session_id}] 着信番号: {caller}")
@@ -363,16 +369,30 @@ class DeliASRSession:
                 logger.warning(f"[{self.session_id}] 着信番号取得失敗")
                 return
 
-            # suggest API呼び出し（デフォルトcourse_id + 30分後のstart_time）
+            # テナント設定をAPIから取得
+            if client_id:
+                logger.info(f"[{self.session_id}] client_id: {client_id}")
+                async with aiohttp.ClientSession() as http:
+                    async with http.get(f"{RESERVATION_API}/api/tenants/by_client/{client_id}") as resp:
+                        if resp.status == 200:
+                            tenant_conf = await resp.json()
+                            self.tenant_id = tenant_conf["tenant_id"]
+                            self.audio_base = tenant_conf.get("audio_path") or AUDIO_BASE
+                            self.default_course_id = tenant_conf.get("default_course_id")
+                            logger.info(f"[{self.session_id}] テナント: {tenant_conf['shop_name']} ({self.tenant_id})")
+                        else:
+                            logger.warning(f"[{self.session_id}] テナント設定取得失敗: {resp.status}")
+
+            # suggest API呼び出し
             from datetime import datetime, timedelta, timezone
             jst = timezone(timedelta(hours=9))
             now = datetime.now(jst) + timedelta(minutes=30)
             now = now.replace(minute=(now.minute // 30) * 30, second=0, microsecond=0)
             start_time = now.isoformat().replace("+", "%2B")
-            default_course = "f65bf8ed-2da4-4f84-a37b-546b20e0fb93"
+            default_course = self.default_course_id or "f65bf8ed-2da4-4f84-a37b-546b20e0fb93"
 
             url = (f"{RESERVATION_API}/api/suggest"
-                   f"?tenant_id={DELI_TENANT_ID}"
+                   f"?tenant_id={self.tenant_id}"
                    f"&phone_number={caller}"
                    f"&course_id={default_course}"
                    f"&start_time={start_time}")
@@ -424,7 +444,7 @@ class DeliASRSession:
             course_id = "f65bf8ed-2da4-4f84-a37b-546b20e0fb93"  # TODO: コース選択に応じて変更
 
         payload = {
-            "tenant_id": DELI_TENANT_ID,
+            "tenant_id": self.tenant_id,
             "cast_id": self.cast_id,
             "course_id": course_id,
             "customer_phone": self.caller_number or "",
@@ -449,67 +469,6 @@ class DeliASRSession:
                 else:
                     text = await resp.text()
                     logger.error(f"[{self.session_id}] 予約API失敗: {resp.status} {text}")
-
-
-    async def _create_reservation(self):
-        """予約APIに予約を作成"""
-        from datetime import datetime, timedelta, timezone
-        jst = timezone(timedelta(hours=9))
-        now = datetime.now(jst)
-
-        # 開始時間の計算
-        if self.selected_time == "最短":
-            start = now + timedelta(minutes=30)
-            start = start.replace(minute=(start.minute // 30) * 30, second=0, microsecond=0)
-        else:
-            # "18時" "18時半" などをパース
-            import re
-            m = re.match(r"(\d{1,2})時(半)?", self.selected_time or "")
-            if m:
-                hour = int(m.group(1))
-                minute = 30 if m.group(2) else 0
-                start = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-                if start < now:
-                    start += timedelta(days=1)
-            else:
-                start = now + timedelta(minutes=30)
-                start = start.replace(minute=(start.minute // 30) * 30, second=0, microsecond=0)
-
-        end = start + timedelta(minutes=self.course_minutes or 60)
-
-        # コースID取得（suggest_dataから）
-        course_id = None
-        if self.suggest_data:
-            # デフォルトコースID
-            course_id = "f65bf8ed-2da4-4f84-a37b-546b20e0fb93"  # TODO: コース選択に応じて変更
-
-        payload = {
-            "tenant_id": DELI_TENANT_ID,
-            "cast_id": self.cast_id,
-            "course_id": course_id,
-            "customer_phone": self.caller_number or "",
-            "start_time": start.isoformat(),
-            "end_time": end.isoformat(),
-            "location": self.location or "",
-            "status": "confirmed",
-            "notes": f"AI電話予約 session={self.session_id}"
-        }
-
-        logger.info(f"[{self.session_id}] 予約API送信: {payload}")
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{RESERVATION_API}/api/reservations",
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=5)
-            ) as resp:
-                if resp.status in (200, 201):
-                    data = await resp.json()
-                    logger.info(f"[{self.session_id}] 予約作成成功: {data.get('id', 'unknown')}")
-                else:
-                    text = await resp.text()
-                    logger.error(f"[{self.session_id}] 予約API失敗: {resp.status} {text}")
-
     def _play_wav_sync(self, wav_path):
         """FreeSWITCH ESL sendmsg でWAV再生コマンド送信のみ（ブロックしない）"""
         if not self.call_uuid:
@@ -566,24 +525,31 @@ class DeliASRSession:
         # === GREETING: 最初の発話 → キャスト提案 ===
         if self.conv_state == "greeting":
             # suggest結果からキャスト情報を取得
-            if self.suggest_data and self.suggest_data.get("primary"):
-                self.cast_name = self.suggest_data["primary"].get("display_name")
-                self.cast_id = self.suggest_data["primary"].get("cast_id")
+            if self.suggest_data:
+                primary = self.suggest_data.get("primary")
+                alts = self.suggest_data.get("alternatives", [])
+                if primary:
+                    self.cast_name = primary.get("display_name")
+                    self.cast_id = primary.get("cast_id")
+                elif alts:
+                    self.cast_name = alts[0].get("display_name")
+                    self.cast_id = alts[0].get("cast_id")
 
             if self.is_repeater and self.suggest_data:
-                primary = self.suggest_data.get("primary", {})
-                available = primary.get("available", False)
-                if available:
+                primary = self.suggest_data.get("primary")
+                if primary and primary.get("available"):
                     logger.info(f"[{self.session_id}] リピーター → {self.cast_name}出勤中 → 003.wav")
-                    await self._play_wav( f"{AUDIO_BASE}/003.wav")
+                    await self._play_wav(f"{self.audio_base}/003.wav")
                     self.conv_state = "cast_confirm"
                 else:
-                    logger.info(f"[{self.session_id}] リピーター → {self.cast_name}不在 → 002.wav")
-                    await self._play_wav( f"{AUDIO_BASE}/002.wav")
+                    # primaryが不在またはnull → alternativesから提案
+                    logger.info(f"[{self.session_id}] リピーター → 前回キャスト不在 → 002.wav + 005.wav")
+                    await self._play_wav(f"{self.audio_base}/002.wav")
+                    await self._play_wav(f"{self.audio_base}/005.wav")
                     self.conv_state = "cast_confirm"
             else:
                 logger.info(f"[{self.session_id}] 新規客 → 004.wav")
-                await self._play_wav( f"{AUDIO_BASE}/004.wav")
+                await self._play_wav(f"{self.audio_base}/004.wav")
                 self.conv_state = "new_confirm"
             self.responding = False
             return
@@ -591,7 +557,7 @@ class DeliASRSession:
         # === NEW_CONFIRM: 新規客の「はい」確認 → キャスト提案 ===
         elif self.conv_state == "new_confirm":
             logger.info(f"[{self.session_id}] 新規確認応答: {text}")
-            await self._play_wav( f"{AUDIO_BASE}/005.wav")
+            await self._play_wav( f"{self.audio_base}/005.wav")
             self.conv_state = "cast_confirm"
             self.responding = False
             return
@@ -602,7 +568,7 @@ class DeliASRSession:
             yes_words = ["はい", "うん", "ええ", "お願い", "それで", "いいよ", "いいです", "大丈夫", "オッケー", "OK", "おねがい"]
             if any(w in text for w in yes_words) or len(text) < 5:
                 logger.info(f"[{self.session_id}] キャスト{self.cast_name}確定 → 006.wav")
-                await self._play_wav( f"{AUDIO_BASE}/006.wav")
+                await self._play_wav( f"{self.audio_base}/006.wav")
                 self.conv_state = "course"
             else:
                 # 別のキャスト希望 → alternativesがあれば提案
@@ -612,9 +578,9 @@ class DeliASRSession:
                     self.cast_name = alts[0].get("display_name")
                     self.cast_id = alts[0].get("cast_id")
                     logger.info(f"[{self.session_id}] 代替キャスト{self.cast_name} → 005.wav")
-                    await self._play_wav( f"{AUDIO_BASE}/005.wav")
+                    await self._play_wav( f"{self.audio_base}/005.wav")
                 else:
-                    await self._play_wav( f"{AUDIO_BASE}/006.wav")
+                    await self._play_wav( f"{self.audio_base}/006.wav")
                     self.conv_state = "course"
             self.responding = False
             return
@@ -625,19 +591,19 @@ class DeliASRSession:
                 self.course_minutes = 60
                 self.course_name = "60分コース"
                 logger.info(f"[{self.session_id}] 60分選択 → 007.wav + 009.wav")
-                await self._play_wav( f"{AUDIO_BASE}/007.wav")
-                await self._play_wav( f"{AUDIO_BASE}/009.wav")
+                await self._play_wav( f"{self.audio_base}/007.wav")
+                await self._play_wav( f"{self.audio_base}/009.wav")
                 self.conv_state = "time"
             elif "90" in text or "ロング" in text or "長い" in text:
                 self.course_minutes = 90
                 self.course_name = "90分コース"
                 logger.info(f"[{self.session_id}] 90分選択 → 008.wav + 009.wav")
-                await self._play_wav( f"{AUDIO_BASE}/008.wav")
-                await self._play_wav( f"{AUDIO_BASE}/009.wav")
+                await self._play_wav( f"{self.audio_base}/008.wav")
+                await self._play_wav( f"{self.audio_base}/009.wav")
                 self.conv_state = "time"
             else:
                 logger.info(f"[{self.session_id}] コース不明: {text} → 006.wav再生")
-                await self._play_wav( f"{AUDIO_BASE}/006.wav")
+                await self._play_wav( f"{self.audio_base}/006.wav")
             self.responding = False
             return
 
@@ -660,11 +626,11 @@ class DeliASRSession:
 
             if self.selected_time:
                 logger.info(f"[{self.session_id}] 時間確定: {self.selected_time} → 011.wav")
-                await self._play_wav( f"{AUDIO_BASE}/011.wav")
+                await self._play_wav( f"{self.audio_base}/011.wav")
                 self.conv_state = "location"
             else:
                 logger.info(f"[{self.session_id}] 時間不明: {text} → 009.wav再生")
-                await self._play_wav( f"{AUDIO_BASE}/009.wav")
+                await self._play_wav( f"{self.audio_base}/009.wav")
             self.responding = False
             return
 
@@ -688,7 +654,7 @@ class DeliASRSession:
                     logger.error(f"[{self.session_id}] 予約API登録エラー: {e}")
 
                 logger.info(f"[{self.session_id}] 予約確定 → 010.wav")
-                await self._play_wav( f"{AUDIO_BASE}/010.wav")
+                await self._play_wav( f"{self.audio_base}/010.wav")
                 self.conv_state = "done"
             self.responding = False
             return
@@ -698,7 +664,7 @@ class DeliASRSession:
             yes_words = ["はい", "うん", "お願い", "それで", "いいよ", "大丈夫", "OK"]
             if any(w in text for w in yes_words):
                 logger.info(f"[{self.session_id}] 予約確定!")
-                await self._play_wav( f"{AUDIO_BASE}/010.wav")
+                await self._play_wav( f"{self.audio_base}/010.wav")
                 self.conv_state = "done"
             self.responding = False
             return
