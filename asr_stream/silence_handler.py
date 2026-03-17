@@ -174,11 +174,12 @@ class SilenceHandler:
                          self.uuid, pause_duration)
         self._paused_time = None
 
-    def play_greeting(self, gasr_session=None):
+
+    def _play_greeting_sequence(self):
+        """greeting音声再生の共通ロジック"""
         greeting_seq = self._dialogue_config.get('greeting_sequence',
                                                   [{"audio": "000", "delay": 2}])
-        logger.info("[GREETING] waiting 1.2s for line stabilization uuid=%s", self.uuid)
-        time.sleep(1.2)
+        logger.info("[GREETING] line ready uuid=%s", self.uuid)
         if self.esl and self.esl.connected():
             self.esl.events("plain", "CHANNEL_EXECUTE_COMPLETE")
         for item in greeting_seq:
@@ -206,23 +207,29 @@ class SilenceHandler:
                             and event_uuid == self.uuid
                             and app in ("playback", "broadcast")):
                         logger.info("[GREETING] playback_complete %s uuid=%s elapsed=%.1fs",
-                                     audio_file, self.uuid, time.time() - wait_start)
+                                    audio_file, self.uuid, time.time() - wait_start)
                         playback_done = True
                         break
             if not playback_done:
                 remaining = fallback_duration - (time.time() - wait_start)
                 if remaining > 0:
                     logger.warning("[GREETING] event timeout, sleeping %.1fs uuid=%s",
-                                    remaining, self.uuid)
+                                   remaining, self.uuid)
                     time.sleep(remaining)
-        logger.info("[GREETING] all playback complete, unmuting uuid=%s", self.uuid)
+        logger.info("[GREETING] all playback complete uuid=%s", self.uuid)
         self._connect_esl()
+
+    def play_greeting_only(self):
+        """アナウンス再生のみ（unmute/timerは後から呼ぶ）"""
+        self._play_greeting_sequence()
+
+    def play_greeting(self, gasr_session=None):
+        """greeting再生 + unmute + timer開始"""
+        self._play_greeting_sequence()
         if gasr_session:
             gasr_session.unmute()
-            # Set flag for WhisperSession to reset speaking state
             gasr_session._greeting_complete = True
         self.start_timer()
-
     def start_timer(self):
         self.last_speech_time = time.time()
         self.prompt_count = 0

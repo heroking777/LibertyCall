@@ -96,9 +96,25 @@ class WSSinkServer:
             logger.error("[WS_SERVER] ESL error err=%s", e)
             self.esl = None
 
+
+    def _ensure_esl(self):
+        """ESL接続の生存確認。stale接続を検出して再接続する"""
+        if not self.esl or not self.esl.connected():
+            self._connect_esl()
+            return
+        try:
+            # 軽量コマンドで実際の接続を確認
+            result = self.esl.api("status")
+            if not result or not result.getBody():
+                raise Exception("empty response")
+        except Exception:
+            logger.warning("[WS_SERVER] ESL stale connection detected, reconnecting...")
+            self.esl = None
+            self._connect_esl()
     def _get_client_id_from_uuid(self, uuid):
         try:
             logger.info(f"[WS_SERVER] Getting client_id for uuid={uuid}")
+            self._ensure_esl()
             if not self.esl or not self.esl.connected():
                 logger.warning(f"[WS_SERVER] ESL not connected for uuid={uuid}, reconnecting...")
                 self._connect_esl()
@@ -123,7 +139,7 @@ class WSSinkServer:
         path = getattr(websocket, "path", None) or getattr(getattr(websocket, "request", None), "path", None)
         call_uuid = _extract_uuid_from_path(path)
         conn_id = str(id(websocket))
-        logger.error(f"[AF_WS] connected conn={conn_id} path={path}")
+        logger.info(f"[AF_WS] connected conn={conn_id} path={path}")
         
         # 同一UUIDの重複接続を拒否
         if call_uuid in self.connections:
@@ -140,31 +156,44 @@ class WSSinkServer:
         try:
             client_id = self._get_client_id_from_uuid(call_uuid)
             logger.info(f"[WS_SERVER] uuid={call_uuid} dest_number mapped to client_id={client_id}")
-            # 発信者番号を取得（ESL接続リトライ付き）
+
+            # === 即座にアナウンス再生開始 ===
+            silence_handler = SilenceHandler(call_uuid, client_id=client_id)
+            loop = asyncio.get_event_loop()
+            greeting_future = loop.run_in_executor(None, silence_handler.play_greeting_only)
+            logger.info(f"[WS_SERVER] greeting dispatch started uuid={call_uuid}")
+
+            # === 並行処理: caller_number取得 + 録音 + gasr_session初期化 ===
             caller_number = "番号不明"
-            for _attempt in range(3):
+            try:
+                self._ensure_esl()
+                if self.esl and self.esl.connected():
+                    cn_result = self.esl.api(f"uuid_getvar {call_uuid} caller_id_number")
+                    cn_body = cn_result.getBody().strip() if cn_result else ""
+                    if cn_body and cn_body != "_undef_" and cn_body != "NONE":
+                        caller_number = cn_body
+                    logger.info(f"[WS_SERVER] caller_number={caller_number} for uuid={call_uuid}")
+            except Exception as e:
+                logger.warning(f"[WS_SERVER] caller_number fetch failed: {e}")
+                self._connect_esl()
                 try:
-                    from libs.esl.ESL import ESLconnection
-                    _esl_tmp = ESLconnection(ESL_HOST, ESL_PORT, ESL_PASSWORD)
-                    if _esl_tmp.connected():
-                        cn_result = _esl_tmp.api(f"uuid_getvar {call_uuid} caller_id_number")
+                    if self.esl and self.esl.connected():
+                        cn_result = self.esl.api(f"uuid_getvar {call_uuid} caller_id_number")
                         cn_body = cn_result.getBody().strip() if cn_result else ""
                         if cn_body and cn_body != "_undef_" and cn_body != "NONE":
                             caller_number = cn_body
-                        _esl_tmp.disconnect()
-                        logger.info(f"[WS_SERVER] caller_number={caller_number} for uuid={call_uuid}")
-                        break
-                except Exception as e:
-                    logger.warning(f"[WS_SERVER] caller_number attempt {_attempt+1} failed: {e}")
-                    import time; time.sleep(0.5)
+                        logger.info(f"[WS_SERVER] caller_number={caller_number} (retry) uuid={call_uuid}")
+                except Exception as e2:
+                    logger.warning(f"[WS_SERVER] caller_number retry also failed: {e2}")
             call_logger = CallLogger(call_uuid, client_id, caller_number=caller_number)
-            
+
             # === 両方向録音開始（ESL経由 uuid_record） ===
             rec_path = call_logger.get_recording_path()
             for _esl_attempt in range(2):
                 try:
+                    self._ensure_esl()
                     if not self.esl or not self.esl.connected():
-                        logger.warning("[WS_SERVER] ESL not connected, reconnecting uuid=%s", call_uuid)
+                        logger.warning("[WS_SERVER] ESL not connected after ensure, reconnecting uuid=%s", call_uuid)
                         self._connect_esl()
                     self.esl.api(f"uuid_setvar {call_uuid} RECORD_STEREO true")
                     rec_result = self.esl.api(f"uuid_record {call_uuid} start {rec_path}")
@@ -182,12 +211,20 @@ class WSSinkServer:
                     logger.error("[RECORDING] failed uuid=%s result=%s", call_uuid, rec_body)
             else:
                 logger.error("[RECORDING] ESL not connected, skipping recording uuid=%s", call_uuid)
-            
+
             gasr_session = GoogleStreamingSession(call_uuid, client_id=client_id)
-            silence_handler = SilenceHandler(call_uuid, client_id=client_id)
+            silence_handler.gasr_session = gasr_session
             gasr_session.silence_handler = silence_handler
             gasr_session.call_logger = call_logger
-            await asyncio.get_event_loop().run_in_executor(None, silence_handler.play_greeting, gasr_session)
+
+            # greetingの完了を待つ
+            await greeting_future
+            logger.info(f"[WS_SERVER] greeting done, session ready uuid={call_uuid}")
+            # unmute + timer開始（greeting完了後）
+            if gasr_session:
+                gasr_session.unmute()
+                gasr_session._greeting_complete = True
+            silence_handler.start_timer()
         except Exception as exc:
             logger.exception("[GASR] session_init_failed uuid=%s err=%s", call_uuid, exc)
             self.connections.pop(call_uuid, None)
@@ -206,7 +243,7 @@ class WSSinkServer:
         except Exception as e:
             logger.info(f"[AF_WS] conn={conn_id} closed {type(e).__name__}")
         finally:
-            logger.error(f"[AF_WS] disconnected conn={conn_id} total={total}")
+            logger.info(f"[AF_WS] disconnected conn={conn_id} total={total}")
             self.connections.pop(call_uuid, None)
             self._active_sessions.discard(call_uuid)  # Remove from active sessions
             if recording_started and self.esl and self.esl.connected():
@@ -229,7 +266,7 @@ class WSSinkServer:
                 call_logger.close()
 
 async def main():
-    logger.error("Starting WSSink server on ws://0.0.0.0:9000/")
+    logger.info("Starting WSSink server on ws://0.0.0.0:9000/")
     from speech_client_manager import warmup_speech_client
     await warmup_speech_client()
     
@@ -249,7 +286,7 @@ async def main():
     global _server_instance
     server_instance = await websockets.serve(server.handle_client, host="0.0.0.0", port=9000, ping_interval=None, max_size=None)
     _server_instance = server_instance
-    logger.error("WSSink server started successfully")
+    logger.info("WSSink server started successfully")
     await server_instance.wait_closed()
 
 _server_instance = None
