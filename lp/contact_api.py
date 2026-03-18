@@ -7,11 +7,27 @@ import os
 import sys
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import json
+from datetime import datetime
 
 # プロジェクトルートをパスに追加
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from email_sender.sendgrid_client import send_email, send_email_with_attachment
+import boto3
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+def send_ses_email(to_email, subject, body_html, from_email="noreply@libcall.com"):
+    client = boto3.client('ses', region_name=os.environ.get('AWS_DEFAULT_REGION', 'ap-northeast-3'))
+    response = client.send_email(
+        Source=from_email,
+        Destination={'ToAddresses': [to_email]},
+        Message={
+            'Subject': {'Data': subject, 'Charset': 'UTF-8'},
+            'Body': {'Html': {'Data': body_html, 'Charset': 'UTF-8'}}
+        }
+    )
+    return response
 
 app = Flask(__name__)
 CORS(app)  # CORSを有効化（必要に応じて設定を調整）
@@ -76,6 +92,25 @@ def handle_contact_form():
                 "error": "このメールアドレスは配信停止済みです。"
             }), 400
         
+        # 申込（type=apply）の場合、同意ログを保存
+        if inquiry_type == "apply":
+            try:
+                log_entry = {
+                    "timestamp": datetime.now().isoformat(),
+                    "company": company,
+                    "name": name,
+                    "email": email,
+                    "tel": tel,
+                    "ip": request.headers.get("X-Real-IP", request.remote_addr),
+                    "user_agent": request.headers.get("User-Agent", ""),
+                    "agreed_to_terms": True
+                }
+                log_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "apply_consent_log.jsonl")
+                with open(log_path, "a", encoding="utf-8") as lf:
+                    lf.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+            except Exception as e:
+                print(f"同意ログ保存エラー: {e}")
+
         # 管理者宛メールを送信（通知用）
         admin_email = os.getenv("ADMIN_EMAIL", "sales@libcall.com")
         
@@ -92,16 +127,23 @@ def handle_contact_form():
         
         # 管理者宛メール送信（失敗しても続行）
         try:
-            send_email(admin_email, admin_subject, admin_body)
+            send_ses_email(admin_email, admin_subject, admin_body)
         except Exception as e:
             print(f"管理者宛メール送信エラー: {e}")
         
         # 自動返信メールを送信
+        if inquiry_type == "apply":
+            template_file = "apply_reply.txt"
+            subject = "導入お申し込みを受け付けました - LibertyCall"
+        else:
+            template_file = "auto_reply.txt"
+            subject = "お問い合わせありがとうございます - LibertyCall"
+
         template_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
             "email_sender",
             "templates",
-            "auto_reply.txt"
+            template_file
         )
 
         if os.path.exists(template_path):
@@ -110,13 +152,13 @@ def handle_contact_form():
 
             body_text = template_content.replace("{name}", name)
             body_text = body_text.replace("{email}", email)
+            body_text = body_text.replace("{company}", company)
+            body_text = body_text.replace("\n", "<br>")
 
-            subject = "お問い合わせありがとうございます - LibertyCall"
-
-            success = send_email(
-                recipient_email=email,
+            success = send_ses_email(
+                to_email=email,
                 subject=subject,
-                body_text=body_text,
+                body_html=body_text,
             )
 
             if not success:
