@@ -396,6 +396,17 @@ class AICore:
     def on_transcript(self, *args, **kwargs) -> Optional[str]:
         """ASR認識結果を受信（Phase2-3暫定実装）"""
 
+        # 転送済みの場合はASR結果を無視
+        call_id_check = kwargs.get("call_id") or (args[0] if args else None)
+        if call_id_check:
+            try:
+                state = self._get_session_state(call_id_check)
+                if state and getattr(state, 'transfer_executed', False):
+                    self.logger.info("TRANSFER_ACTIVE: ignoring transcript for call_id=%s", call_id_check)
+                    return None
+            except Exception:
+                pass
+
         transcript = kwargs.pop("transcript", None)
         call_id = kwargs.pop("call_id", None)
         confidence = float(kwargs.pop("confidence", 1.0))

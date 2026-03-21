@@ -389,6 +389,39 @@ class CallLifecycleHandler:
             )
 
         gateway.transfer_notified = True
+
+        # 転送後: ASR停止・AI応答無効化（転送後にAIが応答し続けるのを防ぐ）
+        try:
+            if hasattr(gateway, 'asr_manager') and gateway.asr_manager:
+                if hasattr(gateway.asr_manager, 'stop_asr_for_call'):
+                    gateway.asr_manager.stop_asr_for_call(gateway.call_id)
+                elif hasattr(gateway.asr_manager, 'stop'):
+                    gateway.asr_manager.stop()
+                self.logger.info(
+                    "TRANSFER_TO_OPERATOR: ASR stopped for call_id=%s",
+                    gateway.call_id,
+                )
+        except Exception as e:
+            self.logger.warning(
+                "TRANSFER_TO_OPERATOR: ASR stop failed call_id=%s error=%s",
+                gateway.call_id, e,
+            )
+
+        # AI応答を無効化
+        try:
+            state = gateway.ai_core._get_session_state(gateway.call_id)
+            if state:
+                state.transfer_executed = True
+                self.logger.info(
+                    "TRANSFER_TO_OPERATOR: AI response disabled for call_id=%s",
+                    gateway.call_id,
+                )
+        except Exception as e:
+            self.logger.warning(
+                "TRANSFER_TO_OPERATOR: AI disable failed call_id=%s error=%s",
+                gateway.call_id, e,
+            )
+
         self.logger.info(
             "TRANSFER_TO_OPERATOR_DONE: call_id=%s transfer_notified=True",
             gateway.call_id,
