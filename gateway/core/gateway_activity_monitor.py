@@ -90,20 +90,10 @@ class GatewayActivityMonitor:
 
             task = asyncio.create_task(_timer())
             gateway._no_input_timers[call_id] = task
-            self.logger.debug(
-                "[DEBUG_INIT] no_input_timer started for call_id=%s (timeout=%ss, task=%s, done=%s, cancelled=%s)",
-                call_id,
-                gateway.NO_INPUT_TIMEOUT,
-                task,
-                task.done(),
-                task.cancelled(),
-            )
             self.logger.info(
-                "[DEBUG_INIT] no_input_timer started for call_id=%s (timeout=%ss, task_done=%s, task_cancelled=%s)",
+                "[NO_INPUT] Timer started for call_id=%s timeout=%ss",
                 call_id,
                 gateway.NO_INPUT_TIMEOUT,
-                task.done(),
-                task.cancelled(),
             )
         except Exception as e:
             self.logger.exception(
