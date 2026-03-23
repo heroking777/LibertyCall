@@ -51,7 +51,7 @@ config/google-credentials.json
 *.broken.*
 tmp_logs/
 artifacts/
-core
+core.[0-9]*
 $TMPTXT
 *.pcap
 cleanup_snapshot_*.txt
