@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 import audioop
 
-TRACE_FD = os.open("/tmp/asr_manager.trace", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
 
 from .audio_processor import AudioProcessor
 from .asr_stream_handler import ASRStreamHandler
@@ -95,9 +94,7 @@ class GatewayASRManager:
         # 音声プロセッサーを作成
         try:
             self.audio_processor = AudioProcessor()
-            os.write(2, b"[TRACE_AUDIO_PROC_INIT] Success\n")
         except Exception as e:
-            os.write(2, f"[TRACE_AUDIO_PROC_INIT] Error: {e}\n".encode())
             raise
         
         # 状態管理
@@ -162,7 +159,7 @@ class GatewayASRManager:
                     self._ssrc_call_map[session_info["ssrc"]] = call_id
 
                 self.logger.info(
-                    "[GatewayASRManager] ✅ Started ASR session call_id=%s codec=%s addr=%s",
+                    "[GatewayASRManager] Started ASR session call_id=%s codec=%s addr=%s",
                     call_id,
                     codec,
                     rtp_addr,
@@ -194,7 +191,7 @@ class GatewayASRManager:
 
             self._rtp_packet_count.pop(call_id, None)
 
-            self.logger.info("[GatewayASRManager] 🛑 Stopped ASR session call_id=%s", call_id)
+            self.logger.info("[GatewayASRManager] Stopped ASR session call_id=%s", call_id)
 
     async def process_rtp_audio_for_call(self, call_id: str, packet: bytes) -> None:
         session = self.active_sessions.get(call_id)
@@ -231,26 +228,20 @@ class GatewayASRManager:
     def process_rtp_audio(self, data: bytes, addr: Tuple[str, int]):
         try:
             # 1. エントリログ
-            os.write(TRACE_FD, b"[FINAL_OP_1] Enter\n")
             
-            os.write(TRACE_FD, b"[TRACE_AP_REF_BEFORE]\n")
             
             # 2. 直接アクセス（hasattrは使わない）
             # もし self.audio_processor が存在しなければ AttributeError へ飛ぶ
             p = self.audio_processor
             
-            os.write(TRACE_FD, b"[TRACE_AP_REF_AFTER]\n")
             
             # 3. 取得成功ログ
-            os.write(TRACE_FD, f"[FINAL_OP_2] ProcID={id(p)}\n".encode())
 
             if p is not None:
-                os.write(TRACE_FD, b"[TRACE_AP_CALL_BEFORE]\n")
                 
                 try:
                     fn = p.process_rtp_audio
                     os.write(
-                        TRACE_FD,
                         (
                             "[TRACE_AP_IMPL] "
                             f"class={p.__class__} "
@@ -262,37 +253,27 @@ class GatewayASRManager:
                         ).encode()
                     )
                 except BaseException as e:
-                    os.write(TRACE_FD, f"[TRACE_AP_IMPL_ERROR] {e}\n".encode())
                 
                 # 4. AudioProcessor 呼び出し
                 processed = p.process_rtp_audio(data, addr)
                 
                 os.write(
-                    TRACE_FD,
                     f"[TRACE_AP_RET] ap_id={id(p)} ret_type={type(processed)} ret_len={len(processed) if processed else 0}\n".encode()
                 )
-                os.write(TRACE_FD, b"[TRACE_AP_CALL_AFTER]\n")
                 
                 # 5. 戻り値確認ログ
                 if processed:
-                    os.write(TRACE_FD, f"[FINAL_OP_3] Processed size={len(processed)}\n".encode())
                     if p.stream_handler:
-                        os.write(TRACE_FD, b"[TRACE_BEFORE_HANDLER]\n")
                         p.stream_handler.handle_streaming_chunk(processed)
-                        os.write(TRACE_FD, b"[TRACE_AFTER_HANDLER]\n")
                     else:
-                        os.write(TRACE_FD, b"[TRACE_NO_HANDLER]\n")
                 else:
                     # VADで落とされた場合はここに来る
-                    os.write(TRACE_FD, b"[TRACE_VAD_REJECTED]\n")
             else:
-                os.write(TRACE_FD, b"[FINAL_OP_ERR] Processor is None\n")
 
         except BaseException as e:
             import traceback
             # AttributeError, NameError, その他全ての致命的エラーを捕捉
             err = f"[FINAL_OP_FATAL] {type(e).__name__}: {e}\n{traceback.format_exc()}\n"
-            os.write(2, err.encode())
 
     def resolve_call_id(self, addr: Tuple[str, int], ssrc: Optional[int] = None) -> Optional[str]:
         if ssrc is not None and ssrc in self._ssrc_call_map:

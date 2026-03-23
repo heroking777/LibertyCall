@@ -41,7 +41,6 @@ def init_core_state(core, client_id: str) -> None:
     core.session_states: Dict[str, Dict[str, Any]] = {}
     core.partial_transcripts: Dict[str, Dict[str, Any]] = {}
     core.debug_save_wav = False
-    core.call_id = None
     core._wav_saved = False
     core._wav_chunk_counter = 0
     core.asr_model = None
