@@ -8,7 +8,6 @@ def cleanup_asr_instance(core, call_id: str) -> None:
         return
 
     if call_id in core.asr_instances:
-        print(f"[ASR_CLEANUP_START] call_id={call_id}", flush=True)
         core.logger.info("[ASR_CLEANUP_START] call_id=%s", call_id)
         try:
             asr = core.asr_instances[call_id]
@@ -17,7 +16,6 @@ def cleanup_asr_instance(core, call_id: str) -> None:
             elif hasattr(asr, "stop"):
                 asr.stop()
             del core.asr_instances[call_id]
-            print(f"[ASR_CLEANUP_DONE] call_id={call_id}, remaining={len(core.asr_instances)}", flush=True)
             core.logger.info(
                 "[ASR_CLEANUP_DONE] call_id=%s, remaining=%s",
                 call_id,
@@ -30,7 +28,6 @@ def cleanup_asr_instance(core, call_id: str) -> None:
                 exc,
                 exc_info=True,
             )
-            print(f"[ASR_CLEANUP_ERROR] call_id={call_id}: {exc}", flush=True)
     else:
         core.logger.debug("[ASR_CLEANUP_SKIP] No ASR instance for call_id=%s", call_id)
 

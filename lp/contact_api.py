@@ -5,6 +5,9 @@ Flaskを使用してフォーム送信を処理し、自動返信メールを送
 
 import os
 import sys
+import logging
+
+logger = logging.getLogger(__name__)
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json
@@ -109,7 +112,7 @@ def handle_contact_form():
                 with open(log_path, "a", encoding="utf-8") as lf:
                     lf.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
             except Exception as e:
-                print(f"同意ログ保存エラー: {e}")
+                logger.error("同意ログ保存エラー: %s", e)
 
         # 管理者宛メールを送信（通知用）
         admin_email = os.getenv("ADMIN_EMAIL", "sales@libcall.com")
@@ -130,7 +133,7 @@ def handle_contact_form():
             admin_body = admin_body.replace("\n", "<br>")
             send_ses_email(admin_email, admin_subject, admin_body)
         except Exception as e:
-            print(f"管理者宛メール送信エラー: {e}")
+            logger.error("管理者宛メール送信エラー: %s", e)
         
         # 自動返信メールを送信
         if inquiry_type == "apply":
@@ -174,7 +177,7 @@ def handle_contact_form():
         })
     
     except Exception as e:
-        print(f"エラー: {e}")
+        logger.error("API error: %s", e)
         import traceback
         traceback.print_exc()
         return jsonify({
@@ -239,7 +242,7 @@ def handle_unsubscribe():
         })
     
     except Exception as e:
-        print(f"エラー: {e}")
+        logger.error("API error: %s", e)
         import traceback
         traceback.print_exc()
         return jsonify({

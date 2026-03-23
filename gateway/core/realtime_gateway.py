@@ -8,7 +8,6 @@ import time
 
 from pathlib import Path
 from typing import Optional, Tuple, Dict
-import audioop
 # 【緊急修正】インポートパスを強制的に通す
 sys.path.append('/opt/libertycall')
 
@@ -20,16 +19,7 @@ try:
 except ImportError as e:
     AUDIOOP_AVAILABLE = False
     logging.error(f"audioop import failed: {e}")
-    logging.warning("Attempting to install audioop-lts...")
-    try:
-        import subprocess
-        subprocess.run([sys.executable, "-m", "pip", "install", "audioop-lts"], check=True)
-        import audioop
-        AUDIOOP_AVAILABLE = True
-        logging.info("audioop-lts installed and imported successfully")
-    except Exception as install_e:
-        logging.error(f"Failed to install audioop-lts: {install_e}")
-        AUDIOOP_AVAILABLE = False
+    AUDIOOP_AVAILABLE = False
 try:
     from scapy.all import sniff, IP, UDP
     SCAPY_AVAILABLE = True
@@ -80,9 +70,6 @@ except ImportError:
     get_handler = None
 
 # デバッグ用: AICore のインポート元を確認
-logger_debug = logging.getLogger("gateway.core.ai_core")
-logger_debug.warning("DEBUG_IMPORT_CHECK: AICore class from %r", AICore.__module__)
-logger_debug.warning("DEBUG_IMPORT_CHECK_FILE: ai_core file = %r", AICore.__init__.__code__.co_filename)
 from ..audio import AudioManager
 def load_config(config_path: str | Path) -> dict:
     return GatewayConfigManager.load_config(Path(config_path))
@@ -98,7 +85,6 @@ class RealtimeGateway:
             os.environ['LC_ASR_PROVIDER'] = 'google'
         
         # 起動確認用ログ（修正版が起動したことを示す）
-        self.logger.warning("[DEBUG_VERSION] RealtimeGateway initialized with UPDATED LOGGING logic.")
         self.config_manager = GatewayConfigManager(self.logger)
         self.rtp_host = config["rtp"]["listen_host"]
         # ポート番号の優先順位: コマンドライン引数 > LC_RTP_PORT > LC_GATEWAY_PORT > gateway.yaml > 固定値 7100
@@ -278,7 +264,7 @@ class RealtimeGateway:
                 # 初回のみログ出力
                 if ssrc not in self._unmapped_ssrcs:
                     self.logger.debug(
-                        f"\U0001f4e6 Unmapped RTP: ssrc={ssrc:#010x}, addr={addr}. "
+                        f"[RTP] Unmapped: ssrc={ssrc:#010x}, addr={addr}. "
                         f"Waiting for CHANNEL_ANSWER..."
                     )
                     self._unmapped_ssrcs[ssrc] = time.time()
@@ -303,77 +289,7 @@ class RealtimeGateway:
             await self.asr_manager.process_rtp_audio_for_call(call_id, payload)
             
         except Exception as e:
-            self.logger.error(f"\u274c Error in handle_rtp_packet from {addr}: {e}", exc_info=True)
-
-    def _extract_rtp_payload(self, rtp_packet: bytes) -> bytes:
-        """
-        RTPパケットからペイロードを抽出
-        
-        RTPヘッダー構造:
-        - Byte 0: V(2bit)|P(1bit)|X(1bit)|CC(4bit)
-        - Byte 1: M(1bit)|PT(7bit)
-        - Byte 2-3: Sequence Number
-        - Byte 4-7: Timestamp
-        - Byte 8-11: SSRC
-        - Byte 12-: CSRC list (CC個 * 4byte)
-        - 拡張ヘッダー（Xが1の場合）
-        - ペイロード
-        - パディング（Pが1の場合）
-        """
-        try:
-            if len(rtp_packet) < 12:
-                return b''
-            
-            # ビットフラグ抽出
-            padding = (rtp_packet[0] >> 5) & 0x01
-            extension = (rtp_packet[0] >> 4) & 0x01
-            csrc_count = rtp_packet[0] & 0x0F
-            
-            # ヘッダー長計算（基本12バイト + CSRC）
-            header_length = 12 + (csrc_count * 4)
-            
-            # 拡張ヘッダー処理
-            if extension:
-                if len(rtp_packet) < header_length + 4:
-                    self.logger.warning("RTP packet too short for extension header")
-                    return b''
-                
-                # 拡張ヘッダー長（16bitワード単位、オフセット+2から2バイト）
-                ext_length_words = int.from_bytes(
-                    rtp_packet[header_length + 2:header_length + 4],
-                    byteorder='big'
-                )
-                # 拡張ヘッダー全体 = 4バイト固定部 + 可変長部
-                header_length += 4 + (ext_length_words * 4)
-            
-            # ヘッダー長チェック
-            if len(rtp_packet) <= header_length:
-                self.logger.warning(
-                    f"RTP header ({header_length}B) >= packet ({len(rtp_packet)}B)"
-                )
-                return b''
-            
-            # ペイロード抽出
-            payload = rtp_packet[header_length:]
-            
-            # パディング除去
-            if padding and len(payload) > 0:
-                padding_length = payload[-1]
-                # パディング長の妥当性チェック
-                if 0 < padding_length < len(payload):
-                    payload = payload[:-padding_length]
-                else:
-                    self.logger.warning(f"Invalid padding length: {padding_length}")
-            
-            return payload
-            
-        except Exception as e:
-            self.logger.error(f"\u274c Error extracting RTP payload: {e}", exc_info=True)
-            return b''
-
-    async def shutdown(self):
-        """Graceful shutdown for RTP transport and all resources"""
-        await self.utils.shutdown(remove_handler)
+            self.logger.error(f"[RTP] Error in handle_rtp_packet from {addr}: {e}", exc_info=True)
 
     def _request_transfer(self, call_id: str) -> None:
         state_label = f"AI_HANDOFF:{call_id or 'UNKNOWN'}"
