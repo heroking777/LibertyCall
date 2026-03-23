@@ -26,28 +26,6 @@ def merge_transcript(
         logger.debug("[ASR_PARTIAL] call_id=%s partial=%r", call_id, merged_text)
 
         text_stripped = text.strip() if text else ""
-        if 1 <= len(text_stripped) <= 6:
-            backchannel_keywords = ["はい", "えっと", "あの", "ええ", "そう", "うん", "ああ"]
-            if any(keyword in text_stripped for keyword in backchannel_keywords):
-                logger.debug(
-                    "[BACKCHANNEL_TRIGGER] Detected short utterance: %s", text_stripped
-                )
-                if hasattr(core, "tts_callback") and core.tts_callback:  # type: ignore[attr-defined]
-                    try:
-                        try:
-                            core.current_system_text = "はい"
-                        except Exception:
-                            pass
-                        core.tts_callback(call_id, "はい", None, False)  # type: ignore[misc]
-                        logger.info(
-                            "[BACKCHANNEL_SENT] call_id=%s text='はい' (triggered by partial)",
-                            call_id,
-                        )
-                    except Exception as exc:
-                        logger.exception(
-                            "[BACKCHANNEL_ERROR] call_id=%s error=%s", call_id, exc
-                        )
-
         merged_text = file_manager.get_partial_text(call_id)
         text_stripped = merged_text.strip() if merged_text else ""
         is_greeting_detected = file_manager.greeting_detected(text_stripped)
@@ -132,13 +110,7 @@ def merge_transcript(
                                 reply_text or render_templates(template_ids) or ""
                             )
                         except Exception:
-                            core.current_system_text = reply_text or ""
-                        core.tts_callback(call_id, reply_text, template_ids, False)  # type: ignore[misc]
-                        logger.info(
-                            "TTS_SENT: call_id=%s templates=%s (NOT_HEARD for ambiguous 1-char)",
-                            call_id,
-                            template_ids,
-                        )
+
                     except Exception as exc:
                         logger.exception(
                             "TTS_ERROR: call_id=%s error=%s",
