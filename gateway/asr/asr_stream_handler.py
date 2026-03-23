@@ -59,7 +59,6 @@ class ASRStreamHandler:
                 core.asr_instances = {}
                 core.asr_lock = threading.Lock()
                 core._phrase_hints = []
-                print("[ASR_INSTANCES_LAZY_INIT] asr_instances and lock created (lazy)", flush=True)
 
             asr_instance = None
             newly_created = False
@@ -559,43 +558,9 @@ class ASRStreamHandler:
             state.no_input_streak = 0
             manager._no_input_elapsed[effective_call_id] = 0.0
 
-        # Intent方式は廃止されました。dialogue_flow方式を使用してください
-        intent = "UNKNOWN"
-        manager.logger.debug("Intent: %s (deprecated)", intent)
-
-        # デフォルト応答
-        resp_text = get_response_template("114")
-        should_transfer = False
-
-        # 状態更新
-        state_label = (intent or manager.current_state).lower()
-        manager.current_state = state_label
+        # 状態更新（応答はon_transcript経由のgenerate_replyで処理）
         manager._record_dialogue("ユーザー", text)
-        manager._append_console_log("user", text, state_label)
-
-        if resp_text:
-            manager._record_dialogue("AI", resp_text)
-            manager._append_console_log("ai", resp_text, manager.current_state)
-
-        # TTS生成
-        tts_audio_24k = None
-        if hasattr(manager.ai_core, "use_gemini_tts") and manager.ai_core.use_gemini_tts:
-            tts_audio_24k = manager._synthesize_text_sync(resp_text)
-
-        # TTSキューに追加
-        if tts_audio_24k:
-            ulaw_response = pcm24k_to_ulaw8k(tts_audio_24k)
-            chunk_size = 160
-            for i in range(0, len(ulaw_response), chunk_size):
-                manager.tts_queue.append(ulaw_response[i : i + chunk_size])
-            manager.logger.info("[TTS] queued bytes=%d chunks=%d", len(ulaw_response), len(ulaw_response)//chunk_size + (1 if len(ulaw_response)%chunk_size else 0))
-            manager.is_speaking_tts = True
-
-        # 転送処理
-        if should_transfer:
-            manager.logger.info(">> TRANSFER REQUESTED to %s", manager.operator_number)
-            effective_call_id = manager._get_effective_call_id()
-            manager._handle_transfer(effective_call_id)
+        manager._append_console_log("user", text, manager.current_state)
 
         # ログ出力（発話長、推論時間、遅延時間）
         text_norm = normalize_text(text) if text else ""
