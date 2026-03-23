@@ -17,6 +17,8 @@ class GASRDialogHandlerMixin:
         self._silence_timer.start()
 
     def _on_silence_timeout(self):
+        if self._stop_requested.is_set():
+            return
         if not self._accumulated_text:
             return
         full_text = self._accumulated_text.strip()
@@ -67,6 +69,9 @@ class GASRDialogHandlerMixin:
             logger.warning("[INTERRUPT] error uuid=%s err=%s", self.uuid, e)
 
     def _handle_dialog(self, transcript):
+        if self._stop_requested.is_set():
+            logger.info("[DIALOG_SKIP] uuid=%s stop_requested, ignoring transcript=%r", self.uuid, transcript)
+            return
         from gateway.dialogue.dialogue_flow import get_response, get_action
         logger.info("[DIALOG_START] uuid=%s transcript=%r", self.uuid, transcript)
         try:
