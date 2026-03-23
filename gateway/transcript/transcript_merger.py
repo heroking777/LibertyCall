@@ -103,20 +103,7 @@ def merge_transcript(
                 intent = "NOT_HEARD"
                 template_ids = ["110"]
                 reply_text = render_templates(template_ids)
-                if hasattr(core, "tts_callback") and core.tts_callback:  # type: ignore[attr-defined]
-                    try:
-                        try:
-                            core.current_system_text = (
-                                reply_text or render_templates(template_ids) or ""
-                            )
-                        except Exception:
 
-                    except Exception as exc:
-                        logger.exception(
-                            "TTS_ERROR: call_id=%s error=%s",
-                            call_id,
-                            exc,
-                        )
                 return None, reply_text, True
         logger.debug(
             "[ASR_SHORT] call_id=%s text=%r len=%s -> skipping (too short)",
