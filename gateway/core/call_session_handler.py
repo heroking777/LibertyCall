@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Call session handling for FreeSWITCH/Asterisk events."""
+"""Call session handling for FreeSWITCH events."""
 import asyncio
 import time
 from typing import Optional
@@ -44,18 +44,12 @@ class GatewayCallSessionHandler:
             streak = min(streak_before + 1, gateway.NO_INPUT_STREAK_LIMIT)
 
             # 明示的なデバッグログを追加
-            self.logger.debug(
-                f"[NO_INPUT] Triggered for call_id={call_id}, streak={streak}"
-            )
             self.logger.info(
                 f"[NO_INPUT] Triggered for call_id={call_id}, streak={streak}"
             )
 
             # 発信者番号を取得（ログ出力用）
             caller_number = getattr(gateway.ai_core, "caller_number", None) or "未設定"
-            self.logger.debug(
-                f"[NO_INPUT] Handling timeout for call_id={call_id} caller={caller_number}"
-            )
             self.logger.info(
                 f"[NO_INPUT] Handling timeout for call_id={call_id} caller={caller_number}"
             )
@@ -67,13 +61,6 @@ class GatewayCallSessionHandler:
             elapsed = gateway._no_input_elapsed.get(call_id, 0.0) + gateway.NO_INPUT_TIMEOUT
             gateway._no_input_elapsed[call_id] = elapsed
 
-            self.logger.debug(
-                "[NO_INPUT] call_id=%s caller=%s streak=%s elapsed=%.1fs (incrementing)",
-                call_id,
-                caller_number,
-                no_input_streak,
-                elapsed,
-            )
             self.logger.info(
                 "[NO_INPUT] call_id=%s caller=%s streak=%s elapsed=%.1fs (incrementing)",
                 call_id,
@@ -102,15 +89,6 @@ class GatewayCallSessionHandler:
             # 最大無音時間を超えた場合は強制切断を実行（管理画面でも把握しやすいよう詳細ログ）
             if gateway._no_input_elapsed.get(call_id, 0.0) >= gateway.MAX_NO_INPUT_TIME:
                 elapsed_total = gateway._no_input_elapsed.get(call_id, 0.0)
-                self.logger.debug(
-                    "[NO_INPUT] call_id=%s caller=%s exceeded MAX_NO_INPUT_TIME=%ss "
-                    "(streak=%s, elapsed=%.1fs) -> FORCE_HANGUP",
-                    call_id,
-                    caller_number,
-                    gateway.MAX_NO_INPUT_TIME,
-                    no_input_streak,
-                    elapsed_total,
-                )
                 self.logger.warning(
                     "[NO_INPUT] call_id=%s caller=%s exceeded MAX_NO_INPUT_TIME=%ss "
                     "(streak=%s, elapsed=%.1fs) -> FORCE_HANGUP",
@@ -121,28 +99,11 @@ class GatewayCallSessionHandler:
                     elapsed_total,
                 )
                 # 直前の状態を詳細ログに出力（原因追跡用）
-                self.logger.debug(
-                    "[FORCE_HANGUP] Preparing disconnect: call_id=%s caller=%s "
-                    "elapsed=%.1fs streak=%s max_timeout=%ss",
-                    call_id,
-                    caller_number,
-                    elapsed_total,
-                    no_input_streak,
-                    gateway.MAX_NO_INPUT_TIME,
-                )
                 self.logger.warning(
                     "[FORCE_HANGUP] Preparing disconnect: call_id=%s caller=%s "
                     "elapsed=%.1fs streak=%s max_timeout=%ss",
                     call_id,
                     caller_number,
-                    elapsed_total,
-                    no_input_streak,
-                    gateway.MAX_NO_INPUT_TIME,
-                )
-                self.logger.debug(
-                    "[FORCE_HANGUP] Attempting to disconnect call_id=%s after %.1fs of silence "
-                    "(streak=%s, timeout=%ss)",
-                    call_id,
                     elapsed_total,
                     no_input_streak,
                     gateway.MAX_NO_INPUT_TIME,
