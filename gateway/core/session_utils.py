@@ -32,7 +32,7 @@ def get_session_dir(call_id: str, client_id: Optional[str] = None) -> Path:
     
     # 日付ベースのディレクトリ構造
     date_str = datetime.now().strftime("%Y-%m-%d")
-    session_dir = Path(f"/var/lib/libertycall/sessions/{date_str}/{client_id}/session_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{call_id[:8]}")
+    session_dir = Path(f"/var/lib/libertycall/sessions/{date_str}/{client_id}/session_{call_id[:16]}")
     
     return session_dir
 

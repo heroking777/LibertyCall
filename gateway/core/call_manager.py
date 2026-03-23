@@ -169,6 +169,11 @@ def on_call_start(core, call_id: str, client_id: str = None, **kwargs) -> None:
             if not hasattr(core, "last_start_times"):
                 core.last_start_times = {}
             core.last_start_times[call_id] = current_time
+            # メモリリーク防止: 100件超えたら古いエントリを削除
+            if len(core.last_start_times) > 100:
+                oldest_keys = sorted(core.last_start_times, key=core.last_start_times.get)[:50]
+                for k in oldest_keys:
+                    del core.last_start_times[k]
         except Exception:
             pass
     except Exception:
