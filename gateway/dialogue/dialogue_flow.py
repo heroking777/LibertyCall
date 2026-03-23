@@ -3,7 +3,10 @@
 """
 import json
 import logging
-from gateway.dialogue.llm_handler import LLMDialogueHandler
+try:
+    from gateway.dialogue.llm_handler import LLMDialogueHandler
+except ImportError:
+    LLMDialogueHandler = None
 import os
 from typing import Tuple, List, Dict, Any
 
@@ -69,7 +72,7 @@ def get_response(
     
     # LLM応答処理
     use_llm = kwargs.get("use_llm", False)
-    if use_llm and text_clean:
+    if use_llm and text_clean and LLMDialogueHandler is not None:
         try:
             llm_handler = LLMDialogueHandler.get_instance()
             llm_response = llm_handler.get_response(text_clean, client_id)

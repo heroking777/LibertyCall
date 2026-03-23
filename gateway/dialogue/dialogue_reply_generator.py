@@ -110,24 +110,7 @@ def generate_reply(core, call_id: str, raw_text: str) -> Tuple[str, List[str], s
         state.last_intent = intent
         return reply_text, template_ids, intent, False
 
-    if intent == "HANDOFF_REQUEST" and not getattr(core, "transfer_callback", None):
-        core.logger.warning(
-            "[HANDOFF_UNAVAILABLE] call_id=%s intent=%s transfer_callback=missing",
-            call_id or "GLOBAL_CALL",
-            intent,
-        )
-        state.handoff_state = "idle"
-        state.handoff_retry_count = 0
-        state.handoff_prompt_sent = False
-        state.transfer_requested = False
-        state.transfer_executed = False
-        state.phase = "QA"
-        template_ids = ["0605"]
-        state.meta["handoff_unavailable"] = True
-        state.meta["handoff_alternative_offered"] = True
-        reply_text = render_templates(template_ids)
-        state.last_intent = "INQUIRY"
-        return reply_text, template_ids, "HANDOFF_UNAVAILABLE", False
+
 
     if handoff_state == "done" and not state.transfer_requested:
         template_ids, base_intent, transfer_requested = run_conversation_flow(
