@@ -2,7 +2,6 @@ import logging
 import subprocess
 
 logger = logging.getLogger(__name__)
-logger.error("!!! CRITICAL_LOAD: ai_core.py is LOADED from /opt/libertycall !!!")
 
 import os
 # 明示的に認証ファイルパスを指定（存在する候補ファイルがあればデフォルトで設定）
@@ -431,7 +430,7 @@ class AICore:
         transcript = transcript or ""
 
         self.logger.info(
-            "📝 AICore received: '%s' (final=%s, conf=%.2f, call=%s)",
+            "[AICORE] received: '%s' (final=%s, conf=%.2f, call=%s)",
             transcript,
             is_final,
             confidence,
@@ -439,10 +438,10 @@ class AICore:
         )
 
         if is_final and confidence >= 0.6:
-            self.logger.info("🤖 [TODO Phase3] Generate AI response for: '%s'", transcript)
+            self.logger.info("[AICORE] Generate AI response for: '%s'", transcript)
         else:
             reason = "interim result" if not is_final else f"low confidence ({confidence:.2f})"
-            self.logger.debug("🔄 Skipping AI response: %s", reason)
+            self.logger.debug("[AICORE] Skipping AI response: %s", reason)
 
         try:
             return handle_transcript(self, call_id, transcript, is_final=is_final, **kwargs)
