@@ -1,8 +1,0 @@
-{"type": "call_start", "uuid": "1c31770f-63e7-487d-8d42-c163202edf97", "caller_number": "05058650640", "client_id": "000", "time": "2026-03-03T12:04:19.831Z"}
-{"type": "asr_interim", "text": "もし", "confidence": 0.0, "time": "2026-03-03T12:04:39.298Z"}
-{"type": "response", "text": "もしもし", "audio_ids": ["004"], "phase": "QA", "time": "2026-03-03T12:04:39.515Z"}
-{"type": "playback_start", "audio_id": "004", "path": "/opt/libertycall/clients/000/audio/004.wav", "time": "2026-03-03T12:04:40.083Z"}
-{"type": "asr_interim", "text": "もしもし", "confidence": 0.0, "time": "2026-03-03T12:04:40.110Z"}
-{"type": "asr_final", "text": "もしもし", "confidence": 0.8779526948928833, "time": "2026-03-03T12:04:40.504Z"}
-{"type": "playback_end", "audio_id": "004", "duration": 0.0, "time": "2026-03-03T12:04:41.312Z"}
-{"type": "call_end", "uuid": "1c31770f-63e7-487d-8d42-c163202edf97", "duration": 24.3, "time": "2026-03-03T12:04:44.173Z"}

@@ -127,6 +127,7 @@ def handle_contact_form():
         
         # 管理者宛メール送信（失敗しても続行）
         try:
+            admin_body = admin_body.replace("\n", "<br>")
             send_ses_email(admin_email, admin_subject, admin_body)
         except Exception as e:
             print(f"管理者宛メール送信エラー: {e}")

@@ -71,3 +71,8 @@ models/
 *.wav
 recordings/**/*.wav
 backups/*.db
+recordings/
+backups/
+apply_consent_log.jsonl
+mailer/
+.env
