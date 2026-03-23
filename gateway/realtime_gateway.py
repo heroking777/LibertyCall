@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 """Realtime Gateway for RTP and ASR processing"""
 import sys
-sys.stderr.write("[CRITICAL_BOOT] Script process started\n")
-sys.stderr.flush()
 
 import traceback
 
 
 def _rg_excepthook(exctype, value, tb):
     try:
-        sys.stderr.write("[RG_TOPLEVEL_EXC]\n")
         traceback.print_exception(exctype, value, tb)
-        sys.stderr.flush()
     except Exception:
         pass
 
@@ -69,14 +65,10 @@ def _gw_trace(msg: str) -> None:
         return
 
 _gw_trace("[module_loaded] gateway.realtime_gateway imported")
-sys.stderr.write(
     f"[RG_IMPORT] ts={time.time()} file={__file__} pid={os.getpid()} cwd={os.getcwd()}\n"
 )
-sys.stderr.flush()
-sys.stderr.write(
     f"[RG_TOP] ts={time.time()} name={__name__} file={__file__} pid={os.getpid()} argv={sys.argv}\n"
 )
-sys.stderr.flush()
 
 import os as _os, sys as _sys, time as _time
 _RG_BUILD = "RG_BUILD_20260128_1855_A"
@@ -486,8 +478,6 @@ async def async_main(config: dict, port_override: int | None) -> int:
 
     await _rg_asyncio.sleep(0)  # allow background tasks to start
 
-    print("RealtimeGateway started successfully")
-    print("Press Ctrl+C to stop...")
 
     import socket
     import threading
@@ -499,12 +489,9 @@ async def async_main(config: dict, port_override: int | None) -> int:
         from gateway.asr.google_stream_asr import GoogleStreamingASR
         print(f"[DEBUG_MAIN] Creating GoogleStreamingASR instance")
         asr = GoogleStreamingASR()
-        print("[DEBUG_MAIN] Instance created")
         print(f"[DEBUG_MAIN] Attempting asr.start with audio_queue type: {type(audio_queue)}")
         asr.start(audio_queue)
         print(f"[DEBUG_SYNC] Queue ID in Main: {id(audio_queue)}")
-        print("[DEBUG_MAIN] start() called, entering UDP loop")
-        print("[DEBUG_ASR_CONNECT] ASR Stream started")
     except Exception as e:
         print(f"[ERROR_ASR_CONNECT] Failed to start ASR: {e}")
         import traceback
@@ -518,14 +505,11 @@ async def async_main(config: dict, port_override: int | None) -> int:
         sock.bind(('0.0.0.0', 7002))
         sock.settimeout(1.0)
 
-        print("[DEBUG_RTP_FLOW] UDP receiver listening on 0.0.0.0:7002")
-        print("[DEBUG_RTP_FLOW] OS UDP buffer set to 1MB")
 
         file_queue = queue.Queue(maxsize=1000)
 
         def file_writer():
             try:
-                with open("/tmp/debug_udp_raw.pcm", "ab") as f:
                     while True:
                         try:
                             data = file_queue.get(timeout=1.0)
@@ -579,7 +563,6 @@ async def async_main(config: dict, port_override: int | None) -> int:
                 break
 
     print(f"[DEBUG_FLOW] Main loop queue ID: {id(audio_queue)}")
-    print("[DEBUG_MAIN] Entering udp_receiver_loop now...")
     sys.stdout.flush()
     _rg_sys_async.stderr.write(
         f"[RG_BEFORE_LOOP] ts={_rg_time_async.time()} entering main while loop\n"
@@ -599,22 +582,14 @@ async def async_main(config: dict, port_override: int | None) -> int:
 try:
     import inspect as _rg_inspect
     _rg_main = globals().get("main")
-    sys.stderr.write(
         f"[RG_SELF] main_obj={_rg_main} has_main={'main' in globals()} main_file={_rg_inspect.getsourcefile(_rg_main) if _rg_main else None} main_line={_rg_inspect.getsourcelines(_rg_main)[1] if _rg_main else None}\n"
     )
-    sys.stderr.flush()
 except Exception as _rg_self_exc:  # pragma: no cover - diagnostics only
-    sys.stderr.write(f"[RG_SELF_FAIL] err={_rg_self_exc}\n")
-    sys.stderr.flush()
 
 
-sys.stderr.write(
     f"[RG_EOF] ts={time.time()} reached end-of-file name={__name__}\n"
 )
-sys.stderr.flush()
 
 if __name__ == "__main__":
-    sys.stderr.write(f"[RG_CALL_MAIN] ts={time.time()} calling main\n")
-    sys.stderr.flush()
     import sys as _rg_sys
     _rg_sys.exit(main())

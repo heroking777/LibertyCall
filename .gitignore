@@ -76,3 +76,4 @@ backups/
 apply_consent_log.jsonl
 mailer/
 .env
+scraper/data/
