@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import threading
+from .call_cleanup_helper import cleanup_gateway_call_state
 import time
 from datetime import datetime
 from pathlib import Path
@@ -263,16 +264,17 @@ class CallLifecycleHandler:
             gateway.transfer_notified,
         )
 
-        # transfer_notified のチェックを削除
-        # 理由: 同じ通話内で複数回転送を試みる場合や、転送が失敗した場合に再試行できるようにするため
-        # ただし、state.transfer_executed で二重実行を防ぐ（ai_core側で制御）
-        if gateway.transfer_notified:
-            self.logger.info(
-                "TRANSFER_TO_OPERATOR_RETRY: call_id=%s previous_notified=True (allowing retry)",
-                call_id,
-            )
-            # transfer_notified をリセットして再試行を許可
-            gateway.transfer_notified = False
+        # transfer_executed で二重実行を防ぐ
+        try:
+            state = gateway.ai_core._get_session_state(gateway.call_id or call_id)
+            if state and getattr(state, 'transfer_executed', False):
+                self.logger.info(
+                    "TRANSFER_TO_OPERATOR_SKIP: call_id=%s already transferred (transfer_executed=True)",
+                    call_id,
+                )
+                return
+        except Exception:
+            pass
 
         # call_idが未設定の場合は正式なcall_idを生成（TEMP_CALLは使わない）
         if not gateway.call_id:
@@ -447,12 +449,6 @@ class CallLifecycleHandler:
                 gateway.call_id,
             )
 
-            self.logger.debug(
-                "[FORCE_HANGUP] HANGUP_REQUEST: call_id=%s self.call_id=%s caller=%s",
-                call_id,
-                gateway.call_id,
-                caller_number,
-            )
             self.logger.info(
                 "[FORCE_HANGUP] HANGUP_REQUEST: call_id=%s self.call_id=%s caller=%s",
                 call_id,
@@ -582,48 +578,4 @@ class CallLifecycleHandler:
                 call_id_to_cleanup or call_id,
             )
             if call_id_to_cleanup:
-                cleanup_time = time.time()
-                # _active_calls から削除
-                self.logger.warning(
-                    "[FINALLY_ACTIVE_CALLS] Before removal: call_id=%s in _active_calls=%s",
-                    call_id_to_cleanup,
-                    call_id_to_cleanup in gateway._active_calls
-                    if hasattr(gateway, "_active_calls")
-                    else False,
-                )
-                if (
-                    hasattr(gateway, "_active_calls")
-                    and call_id_to_cleanup in gateway._active_calls
-                ):
-                    gateway._active_calls.remove(call_id_to_cleanup)
-                    self.logger.warning(
-                        "[HANGUP_DONE] Removed %s from active_calls (finally block) at %.3f",
-                        call_id_to_cleanup,
-                        cleanup_time,
-                    )
-                self.logger.warning(
-                    "[FINALLY_ACTIVE_CALLS_REMOVED] After removal: call_id=%s in _active_calls=%s",
-                    call_id_to_cleanup,
-                    call_id_to_cleanup in gateway._active_calls
-                    if hasattr(gateway, "_active_calls")
-                    else False,
-                )
-
-                # 管理用データのクリーンアップ
-                if call_id_to_cleanup in gateway._recovery_counts:
-                    del gateway._recovery_counts[call_id_to_cleanup]
-                if call_id_to_cleanup in gateway._initial_sequence_played:
-                    gateway._initial_sequence_played.discard(call_id_to_cleanup)
-                if call_id_to_cleanup in gateway._last_processed_sequence:
-                    del gateway._last_processed_sequence[call_id_to_cleanup]
-                gateway._last_voice_time.pop(call_id_to_cleanup, None)
-                gateway._last_silence_time.pop(call_id_to_cleanup, None)
-                gateway._last_tts_end_time.pop(call_id_to_cleanup, None)
-                gateway._last_user_input_time.pop(call_id_to_cleanup, None)
-                gateway._silence_warning_sent.pop(call_id_to_cleanup, None)
-                if hasattr(gateway, "_initial_tts_sent"):
-                    gateway._initial_tts_sent.discard(call_id_to_cleanup)
-                self.logger.debug(
-                    "[CALL_CLEANUP] Cleared state for call_id=%s",
-                    call_id_to_cleanup,
-                )
+                cleanup_gateway_call_state(gateway, call_id_to_cleanup, self.logger)

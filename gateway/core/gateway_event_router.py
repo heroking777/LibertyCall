@@ -14,6 +14,7 @@ def _safe_get(mapping: Optional[Dict[str, Any]], key: str, default: str = "") ->
     return "" if value is None else str(value)
 
 from client_loader import load_client_profile
+from .call_cleanup_helper import cleanup_gateway_call_state
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
     from ..realtime_gateway import RealtimeGateway
@@ -116,39 +117,9 @@ class GatewayEventRouter:
     async def handle_event_socket_message(
         self, message: Dict[str, Any]
     ) -> Dict[str, Any]:
-        # [PATCH] Entry point debug & force dispatch (Smart)
-        try:
-            _evt_val = message.get("event") or message.get("type")
-            self.logger.info("[GW_ROUTER_ENTRY] keys=%s, event=%r", list(message.keys()), _evt_val)
-            if _evt_val and str(_evt_val).strip() == "fs_evt":
-                self.logger.info("[GW_FSEVT_FORCE] Force handling fs_evt at entry")
-                if hasattr(self, "handle_fs_evt"):
-                    import inspect
-                    if inspect.iscoroutinefunction(self.handle_fs_evt):
-                        await self.handle_fs_evt(message)
-                    else:
-                        self.handle_fs_evt(message)
-                    return
-        except Exception as e:
-            self.logger.error("[GW_ROUTER_ENTRY_ERR] %s", e)
-
         gateway = self.gateway
         event_type = message.get("event")
 
-        # [PATCH] Force fs_evt dispatch (High Priority)
-        # Debug: check what exactly is in the variable
-        if "event_type" in locals():
-            _evt_raw = str(event_type) if event_type is not None else ""
-            if _evt_raw.strip() == "fs_evt":
-                self.logger.info("[GW_FSEVT_ROUTE] Force dispatching fs_evt. Raw: %r", event_type)
-                if hasattr(self, "handle_fs_evt"):
-                    import inspect
-                    _msg = locals().get("message") or locals().get("msg") or {}
-                    if inspect.iscoroutinefunction(self.handle_fs_evt):
-                        await self.handle_fs_evt(_msg)
-                    else:
-                        self.handle_fs_evt(_msg)
-                    return
         uuid = message.get("uuid")
         call_id = message.get("call_id")
         client_id = message.get("client_id", "000")
@@ -320,71 +291,13 @@ class GatewayEventRouter:
                     effective_call_id,
                 )
                 if effective_call_id:
-                    call_end_time = time.time()
-                    self.logger.warning(
-                        "[FINALLY_ACTIVE_CALLS] Before removal: call_id=%s in _active_calls=%s",
-                        effective_call_id,
-                        effective_call_id in gateway._active_calls
-                        if hasattr(gateway, "_active_calls")
-                        else False,
-                    )
-                    if (
-                        hasattr(gateway, "_active_calls")
-                        and effective_call_id in gateway._active_calls
-                    ):
-                        gateway._active_calls.remove(effective_call_id)
-                        self.logger.warning(
-                            "[EVENT_SOCKET_DONE] Removed %s from active_calls (finally block) at %.3f",
-                            effective_call_id,
-                            call_end_time,
-                        )
-                    self.logger.warning(
-                        "[FINALLY_ACTIVE_CALLS_REMOVED] After removal: call_id=%s in _active_calls=%s",
-                        effective_call_id,
-                        effective_call_id in gateway._active_calls
-                        if hasattr(gateway, "_active_calls")
-                        else False,
-                    )
-
-                    if effective_call_id in gateway._recovery_counts:
-                        del gateway._recovery_counts[effective_call_id]
-                    if effective_call_id in gateway._initial_sequence_played:
-                        gateway._initial_sequence_played.discard(effective_call_id)
-                    if effective_call_id in gateway._last_processed_sequence:
-                        del gateway._last_processed_sequence[effective_call_id]
-                    gateway._last_voice_time.pop(effective_call_id, None)
-                    gateway._last_silence_time.pop(effective_call_id, None)
-                    gateway._last_tts_end_time.pop(effective_call_id, None)
-                    gateway._last_user_input_time.pop(effective_call_id, None)
-                    gateway._silence_warning_sent.pop(effective_call_id, None)
-                    if hasattr(gateway, "_initial_tts_sent"):
-                        gateway._initial_tts_sent.discard(effective_call_id)
-                    self.logger.debug(
-                        "[CALL_CLEANUP] Cleared state for call_id=%s",
-                        effective_call_id,
-                    )
+                    cleanup_gateway_call_state(gateway, effective_call_id, self.logger)
 
         if event_type == "fs_evt":
             await self.handle_fs_evt(message)
             return {"status": "ok"}
 
 
-        # [PATCH] Dispatch fs_evt explicitly
-        if event_type == "fs_evt":
-            self.logger.info("[GW_FSEVT_ROUTE] Dispatching fs_evt to handle_fs_evt")
-            if hasattr(self, "handle_fs_evt"):
-                # Try await if it is a coroutine
-                import inspect
-                if inspect.iscoroutinefunction(self.handle_fs_evt):
-                    await self.handle_fs_evt(message)
-                else:
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, self.handle_fs_evt, message
-                    )
-                return
-            else:
-                self.logger.error("[GW_FSEVT_ROUTE] handle_fs_evt method missing!")
-                return
         self.logger.warning("[EVENT_SOCKET] Unknown event type: %s", event_type)
         return {"status": "error", "message": "unknown event type"}
 
@@ -443,6 +356,12 @@ class GatewayEventRouter:
 
         try:
             if action == "update_playback_state":
+                if name == "PLAYBACK_START":
+                    self.gateway.is_speaking_tts = True
+                    self.logger.debug("[GW_FSEVT] PLAYBACK_START: is_speaking_tts=True call_id=%s", call_id)
+                elif name == "PLAYBACK_STOP":
+                    self.gateway.is_speaking_tts = False
+                    self.logger.debug("[GW_FSEVT] PLAYBACK_STOP: is_speaking_tts=False call_id=%s", call_id)
                 return
             if action == "update_media_bug_state":
                 return
@@ -475,8 +394,7 @@ class GatewayEventRouter:
             if key.startswith("variable_") or key in additional_keys
         }
 
-        # ===== デバッグログ追加（Phase2確認用） =====
-        self.logger.info(f"🔍 [DEBUG] Channel vars for {call_id}:")
+        self.logger.debug("[GW_ROUTER_ASR] Channel vars for call_id=%s", call_id)
 
         rtp_related_keys = [
             key for key in channel_vars.keys()
@@ -485,14 +403,11 @@ class GatewayEventRouter:
 
         if rtp_related_keys:
             for key in sorted(rtp_related_keys):
-                self.logger.info("  %s = %s", key, channel_vars.get(key))
+                self.logger.debug("[GW_ROUTER_ASR] %s = %s", key, channel_vars.get(key))
         else:
-            self.logger.warning("  ⚠️ No RTP-related variables found!")
+            self.logger.warning("[GW_ROUTER_ASR] No RTP-related variables found for call_id=%s", call_id)
             preview_keys = list(channel_vars.keys())[:10]
-            self.logger.info("  Available keys: %s%s",
-                             preview_keys,
-                             "..." if len(channel_vars) > len(preview_keys) else "")
-        # ===== デバッグログ終了 =====
+            self.logger.debug("[GW_ROUTER_ASR] Available keys (first 10): %s", preview_keys)
 
         if channel_vars:
             self.logger.debug(

@@ -38,6 +38,7 @@ class FreeswitchRTPMonitor:
         self.ip_cls = ip_cls
         self.udp_cls = udp_cls
         self.esl_receiver_cls = esl_receiver_cls
+        self._main_loop = None  # メインイベントループ参照（start_monitoring時に設定）
 
     def get_rtp_port_from_freeswitch(self) -> Optional[int]:
         """FreeSWITCHから現在の送信RTPポートを取得（RTP情報ファイル優先、uuid_dumpはフォールバック）"""
@@ -54,6 +55,7 @@ class FreeswitchRTPMonitor:
 
     async def start_monitoring(self):
         """ESL方式で音声監視を開始"""
+        self._main_loop = asyncio.get_running_loop()
         uuid = getattr(self.gateway, "uuid", None)
         if not uuid:
             self.logger.error("[ESL_MONITOR] UUID not found in gateway")
@@ -253,7 +255,7 @@ class FreeswitchRTPMonitor:
                 except Exception:
                     current_map = {}
                 self.logger.warning(
-                    "[DEBUG_ENABLE_ASR_ENTRY] call_id=%s call_uuid_map=%s",
+                    "[ENABLE_ASR] call_id=%s call_uuid_map=%s",
                     call_id,
                     current_map,
                 )
@@ -261,7 +263,7 @@ class FreeswitchRTPMonitor:
                 if not call_id and hasattr(self.gateway, "_get_effective_call_id"):
                     call_id = self.gateway._get_effective_call_id()
                     self.logger.warning(
-                        "[DEBUG_ENABLE_ASR_EFFECTIVE] effective_call_id=%s", call_id
+                        "[ENABLE_ASR] effective_call_id=%s", call_id
                     )
 
                 if not call_id:
@@ -289,7 +291,7 @@ class FreeswitchRTPMonitor:
 
                 # 追加: uuid取得結果のログ
                 self.logger.warning(
-                    "[DEBUG_ENABLE_ASR_UUID] call_id=%s uuid=%s", call_id, uuid
+                    "[ENABLE_ASR] call_id=%s uuid=%s", call_id, uuid
                 )
 
                 if not uuid:
@@ -378,7 +380,6 @@ class FreeswitchRTPMonitor:
     def _pcap_capture_loop(self, port: int):
         """pcap方式でRTPパケットをキャプチャするループ（別スレッドで実行）"""
         # 【最優先デバッグ】関数の最初で即座に出力
-        print(f"DEBUG_TRACE: _pcap_capture_loop ENTERED port={port}", flush=True)
         try:
             self.logger.info("[FS_RTP_MONITOR] Starting pcap capture for port %s", port)
             # scapyのsniff()を使用してパケットをキャプチャ
@@ -394,13 +395,6 @@ class FreeswitchRTPMonitor:
             except Exception:
                 pass
             # 【強制出力】標準出力に出して即時確認（loggerに依存しない）
-            try:
-                print(
-                    f"DEBUG_PRINT: Starting pcap with filter='{filter_str}'",
-                    flush=True,
-                )
-            except Exception:
-                pass
             if not self.sniff_func:
                 raise RuntimeError("scapy sniff is not available")
             self.sniff_func(
@@ -420,15 +414,7 @@ class FreeswitchRTPMonitor:
 
     def _process_captured_packet(self, packet):
         """キャプチャしたパケットを処理"""
-        # 【デバッグ】パケット受信時に即座に出力（50回に1回）
-        if not hasattr(self, "_packet_debug_count"):
-            self._packet_debug_count = 0
-        self._packet_debug_count += 1
-        if self._packet_debug_count % 50 == 1:
-            print(
-                f"DEBUG_TRACE: _process_captured_packet called count={self._packet_debug_count}",
-                flush=True,
-            )
+
         try:
             # IP層とUDP層を確認
             if not self.ip_cls or not self.udp_cls:
@@ -474,12 +460,13 @@ class FreeswitchRTPMonitor:
                     # asyncioイベントループでhandle_rtp_packetを実行
                     # 別スレッドからasyncioを呼び出すため、新しいイベントループを作成
                     try:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        loop.run_until_complete(
-                            self.gateway.handle_rtp_packet(rtp_data, addr)
-                        )
-                        loop.close()
+                        if self._main_loop and self._main_loop.is_running():
+                            self._main_loop.call_soon_threadsafe(
+                                asyncio.ensure_future,
+                                self.gateway.handle_rtp_packet(rtp_data, addr),
+                            )
+                        else:
+                            self.logger.warning("[FS_RTP_MONITOR] Main event loop not available")
                     except Exception as e:
                         self.logger.error(
                             "[FS_RTP_MONITOR] Error processing captured packet: %s",
@@ -638,17 +625,6 @@ class GatewayMonitorManager:
         if self.fs_rtp_monitor:
             asyncio.create_task(self.fs_rtp_monitor.start_monitoring())
 
-            # ★ 一時テスト: 通話開始から8秒後にASRを強制有効化（デバッグ用）
-            # TODO: 動作確認後、この行を削除してgateway_event_listener.py連携に切り替える
-            async def force_enable_asr_after_delay():
-                await asyncio.sleep(8.0)
-                if not self.fs_rtp_monitor.asr_active:
-                    self.logger.info(
-                        "[FS_RTP_MONITOR] DEBUG: Force-enabling ASR after 8 seconds (temporary test)"
-                    )
-                    self.fs_rtp_monitor._schedule_asr_enable_after_initial_sequence()
-
-            asyncio.create_task(force_enable_asr_after_delay())
 
     async def _no_input_monitor_loop(self):
         """無音状態を監視し、自動ハングアップを行う"""
